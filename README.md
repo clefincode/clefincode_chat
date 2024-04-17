@@ -9,9 +9,9 @@
     <a href="https://clefincode.com/pages/clefincode_chat_docs"><strong>Learn More »</strong></a>
      <br />   
     <br />
-    <a href="https://github.com/clefincode/ClefinCode-ERP-Frappe-APP/issues">Issues</a>
+    <a href="https://github.com/clefincode/clefincode_chat/issues">Issues</a>
     ·
-    <a href="https://github.com/clefincode/ClefinCode-ERP-Frappe-APP/discussions">Discussions</a>
+    <a href="https://github.com/clefincode/clefincode_chat/discussions">Discussions</a>
   </p>
 </p>
 <br>
@@ -124,7 +124,7 @@ Since ClefinCode Chat is a Frappe app, it can be installed via [frappe-bench](ht
 Once you have setup your bench and your site, you can install the app via the following commands:
 
 ```bash
-bench get-app https://github.com/clefincode/ClefinCode-ERP-Frappe-APP.git
+bench get-app https://github.com/clefincode/clefincode_chat.git
 bench --site yoursite.name install-app clefincode_chat
 bench --site yoursite.name migrate
 bench build
@@ -132,7 +132,7 @@ bench build
 
 ## Reporting Bugs
 
-If you find any bugs, feel free to report them here on [GitHub Issues](https://github.com/clefincode/ClefinCode-ERP-Frappe-APP/issues).
+If you find any bugs, feel free to report them here on [GitHub Issues](https://github.com/clefincode/clefincode_chat/issues).
 
 ## License
 
