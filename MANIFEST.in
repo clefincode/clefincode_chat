@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include clefincode_chat *.css
+recursive-include clefincode_chat *.csv
+recursive-include clefincode_chat *.html
+recursive-include clefincode_chat *.ico
+recursive-include clefincode_chat *.js
+recursive-include clefincode_chat *.json
+recursive-include clefincode_chat *.md
+recursive-include clefincode_chat *.png
+recursive-include clefincode_chat *.py
+recursive-include clefincode_chat *.svg
+recursive-include clefincode_chat *.txt
+recursive-exclude clefincode_chat *.pyc

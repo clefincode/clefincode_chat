@@ -1,0 +1,190 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "creation": "2023-07-05 12:24:53.839048",
+  "default_view": "List",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "is_parent",
+    "column_break_qevtu",
+    "chat_status",
+    "section_break_jca2a",
+    "channel_creator",
+    "parent_channel",
+    "parent_channel_creator",
+    "channel_name",
+    "column_break_tbzsr",
+    "platform",
+    "type",
+    "chat_profile",
+    "creation_date",
+    "modified_date",
+    "section_break_fuzta",
+    "members",
+    "contributors",
+    "section_break_mmasg",
+    "last_message",
+    "column_break_g8y26",
+    "last_message_number",
+    "section_break_q5hau",
+    "chat_history",
+    "channel_image"
+  ],
+  "fields": [
+    {
+      "default": "0",
+      "fieldname": "is_parent",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Is Parent"
+    },
+    {
+      "fieldname": "column_break_qevtu",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "Open",
+      "fieldname": "chat_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Status",
+      "options": "\nOpen\nOn Hold\nClosed"
+    },
+    {
+      "fieldname": "section_break_jca2a",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "channel_creator",
+      "fieldtype": "Data",
+      "label": "Channel Creator"
+    },
+    {
+      "depends_on": "eval:doc.is_parent == 0",
+      "fieldname": "parent_channel",
+      "fieldtype": "Link",
+      "label": "Parent Channel",
+      "options": "ClefinCode Chat Channel"
+    },
+    {
+      "fieldname": "parent_channel_creator",
+      "fieldtype": "Data",
+      "label": "Parent Channel Creator"
+    },
+    {
+      "fieldname": "channel_name",
+      "fieldtype": "Data",
+      "label": "Channel Name"
+    },
+    {
+      "fieldname": "column_break_tbzsr",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "platform",
+      "fieldtype": "Select",
+      "label": "Platform",
+      "options": "ERPNext Chat\nERPNext Chat WhatsApp"
+    },
+    {
+      "fieldname": "type",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Type",
+      "options": "Guest\nDirect\nGroup"
+    },
+    {
+      "fieldname": "chat_profile",
+      "fieldtype": "Link",
+      "label": "Chat Profile",
+      "options": "ClefinCode Chat Profile"
+    },
+    {
+      "fieldname": "creation_date",
+      "fieldtype": "Datetime",
+      "label": "Creation Date"
+    },
+    {
+      "fieldname": "modified_date",
+      "fieldtype": "Datetime",
+      "label": "Modified Date"
+    },
+    {
+      "fieldname": "section_break_fuzta",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "members",
+      "fieldtype": "Table",
+      "label": "Members",
+      "options": "ClefinCode Chat Channel User"
+    },
+    {
+      "depends_on": "eval:doc.is_parent == 1",
+      "fieldname": "contributors",
+      "fieldtype": "Table",
+      "label": "Contributors",
+      "options": "ClefinCode Chat Channel Contributor"
+    },
+    {
+      "fieldname": "section_break_mmasg",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "last_message",
+      "fieldtype": "Text",
+      "label": "Last Message"
+    },
+    {
+      "fieldname": "column_break_g8y26",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "last_message_number",
+      "fieldtype": "Int",
+      "in_list_view": 1,
+      "label": "Last Message Number"
+    },
+    {
+      "fieldname": "section_break_q5hau",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "chat_history",
+      "fieldtype": "JSON",
+      "label": "Chat History"
+    },
+    {
+      "fieldname": "channel_image",
+      "fieldtype": "Attach Image",
+      "label": "Channel Image"
+    }
+  ],
+  "in_create": 1,
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2024-02-25 11:24:27.421251",
+  "modified_by": "Administrator",
+  "module": "ClefinCode Chat",
+  "name": "ClefinCode Chat Channel",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Chat Administrator",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}

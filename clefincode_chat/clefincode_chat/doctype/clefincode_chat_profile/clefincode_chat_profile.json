@@ -1,0 +1,129 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "prompt",
+  "creation": "2023-07-09 10:22:49.298346",
+  "default_view": "List",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "is_guest",
+    "is_support",
+    "full_name",
+    "domain",
+    "contact",
+    "token",
+    "last_active",
+    "contact_details",
+    "registration_token",
+    "platform",
+    "support_token",
+    "support_channel"
+  ],
+  "fields": [
+    {
+      "depends_on": "eval:doc.is_guest == 1 || doc.is_support == 1",
+      "fieldname": "token",
+      "fieldtype": "Data",
+      "label": "Token"
+    },
+    {
+      "fieldname": "full_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Full Name"
+    },
+    {
+      "default": "0",
+      "fieldname": "is_guest",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Is Guest"
+    },
+    {
+      "depends_on": "eval: doc.is_guest == 0 && doc.is_client == 0",
+      "fieldname": "contact",
+      "fieldtype": "Link",
+      "label": "Contact",
+      "options": "Contact",
+      "unique": 1
+    },
+    {
+      "fieldname": "contact_details",
+      "fieldtype": "Table",
+      "label": "Contact Details",
+      "options": "ClefinCode Chat Profile Contact Details"
+    },
+    {
+      "fieldname": "registration_token",
+      "fieldtype": "Text",
+      "label": "Registration Token"
+    },
+    {
+      "fieldname": "platform",
+      "fieldtype": "Select",
+      "label": "Platform",
+      "options": "\nandroid\nios"
+    },
+    {
+      "depends_on": "eval: doc.is_support == 1",
+      "fieldname": "domain",
+      "fieldtype": "Data",
+      "label": "Domain"
+    },
+    {
+      "fieldname": "last_active",
+      "fieldtype": "Datetime",
+      "label": "Last Active"
+    },
+    {
+      "default": "0",
+      "fieldname": "is_support",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Is Support"
+    },
+    {
+      "fieldname": "support_token",
+      "fieldtype": "Text",
+      "label": "Support Token"
+    },
+    {
+      "fieldname": "support_channel",
+      "fieldtype": "Data",
+      "label": "Support Channel"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "links": [
+    {
+      "group": "Connections",
+      "link_doctype": "Contact",
+      "link_fieldname": "name"
+    }
+  ],
+  "modified": "2024-02-25 11:25:25.885723",
+  "modified_by": "Administrator",
+  "module": "ClefinCode Chat",
+  "name": "ClefinCode Chat Profile",
+  "naming_rule": "Set by user",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}

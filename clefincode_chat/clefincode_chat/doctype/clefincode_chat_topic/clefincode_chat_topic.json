@@ -1,0 +1,101 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "creation": "2023-12-17 14:32:58.220570",
+  "default_view": "List",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "subject",
+    "column_break_2",
+    "chat_channel",
+    "column_break_4",
+    "topic_status",
+    "section_break_6",
+    "is_private",
+    "section_break_4",
+    "references",
+    "viewers"
+  ],
+  "fields": [
+    {
+      "fieldname": "subject",
+      "fieldtype": "Data",
+      "label": "Subject"
+    },
+    {
+      "fieldname": "column_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "chat_channel",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Chat Channel",
+      "options": "ClefinCode Chat Channel"
+    },
+    {
+      "fieldname": "section_break_4",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "references",
+      "fieldtype": "Table",
+      "label": "References",
+      "options": "ClefinCode Chat Topic Reference"
+    },
+    {
+      "fieldname": "column_break_4",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "topic_status",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Topic Status",
+      "options": "Open\nClosed"
+    },
+    {
+      "default": "0",
+      "fieldname": "is_private",
+      "fieldtype": "Check",
+      "label": "Is Private"
+    },
+    {
+      "fieldname": "section_break_6",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "viewers",
+      "fieldtype": "Table",
+      "label": "Viewers",
+      "options": "ClefinCode Chat Topic Viewers"
+    }
+  ],
+  "in_create": 1,
+  "index_web_pages_for_search": 1,
+  "links": [],
+  "modified": "2024-02-25 11:18:59.221034",
+  "modified_by": "Administrator",
+  "module": "ClefinCode Chat",
+  "name": "ClefinCode Chat Topic",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 1,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "Chat Administrator",
+      "share": 1,
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}

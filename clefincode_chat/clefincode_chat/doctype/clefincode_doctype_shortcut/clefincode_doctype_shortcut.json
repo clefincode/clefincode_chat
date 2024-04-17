@@ -1,0 +1,37 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "creation": "2024-02-20 14:42:58.982763",
+  "description": "This doctype allows for the creation of shortcuts for a specific doctype, enabling its use in mentions.",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": ["shortcut", "doctype_name"],
+  "fields": [
+    {
+      "fieldname": "shortcut",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Shortcut"
+    },
+    {
+      "fieldname": "doctype_name",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "DocType Name",
+      "options": "DocType"
+    }
+  ],
+  "index_web_pages_for_search": 1,
+  "istable": 1,
+  "links": [],
+  "modified": "2024-02-20 14:49:13.283113",
+  "modified_by": "Administrator",
+  "module": "ClefinCode Chat",
+  "name": "ClefinCode DocType Shortcut",
+  "owner": "Administrator",
+  "permissions": [],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}
