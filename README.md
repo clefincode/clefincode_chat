@@ -1,6 +1,6 @@
 <p align="center">
 
-<img src="screenshots/clefincode_chat_logo.png" alt="ClefinCode Chat logo" />
+<img src="screenshots/clefincode_chat_logo.png" alt="ClefinCode Chat logo" width="50%"/>
 
 <h3 align="center">ClefinCode Chat</h3>
   <p align="center">Enhance business communication with multimedia messaging and ERPNext integration.
