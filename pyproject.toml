@@ -6,6 +6,7 @@ authors = [
 
 description = "ERPNext & Frappe Business Chat: A self-hosted communication solution."
 readme = "README.md"
+dynamic = ["version"]
 [deploy.dependencies.apt]
 packages = [
   "ffmpeg"
