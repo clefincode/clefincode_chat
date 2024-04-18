@@ -15,30 +15,30 @@ def create_users_profiles():
     if users:
         for user in users:
             if user.name not in ["Administrator" , "Guest"]:
-                first_name = frappe.db.get_value("User" , user.name , "first_name")
-                middle_name = frappe.db.get_value("User" , user.name , "middle_name")
-                last_name = frappe.db.get_value("User" , user.name , "last_name")
-
-                full_name = (first_name if first_name else "") + \
-                            (" " + middle_name if middle_name else "") + \
-                            (" " + last_name if last_name else "")
-                
-                            
-                contact_details_list = [{
-                    "contact_info" : user.name,
-                    "type" : "Chat",
-                    "default" : 1,
-                    "verified": 1
-                },
-                {
-                    "contact_info" : user.name,
-                    "type" : "Email",
-                    "default" : 0,
-                    "verified": 1
-                }]                
-                
                 user_contact = frappe.db.get_all("Contact" , {"user" : user.name} , "name")
-                if user_contact:
+                if user_contact and not frappe.db.exists("ClefinCode Chat Profile" , user_contact[0].name):
+                    first_name = frappe.db.get_value("User" , user.name , "first_name")
+                    middle_name = frappe.db.get_value("User" , user.name , "middle_name")
+                    last_name = frappe.db.get_value("User" , user.name , "last_name")
+
+                    full_name = (first_name if first_name else "") + \
+                                (" " + middle_name if middle_name else "") + \
+                                (" " + last_name if last_name else "")
+                    
+                                
+                    contact_details_list = [{
+                        "contact_info" : user.name,
+                        "type" : "Chat",
+                        "default" : 1,
+                        "verified": 1
+                    },
+                    {
+                        "contact_info" : user.name,
+                        "type" : "Email",
+                        "default" : 0,
+                        "verified": 1
+                    }]                
+                    
                     frappe.get_doc({
                     "doctype" : "ClefinCode Chat Profile" ,
                     "contact" : user_contact[0].name,
@@ -49,8 +49,8 @@ def create_users_profiles():
     
     contacts = frappe.db.get_all("Contact", "name")    
     if contacts:
-        for contact in contacts:            
-            if not frappe.db.get_value("Contact" , contact.name, "user"):                                
+        for contact in contacts:
+            if not (frappe.db.get_value("Contact" , contact.name, "user") and frappe.db.exists("ClefinCode Chat Profile" , contact)):            
                 contact_details_list = []
                 contact_doc = frappe.get_doc("Contact" , contact.name)
                 for email in contact_doc.email_ids:                
