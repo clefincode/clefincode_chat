@@ -50,7 +50,7 @@ def create_users_profiles():
     contacts = frappe.db.get_all("Contact", "name")    
     if contacts:
         for contact in contacts:
-            if not (frappe.db.get_value("Contact" , contact.name, "user") and frappe.db.exists("ClefinCode Chat Profile" , contact)):            
+            if not frappe.db.get_value("Contact" , contact.name, "user") and not frappe.db.exists("ClefinCode Chat Profile" , contact.name):            
                 contact_details_list = []
                 contact_doc = frappe.get_doc("Contact" , contact.name)
                 for email in contact_doc.email_ids:                
