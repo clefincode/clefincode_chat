@@ -1,0 +1,12 @@
+[project]
+name = "clefincode_chat"
+authors = [
+    { name = "ClefinCode L.L.C-FZ", email = "info@clefincode.com"}
+]
+
+description = "ERPNext & Frappe Business Chat: A self-hosted communication solution."
+readme = "README.md"
+[deploy.dependencies.apt]
+packages = [
+  "ffmpeg"
+]
