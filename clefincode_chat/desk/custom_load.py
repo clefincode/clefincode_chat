@@ -16,7 +16,7 @@ from frappe.model.utils.user_settings import get_user_settings
 from frappe.permissions import get_doc_permissions
 from frappe.utils.data import cstr
 from clefincode_chat.api.api_1_0_1.api import get_contact_full_name, check_if_user_has_permission_to_file
-from frappe.desk.form.load import run_onload ,set_link_titles, _get_communications, add_comments, update_user_info, get_attachments, get_versions, get_assignments, get_doc_permissions, get_view_logs, get_point_logs, get_additional_timeline_content, get_milestones,is_document_followed, get_tags, get_document_email
+from frappe.desk.form.load import run_onload ,set_link_titles, _get_communications, add_comments, update_user_info, get_attachments, get_versions, get_assignments, get_doc_permissions, get_point_logs, get_additional_timeline_content, get_milestones,is_document_followed, get_tags, get_document_email
 
 
 @frappe.whitelist()
@@ -108,6 +108,24 @@ def get_docinfo(doc=None, doctype=None, name=None):
 
 	update_user_info(docinfo)
 	frappe.response["docinfo"] = docinfo
+	
+def get_view_logs(doctype, docname):
+	"""get and return the latest view logs if available"""
+	logs = []
+	if hasattr(frappe.get_meta(doctype), "track_views") and frappe.get_meta(doctype).track_views:
+		view_logs = frappe.get_all(
+			"View Log",
+			filters={
+				"reference_doctype": doctype,
+				"reference_name": docname,
+			},
+			fields=["name", "creation", "owner"],
+			order_by="creation desc",
+		)
+
+		if view_logs:
+			logs = view_logs
+	return logs
 
 def add_chat_topics(doc, docinfo):
 	docinfo.chat_topics = []
