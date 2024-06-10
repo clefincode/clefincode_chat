@@ -2611,7 +2611,58 @@ def convert_utc_to_user_timezone(utc_time, user_timezone , formatted = None):
 # ========================================================================================== 
 @frappe.whitelist()   
 def get_time_now(user_email, formatted = None):
-    return convert_utc_to_user_timezone(datetime.datetime.utcnow() , get_user_timezone(user_email)["results"][0]["time_zone"] , formatted)
+    return convert_utc_to_user_timezone(datetime.datetime.utcnow() , get_user_timezone(user_email)["results"][0]["time_zone"] , formatted)    
+# ==========================================================================================
+@frappe.whitelist()
+def end_meeting(meeting_id):
+    creation_date = datetime.datetime.utcnow()
+    meet_doc = frappe.get_doc("ClefinCode Chat Meet" , meeting_id)
+    results = {
+        "realtime_type" : "end_meet",
+    }
+    for user in meet_doc.get_members():
+        send_notification(user , results, "end_meet")
+    return {"results" : [{"meet" : meet_doc.get_members()}]}
+# ==========================================================================================
+@frappe.whitelist()
+def decline_meet(meeting_id):
+    meet_doc = frappe.get_doc("ClefinCode Chat Meet" , meeting_id)
+    results = {
+        "realtime_type" : "decline_meet",
+    }
+    send_notification(meet_doc.meet_creator , results, "decline_meet")
+    return {"results" : [{"meet" : meet_doc.meet_creator}]}
+
+# ==========================================================================================
+@frappe.whitelist()
+def create_meeting(channel_id,meet_name,moderator_email, moderator_name , users, meeting_id ,caller_id,is_video):
+    creation_date = datetime.datetime.utcnow()
+    meet_doc = frappe.get_doc({
+        'doctype': 'ClefinCode Chat Meet',
+        'meet_name' : meet_name,
+        'meeting_id':meeting_id,
+        'channel_id':channel_id,
+        'meet_creator' : moderator_email,
+        'creation_date' : creation_date,
+    })
+    meet_doc.insert(ignore_permissions=True)
+    for user in json.loads(users):
+        meet_doc.append("members" , {"profile_id" : get_profile_id(user["email"]) ,"user" : user["email"]})
+        share_doctype("ClefinCode Chat Meet", meet_doc.name, user["email"])
+    meet_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    results = {
+        "realtime_type" : "meet",
+        "meeting_id":meeting_id,
+        "caller_name":moderator_name,
+        "caller_id":caller_id,
+        "is_video":is_video,
+        "moderator_email":moderator_email,
+        'name':meet_doc.name
+    }
+    for user in json.loads(users):
+        send_notification(user["email"] , results, "meet")
+    return {"results" : [{"meet" : meet_doc.name}]}        
 # ==========================================================================================
 def sync_with_chat_profile(doc , method):    
     user_id = doc.user
@@ -2622,7 +2673,6 @@ def sync_with_chat_profile(doc , method):
     contact_details = {}
     email_details = {}
     contact_details_list = []
-    
     for email in doc.email_ids:
         if email.email_id == user_id:
             contact_details = frappe.get_doc({
@@ -2790,7 +2840,10 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                             body = get_body_message(results)
                         else:
                             body = get_body_message_information(realtime_type)
-                        push_notifications(registration_token, results, realtime_type, user_platform, title, body)                       
+                        if body!=None:
+                            push_notifications(registration_token, results, realtime_type, user_platform, title, body)                       
+                        else:
+                            push_notifications(registration_token, results, realtime_type, user_platform, None, None)      
                     else:
                         push_notifications(registration_token, results, realtime_type, user_platform)                                              
     except Exception as e:
@@ -2832,6 +2885,10 @@ def get_body_message_information(realtime_type):
         body = 'The topic has been removeed'
     elif realtime_type == "add_doctype":
         body = 'A new doctype has been added'
+    elif realtime_type == "meet":
+        body = None
+    elif realtime_type == "decline_meet":
+        body = None  
     else:
         body = 'The contributors have been changed in the conversation'
     return body
