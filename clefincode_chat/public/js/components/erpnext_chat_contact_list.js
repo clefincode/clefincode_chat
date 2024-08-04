@@ -3,11 +3,12 @@ import ChatList from "./erpnext_chat_list";
 import ChatWindow from "./erpnext_chat_window";
 import ChatSpace from "./erpnext_chat_space";
 import {
-  convertToUTC,
   get_user_emails,
   get_user_names,
   check_if_room_admin,
   send_message,
+  show_overlay,
+  hide_overlay,
 } from "./erpnext_chat_utils";
 
 export default class ChatContactList {
@@ -170,7 +171,7 @@ export default class ChatContactList {
     }
 
     this.chat_contacts = [];
-
+    
     this.contacts.forEach((element) => {
       if (this.new_group == 1 && !element.user_id) {
         return;
@@ -270,6 +271,8 @@ export default class ChatContactList {
             user_email: me.profile.user_email,
             is_admin: me.profile.is_admin,
             time_zone: me.profile.time_zone,
+            user_type: me.profile.user_type,
+            is_limited_user: me.profile.is_limited_user,
           },
           new_group: 1,
         });
@@ -301,6 +304,8 @@ export default class ChatContactList {
             user_email: me.profile.user_email,
             is_admin: me.profile.is_admin,
             time_zone: me.profile.time_zone,
+            user_type: me.profile.user_type,
+            is_limited_user: me.profile.is_limited_user,
           });
           erpnext_chat_app.chat_list.render();
         }
@@ -354,10 +359,6 @@ export default class ChatContactList {
           is_first_message: 0,
           sub_channel: me.chat_space.last_active_sub_channel,
           message_type: "information",
-          send_date: convertToUTC(
-            frappe.datetime.now_datetime(),
-            me.profile.time_zone
-          ),
           message_template_type: "Add User",
           chat_topic: me.chat_space.chat_topic,
         };
@@ -413,15 +414,11 @@ export default class ChatContactList {
   }
 
   async create_group() {
-    const creation_date = convertToUTC(
-      frappe.datetime.now_datetime(),
-      this.profile.time_zone
-    );
+    show_overlay("");
 
     const room_info = await create_group(
       this.selected_contacts,
-      this.profile.user_email,
-      creation_date
+      this.profile.user_email
     );
     const room = room_info[0].room;
     const room_name = room_info[0].room_name;
@@ -456,9 +453,12 @@ export default class ChatContactList {
         user_email: this.profile.user_email,
         is_admin: this.profile.is_admin,
         time_zone: this.profile.time_zone,
+        user_type: this.profile.user_type,
+        is_limited_user: this.profile.is_limited_user,
       });
       erpnext_chat_app.chat_list.render();
     }, 700);
+    hide_overlay();
   }
 } //END Class
 
@@ -473,7 +473,7 @@ async function get_contacts(user_email) {
   return await res.message.results[0].contacts;
 }
 
-async function create_group(selected_contacts_list, user, creation_date) {
+async function create_group(selected_contacts_list, user, creation_date = null) {
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_0_1.api.create_group",
     args: {

@@ -170,14 +170,12 @@ def get_settings(token):
         'socketio_port': frappe.conf.socketio_port,
         'user_email': frappe.session.user,
         'is_admin': True if 'user_type' in frappe.session.data else False,
-        # 'guest_title': ''.join(frappe.get_hooks('guest_title')),
+        'user_type': get_user_type(),
+        'is_limited_user': False,
     }
     config = {**config, **get_chat_settings()}
 
-    if config['is_admin']:
-        config['user'] = frappe.db.get_value('User', config['user_email'], 'full_name')
-        config['time_zone'] = frappe.db.get_value('User', config['user_email'], 'time_zone')    
-    else:
+    if config['user_type'] == "guest":
         config['user'] = 'Guest'
         profile_details = validate_token(token)
         if profile_details:
@@ -185,7 +183,33 @@ def get_settings(token):
             config['is_verified'] = True
         else:
             config['is_verified'] = False
+    
+    elif config['user_type'] == "website_user":
+        config['user'] = frappe.db.get_value('User', config['user_email'], 'full_name')
+        config['time_zone'] = frappe.db.get_value('User', config['user_email'], 'time_zone')
+
+    elif config['user_type'] == "system_user":
+        if is_limited_user(config['user_email']):
+            config['is_limited_user'] = True            
+        
+        config['user'] = frappe.db.get_value('User', config['user_email'], 'full_name')
+        config['time_zone'] = frappe.db.get_value('User', config['user_email'], 'time_zone')
+    
     return config
+# ==========================================================================================
+def is_limited_user(user):
+    roles = frappe.get_roles(user)
+    limited_roles = ["Customer", "Supplier", "Student", "Instructor", "Sales Partner", "Member", "Shareholder", "Guardian"]
+    return any(role in roles for role in limited_roles)
+# ==========================================================================================
+def get_user_type():
+    if frappe.session.user == "Guest":
+        return "guest"
+    else:
+        if frappe.session.data.user_type == "Website User":
+            return "website_user"
+        else:
+            return "system_user"
 # ==========================================================================================
 def validate_token(token):
     profile_details = None
@@ -303,7 +327,7 @@ def calculate_unread_messages(user):
 ######################################## Rooms / Channels ###################################
 #############################################################################################
 @frappe.whitelist()
-def create_channel(channel_name , users, type , last_message , creator_email , creator , creation_date):  
+def create_channel(channel_name , users, type , last_message , creator_email , creator , creation_date = None):  
     # only for Direct chat   
     creation_date = datetime.datetime.utcnow()
     room_doc = frappe.get_doc({
@@ -326,7 +350,7 @@ def create_channel(channel_name , users, type , last_message , creator_email , c
     return {"results" : [{"room" : room_doc.name}]}
 # ==========================================================================================
 @frappe.whitelist()
-def create_group(selected_contacts_list , user , creation_date):
+def create_group(selected_contacts_list , user , creation_date = None):
     platform = ""
     creation_date = datetime.datetime.utcnow()
     room_doc = frappe.get_doc({
@@ -362,7 +386,7 @@ def create_group(selected_contacts_list , user , creation_date):
     return {"results" : [{"room" : room_doc.name  , "room_name" : room_doc.get_group_name()}]}
 # ==========================================================================================
 @frappe.whitelist()
-def create_sub_channel(new_contributors , parent_channel , user , user_email , creation_date , last_active_sub_channel = None , user_to_remove = None , empty_contributor_list = 0):
+def create_sub_channel(new_contributors , parent_channel , user , user_email , creation_date = None , last_active_sub_channel = None , user_to_remove = None , empty_contributor_list = 0):
     creation_date = datetime.datetime.utcnow()
     frappe.db.sql(f"""UPDATE `tabClefinCode Chat Channel` SET chat_status = 'Closed' WHERE `name` = '{get_last_sub_channel(parent_channel)}'""")
     parent_channel_doc = frappe.get_doc("ClefinCode Chat Channel" , parent_channel)
@@ -466,7 +490,7 @@ def create_sub_channel(new_contributors , parent_channel , user , user_email , c
         return {"results" : [{"channel" : sub_channel_doc.name}]}
 # ==========================================================================================
 @frappe.whitelist()
-def leave_contributor(parent_channel , user , creation_date , last_active_sub_channel = None , user_to_remove = None , empty_contributor_list = 0):
+def leave_contributor(parent_channel , user , creation_date = None , last_active_sub_channel = None , user_to_remove = None , empty_contributor_list = 0):
     creation_date = datetime.datetime.utcnow()
     frappe.db.sql(f"""UPDATE `tabClefinCode Chat Channel` SET chat_status = 'Closed' WHERE `name` = '{get_last_sub_channel(parent_channel)}'""")
     parent_channel_doc = frappe.get_doc("ClefinCode Chat Channel" , parent_channel)
@@ -557,7 +581,8 @@ def get_channels_list(user_email , limit = 10 , offset = 0):
     channel_name,
     type,
     NULL AS is_removed,
-    NULL AS remove_date
+    NULL AS remove_date,
+    NULL AS is_website_support_group
 
     FROM `tabClefinCode Chat Channel` AS ChatChannel 
     INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = '{user_email}'
@@ -575,7 +600,8 @@ def get_channels_list(user_email , limit = 10 , offset = 0):
     channel_name,
     type,
     ChatChannelUser.is_removed AS is_removed,
-    ChatChannelUser.remove_date
+    ChatChannelUser.remove_date,
+    is_website_support_group
 
     FROM `tabClefinCode Chat Channel` AS ChatChannel 
     INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = '{user_email}'
@@ -593,7 +619,8 @@ def get_channels_list(user_email , limit = 10 , offset = 0):
     channel_name,
     type,
     NULL AS is_removed,
-    NULL AS remove_date
+    NULL AS remove_date,
+    NULL AS is_website_support_group
 
     FROM `tabClefinCode Chat Channel` AS ChatChannel
     INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = '{user_email}'
@@ -613,7 +640,8 @@ def get_channels_list(user_email , limit = 10 , offset = 0):
         NULL AS channel_name,
         'Contributor' AS type,
         NULL AS is_removed,
-        NULL AS remove_date
+        NULL AS remove_date,
+        is_website_support_group
 
     FROM `tabClefinCode Chat Channel` AS ChatChannel  INNER JOIN `tabClefinCode Chat Channel Contributor` AS ChatChannelContributor On
     ChatChannelContributor.parent = ChatChannel.name
@@ -761,7 +789,7 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 ######################################## Messages ###########################################
 #############################################################################################
 @frappe.whitelist()
-def send(content, user, room , email, send_date , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
+def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
     try:
         if is_media or is_document or message_template_type == "Remove User":
             time.sleep(3)
@@ -1240,8 +1268,10 @@ def update_sub_channel_for_last_message(user , user_email , mentioned_users_emai
         "utc_message_date" : mention_message_doc.send_date
     }   
     members = [email.strip() for email in mentioned_users_emails.split(',')]
+    channel_doc = frappe.get_doc('ClefinCode Chat Channel',  chat_room)
     for member in members:
         results["room_type"] = "Contributor"
+        results["room_name"] = "@" + channel_doc.get_channel_name_for_contributor()
         results["send_date"] = convert_utc_to_user_timezone(mention_message_doc.send_date, get_user_timezone(member)["results"][0]["time_zone"])
         results["time_zone"] = get_user_timezone(member)["results"][0]["time_zone"]
         results["target_user"] = member
@@ -2266,14 +2296,24 @@ def get_contacts(user_email):
     WHERE (User.enabled = 1 OR User.enabled IS NULL) AND ContactDetails.type IN ("Chat", "Email")
     AND ContactDetails.contact_info <> %s
     ORDER BY Contact.user DESC
-    """ , (user_email) , as_dict = True)
-    for contact in contacts_list:
-        contact.contact_details = frappe.db.sql(f"""
-        SELECT contact_info , type AS contact_type, `default`
-        FROM `tabClefinCode Chat Profile Contact Details`
-        WHERE parent = %s AND type IN ("Chat", "Email")
-        """  , (contact.profile_id) , as_dict = True)
-    return {"results": [{"contacts" : contacts_list}]}
+    """ , (user_email) , as_dict = True)    
+    
+    filtered_contacts = []
+    if is_limited_user(user_email):
+        filtered_contacts = [
+            contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
+        ]
+    else:
+        filtered_contacts = contacts_list
+
+    for contact in filtered_contacts:
+        contact['contact_details'] = frappe.db.sql("""
+            SELECT contact_info, type AS contact_type, `default`
+            FROM `tabClefinCode Chat Profile Contact Details`
+            WHERE parent = %s AND type IN ('Chat', 'Email')
+        """, (contact['profile_id'],), as_dict=True)
+
+    return {"results": [{"contacts": filtered_contacts}]}       
 # ==========================================================================================
 @frappe.whitelist()
 def get_contacts_for_adding_to_group(user_email , existing_members , existing_contributors = None): 
@@ -2678,8 +2718,8 @@ def sync_with_chat_profile(doc , method):
         
 # ==========================================================================================
 @frappe.whitelist()
-def get_names_for_mentions(search_term):
-    if ":" in search_term:
+def get_names_for_mentions(search_term, room = None):
+    if ":" in search_term and get_user_type() == "system_user" and not is_limited_user(frappe.session.user):
         doctype_name_or_abbr = search_term.split(":")[0]
         shortcuts = frappe.db.get_all("ClefinCode DocType Shortcut" , filters = {"parent" : "ClefinCode Chat Settings"}, fields =["shortcut" , "doctype_name"], order_by = "`idx` DESC")
         shorcut_exist = None
@@ -2717,7 +2757,7 @@ def get_names_for_mentions(search_term):
            
             return reocrds_list
     else:
-        users_for_mentions = get_users_for_mentions()
+        users_for_mentions = get_users_for_mentions(room)
 
         filtered_mentions = []
         for mention_data in users_for_mentions:
@@ -2727,10 +2767,51 @@ def get_names_for_mentions(search_term):
             filtered_mentions.append(mention_data)
         return sorted(filtered_mentions, key=lambda d: d["value"])
 # ==========================================================================================
-def get_users_for_mentions():
+def get_users_for_mentions(room = None):
     excepted_users_list = []
     excepted_users_list.append("Administrator")
     excepted_users_list.append("Guest")
+
+    chat_members_and_contributors = []
+
+    if room and get_user_type() == "website_user":
+        chat_members = get_chat_members(room)["results"][0]["chat_members"]
+        contributors = get_contributors(room)["results"][0]["contributors"]
+        
+        for member in chat_members:
+            chat_members_and_contributors.append(member["email"])
+        
+        for contributor in contributors:
+            chat_members_and_contributors.append(contributor["email"])
+        
+        return frappe.get_all(
+        "User",
+        fields=["name as id", "full_name as value" , "full_name as name"],
+        filters={
+            "name": ["in", chat_members_and_contributors],
+            "allowed_in_mentions": True,
+            # "user_type": "System User",
+            "enabled": True,
+        },
+        )
+
+    if get_user_type() == "system_user" and is_limited_user(frappe.session.user):
+        filtered_system_users = []
+        system_users = frappe.get_all(
+            "User",
+            fields=["name as id", "full_name as value" , "full_name as name"],
+            filters={
+                "name": ["not in", excepted_users_list],
+                "allowed_in_mentions": True,
+                "user_type": "System User",
+                "enabled": True,
+            },
+            )  
+        for user in system_users:
+            if not is_limited_user(user.id):
+                filtered_system_users.append(user)
+
+        return filtered_system_users
     
     return frappe.get_all(
         "User",
@@ -2738,7 +2819,7 @@ def get_users_for_mentions():
         filters={
             "name": ["not in", excepted_users_list],
             "allowed_in_mentions": True,
-            "user_type": "System User",
+            # "user_type": "System User",
             "enabled": True,
         },
     )

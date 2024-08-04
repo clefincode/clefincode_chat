@@ -11,6 +11,9 @@ export default class ChatList {
     this.user_email = opts.user_email;
     this.is_admin = opts.is_admin;
     this.time_zone = opts.time_zone;
+    this.user_type = opts.user_type;
+    this.is_limited_user = opts.is_limited_user;
+    
     this.is_pined = this.get_pin_cookie();
     this.is_open = 1;
     this.limit = 10;
@@ -28,9 +31,10 @@ export default class ChatList {
     this.setup_socketio();
   }
 
-  setup_header() {
-    const chat_list_header_html = `
-			<div class='chat-list-header'>
+  setup_header() {    
+    let chat_list_header_html = ``;
+    if(this.user_type == "system_user"){
+      chat_list_header_html = `<div class='chat-list-header'>
 				<h3>${__("Chats")}</h3>
         <div class='chat-list-icons'> 
           <div class='new-chat' 
@@ -44,6 +48,23 @@ export default class ChatList {
         </div>
 			</div>
 		`;
+    }else{
+      chat_list_header_html = `<div class='chat-list-header'>
+      <h3>${__("Chats")}</h3>
+      <div class='chat-list-icons'> 
+        <div class='support-icon' 
+            title='Request Support' style="margin-right:6px">
+            <svg height="18px" width="18px" version="1.1" id="_x32_" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" xml:space="preserve" fill="#2490ef"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <style type="text/css"> .st0{fill:#2490ef;} </style> <g> <path class="st0" d="M256,0C114.616,0,0,114.612,0,256s114.616,256,256,256s256-114.612,256-256S397.385,0,256,0z M207.678,378.794 c0-17.612,14.281-31.893,31.893-31.893c17.599,0,31.88,14.281,31.88,31.893c0,17.595-14.281,31.884-31.88,31.884 C221.959,410.678,207.678,396.389,207.678,378.794z M343.625,218.852c-3.596,9.793-8.802,18.289-14.695,25.356 c-11.847,14.148-25.888,22.718-37.442,29.041c-7.719,4.174-14.533,7.389-18.769,9.769c-2.905,1.604-4.479,2.95-5.256,3.826 c-0.768,0.926-1.029,1.306-1.496,2.826c-0.273,1.009-0.558,2.612-0.558,5.091c0,6.868,0,12.512,0,12.512 c0,6.472-5.248,11.728-11.723,11.728h-28.252c-6.475,0-11.732-5.256-11.732-11.728c0,0,0-5.645,0-12.512 c0-6.438,0.752-12.744,2.405-18.777c1.636-6.008,4.215-11.718,7.508-16.694c6.599-10.083,15.542-16.802,23.984-21.48 c7.401-4.074,14.723-7.455,21.516-11.281c6.789-3.793,12.843-7.91,17.302-12.372c2.988-2.975,5.31-6.05,7.087-9.52 c2.335-4.628,3.955-10.067,3.992-18.389c0.012-2.463-0.698-5.702-2.632-9.405c-1.926-3.686-5.066-7.694-9.264-11.29 c-8.45-7.248-20.843-12.545-35.054-12.521c-16.285,0.058-27.186,3.876-35.587,8.62c-8.36,4.776-11.029,9.595-11.029,9.595 c-4.268,3.718-10.603,3.85-15.025,0.314l-21.71-17.397c-2.719-2.173-4.322-5.438-4.396-8.926c-0.063-3.479,1.425-6.81,4.061-9.099 c0,0,6.765-10.43,22.451-19.38c15.62-8.992,36.322-15.488,61.236-15.429c20.215,0,38.839,5.562,54.268,14.661 c15.434,9.148,27.897,21.744,35.851,36.876c5.281,10.074,8.525,21.43,8.533,33.38C349.211,198.042,347.248,209.058,343.625,218.852 z"></path> </g> </g></svg>
+        </div>          
+        <div class='close-chat-list' 
+        title='Close'>
+        ${frappe.utils.icon("close", "lg")}
+        </div>
+      </div>
+    </div>
+  `;
+    }
+			
     this.$chat_list.append(chat_list_header_html);
   }
 
@@ -86,15 +107,27 @@ export default class ChatList {
       this.room_groups = results_info.results;
       this.num_of_results = results_info.num_of_results;
       if (this.num_of_results == 0) {
-        const empty_chat_list_container = `
-        <div class="empty-chat-list-container">
-          <div>
-            <img src="/assets/frappe/images/ui-states/list-empty-state.svg" alt="Generic Empty State" class="null-state" style="height:60px!important">
+        let empty_chat_list_container = ``;
+        if(this.user_type == "system_user"){
+          empty_chat_list_container = `
+          <div class="empty-chat-list-container">
+            <div>
+              <img src="/assets/frappe/images/ui-states/list-empty-state.svg" alt="Generic Empty State" class="null-state" style="height:60px!important">
+            </div>
+            <div class="my-2">You don't have any conversation yet</div>
+            <div class="btn btn-primary chat-list-primary-btn">+ Create your first conversation</div>
           </div>
-          <div class="my-2">You don't have any conversation yet</div>
-          <div class="btn btn-primary chat-list-primary-btn">+ Create your first conversation</div>
-        </div>
-        `;
+          `;
+        }else{
+          empty_chat_list_container = `
+          <div class="empty-chat-list-container">
+            <div>
+              <img src="/assets/frappe/images/ui-states/list-empty-state.svg" alt="Generic Empty State" class="null-state" style="height:60px!important">
+            </div>
+            <div class="my-2">You don't have any conversation yet</div>
+          </div>
+          `;
+        }        
         this.$chat_rooms_group_container = $(document.createElement("div"));
         this.$chat_rooms_group_container.addClass("chat-rooms-group-container");
         this.$chat_rooms_group_container.addClass("empty-container");
@@ -134,6 +167,8 @@ export default class ChatList {
         user_email: this.user_email,
         is_admin: this.is_admin,
         time_zone: this.time_zone,
+        user_type: this.user_type,
+        is_limited_user: this.is_limited_user,
         room: element.room,
         parent_channel: element.parent_channel,
         room_name: element.room_name,
@@ -147,6 +182,7 @@ export default class ChatList {
         remove_date: element.remove_date,
         last_message_media_type: element.last_message_media_type,
         last_message_voice_duration: element.last_message_voice_duration,
+        is_website_support_group: element.is_website_support_group
       };
 
       this.chat_room_groups.push([
@@ -183,164 +219,14 @@ export default class ChatList {
   }
 
   async filter_and_setup_rooms(query) {
-    try {
-      if (this.controller) {
-        this.controller.abort();
-      }
-      this.controller = new AbortController();
-      const { signal } = this.controller;
-      this.chat_room_groups.forEach((room) => {
-        if (!room[1].profile.room_name.toLowerCase().includes(query)) {
-          room[1].$chat_room.hide();
-        } else {
-          room[1].$chat_room.show();
-        }
-      });
-      // this.match_room_name = await search_in_rooms(this.user_email , query , { signal });
-      // this.match_message_content = await search_in_message_content(this.user_email , query , { signal });
-      // await this.setup_rooms_after_search(signal);
-      // await this.render_messages_after_search(query , signal);
-    } catch (error) {
-      console.log(error);
-      frappe.msgprint({
-        title: __("Error"),
-        message: __("Something went wrong. Please refresh and try again."),
-      });
-    } finally {
-      this.controller = null;
-    }
-  }
-
-  async setup_rooms_after_search(signal) {
-    if (signal.aborted) {
-      return;
-    }
-    this.$chat_rooms_group_container.remove();
-    this.$chat_rooms_group_container = $(document.createElement("div"));
-    this.$chat_rooms_group_container.addClass("chat-rooms-group-container");
-    this.chat_rooms_after_search = [];
-
-    this.match_room_name.forEach((element) => {
-      if (element.type == "Direct" && element.room_name == "not_set") {
-        if (element.creator_email == this.user_email) {
-          element.room_name = element.contact_name;
-        } else {
-          element.room_name = element.contact_name;
-        }
-      } else if (element.type == "Group" && element.room_name == "not_set") {
-        element.room_name = element.members.join(", ");
-      }
-
-      let profile = {
-        user: this.user,
-        user_email: this.user_email,
-        is_admin: this.is_admin,
-        room: element.room,
-        room_name: element.room_name,
-        room_type: element.type,
-        last_message: element.last_message,
-        last_message_number: element.last_message_number,
-        last_message_read: element.last_message_read,
-        send_date: element.send_date,
-        user_unread_messages: element.user_unread_messages,
-      };
-
-      this.chat_rooms_after_search.push([
-        profile.room,
-        new ChatRoom({
-          $wrapper: this.$wrapper,
-          $chat_rooms_container: this.$chat_rooms_group_container,
-          element: profile,
-        }),
-      ]);
-    });
-
-    this.match_message_content.forEach((element) => {
-      if (element.type == "Direct" && element.room_name == "not_set") {
-        if (element.creator_email == this.user_email) {
-          element.room_name = element.contact_name;
-        } else {
-          element.room_name = element.creator_name;
-        }
-      } else if (element.type == "Group" && element.room_name == "not_set") {
-        element.room_name = element.members.join(", ");
-      }
-
-      let profile = {
-        user: this.user,
-        user_email: this.user_email,
-        is_admin: this.is_admin,
-        room: element.room,
-        room_name: element.room_name,
-        room_type: element.type,
-        last_message: element.last_message,
-        last_message_number: element.last_message_number,
-        last_message_read: element.last_message_read,
-        send_date: element.send_date,
-        user_unread_messages: element.user_unread_messages,
-        scroll_to_message: element.message_name,
-      };
-
-      this.chat_rooms_after_search.push([
-        profile.room,
-        new ChatRoom({
-          $wrapper: this.$wrapper,
-          $chat_rooms_container: this.$chat_rooms_group_container,
-          element: profile,
-        }),
-      ]);
-    });
-
-    this.$chat_list.append(this.$chat_rooms_group_container);
-  }
-
-  async render_messages_after_search(query, signal) {
-    if (signal.aborted) {
-      return;
-    }
-    this.$chat_rooms_group_container.empty();
-    for (const element of this.chat_rooms_after_search) {
-      if (element[1].$chat_room && element[1].$chat_room.length != 0) {
-        element[1].render("append");
-        element[1].set_last_message_after_search(query);
+    this.chat_room_groups.forEach((room) => {
+      if (!room[1].profile.room_name.toLowerCase().includes(query)) {
+        room[1].$chat_room.hide();
       } else {
-        this.$chat_rooms_group_container.append(element[1].$chat_contact);
-
-        element[1].$chat_contact.on("click", (e) => {
-          const me = element[1];
-          if ($(e.target).closest(".chat-icon").length > 0) {
-            if (
-              check_if_chat_window_open(me.profile.contact_email, "contact")
-            ) {
-              return;
-            }
-            me.chat_window = new ChatWindow({
-              profile: {
-                contact: me.profile.contact_email,
-              },
-            });
-
-            let profile = {
-              is_admin: me.profile.is_admin,
-              user: me.profile.user,
-              user_email: me.profile.user_email,
-              time_zone: me.profile.time_zone,
-              room: null,
-              room_name: me.profile.contact_name,
-              room_type: "Direct",
-              contact_name: me.profile.contact_name,
-              contact_email: me.profile.contact_email,
-              is_first_message: 1,
-            };
-            me.chat_space = new ChatSpace({
-              $wrapper: me.chat_window.$chat_window,
-              profile: profile,
-            });
-          }
-        });
+        room[1].$chat_room.show();
       }
-    }
-  }
+    });
+  }  
 
   setup_events() {
     const me = this;
@@ -351,8 +237,6 @@ export default class ChatList {
       }
       me.search_timeout = setTimeout(() => {
         me.fitler_rooms($(this).val().toLowerCase());
-        // frappe.msgprint("Under construction");
-        // $('.chat-list .chat-search-box').val('')
       }, 300);
     });
 
@@ -379,6 +263,8 @@ export default class ChatList {
           user_email: me.user_email,
           is_admin: me.is_admin,
           time_zone: me.time_zone,
+          user_type: me.user_type,
+          is_limited_user: me.is_limited_user,
         },
         new_group: 0,
       });
@@ -394,11 +280,64 @@ export default class ChatList {
           user_email: me.user_email,
           is_admin: me.is_admin,
           time_zone: me.time_zone,
+          user_type: me.user_type,
+          is_limited_user: me.is_limited_user,
         },
         new_group: 0,
       });
       erpnext_chat_app.chat_contact_list.render();
     });
+
+    $(".support-icon").on("click", async function () { 
+      const room = await check_if_website_user_has_support_channel(me.user_email);
+      let chat_window ;
+      if(room){
+        if (check_if_chat_window_open(room , "room")){
+          $(".expand-chat-window[data-id|='"+room+"']").click();
+          return
+          }
+
+        chat_window = new ChatWindow({
+          profile: {
+            room: room,
+          },
+        });
+      }else{
+        if (check_if_chat_window_open("ClefinCode Support" , "contact")){
+          $(".expand-chat-window[data-id|='ClefinCode Support']").click();
+          return
+          }
+          
+        chat_window = new ChatWindow({
+          profile: {
+            contact:"ClefinCode Support",
+          },
+        });
+      }
+      
+
+      let profile = {
+        is_admin: me.is_admin,
+        user: me.user,
+        user_email: me.user_email,
+        time_zone: me.time_zone,
+        user_type: me.user_type,
+        is_limited_user: me.is_limited_user,
+        room: room,
+        room_name: "ClefinCode Support",
+        room_type: "Group",
+        // contact: contact,
+        is_first_message: 1,
+        // platform: platform,
+        is_website_support_group: 1
+      };
+
+      this.chat_space = new ChatSpace({
+        $wrapper: chat_window.$chat_window,
+        profile: profile,
+      });
+
+    });    
 
     setTimeout(() => {
       $(".chat-rooms-group-container").on("scroll", function () {
@@ -706,6 +645,17 @@ async function get_last_message_type(
       user_email: user_email,
       channel: channel,
       remove_date: remove_date,
+    },
+  });
+  return await res.message;
+}
+
+async function check_if_website_user_has_support_channel(website_user_email) {
+  const res = await frappe.call({
+    type: "GET",
+    method: "clefincode_chat.api.api_1_0_1.chat_portal.check_if_website_user_has_support_channel",
+    args: {
+      website_user_email: website_user_email
     },
   });
   return await res.message;

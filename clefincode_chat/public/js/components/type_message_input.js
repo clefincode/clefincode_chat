@@ -6,7 +6,7 @@ Quill.register("modules/mention", Mention, true);
 export default class TypeMessageInput {
   constructor(opts) {
     this.wrapper = `<div class='form-control type-message'></div>`;
-    this.chat_space = opts.chat_space;
+    this.chat_space = opts.chat_space;   
 
     setTimeout(() => {
       this.make_quill_editor();
@@ -31,6 +31,7 @@ export default class TypeMessageInput {
   }
 
   get_mention_options() {
+    const chat_space = this.chat_space;
     return {
       allowedChars: /^[A-Za-z0-9_:\s-]*$/,
       minChars: 0,
@@ -40,7 +41,7 @@ export default class TypeMessageInput {
       source: frappe.utils.debounce(async function (search_term, renderList) {
         let method = "clefincode_chat.api.api_1_0_1.api.get_names_for_mentions";
         let values = await frappe.xcall(method, {
-          search_term,
+          search_term : search_term , room : chat_space.profile.room
         });
         renderList(values, search_term);
       }, 300),

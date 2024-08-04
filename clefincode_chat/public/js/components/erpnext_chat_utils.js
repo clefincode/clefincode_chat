@@ -134,9 +134,9 @@ async function set_user_settings(settings) {
 function get_avatar_html(room_name, room_type = "") {
   if (room_type == "Group") {
     let color = frappe.get_palette("G");
-    style = `background-color: var(${color[0]}); color: var(${color[1]})`;
+    style = `background-color: var(${color[0]}); color: var(${color[1]}); display:flex`;
 
-    return `<span class="avatar avatar-medium"}>
+    return `<span class="avatar avatar-medium">
     <div class="fa fa-users avatar-frame standard-image"
       style="${style}">
     </div>
@@ -229,7 +229,7 @@ async function send_message(message_info) {
     user,
     room,
     email,
-    send_date,
+    send_date = null,
     is_first_message = 0,
     attachment = null,
     sub_channel = null,
@@ -276,8 +276,8 @@ async function create_sub_channel(params) {
     parent_channel,
     user,
     user_email,
-    creation_date,
-    last_active_sub_channel,
+    creation_date = null,
+    last_active_sub_channel = null,
     user_to_remove = null,
     empty_contributor_list = 0,
     freeze = false,
@@ -334,6 +334,32 @@ async function check_if_contributor_active(channel, user_email) {
   return await res.message.results[0].active;
 }
 
+function show_overlay(text) {
+  let overlay = document.createElement('div');
+  overlay.id = 'loadingOverlay';
+  overlay.style.position = 'fixed';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.width = '100%';
+  overlay.style.height = '100%';
+  overlay.style.background = 'rgba(0, 0, 0, 0.5)';
+  overlay.style.display = 'flex';
+  overlay.style.justifyContent = 'center';
+  overlay.style.alignItems = 'center';
+  overlay.style.zIndex = '9999';
+  overlay.style.color = 'white';
+  overlay.style.fontSize = '20px';
+  overlay.innerText = text;
+  document.body.appendChild(overlay);
+}
+
+function hide_overlay() {
+  let overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+      document.body.removeChild(overlay);
+  }
+}
+
 export {
   get_time,
   scroll_to_bottom,
@@ -366,4 +392,6 @@ export {
   get_current_datetime,
   get_chat_members,
   check_if_contributor_active,
+  show_overlay,
+  hide_overlay
 };
