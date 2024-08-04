@@ -1,6 +1,5 @@
 import {
   check_if_chat_window_open,
-  convertToUTC,
   get_chat_members,
   get_time,
   check_if_room_admin,
@@ -255,7 +254,7 @@ export default class ChatInfo {
           if (con.length > 0) {
             group_sections += `<div class="p-4 chat-info-section contributor-section">`;
             group_sections += `<div class="pb-2 font-weight-bold">On going contributors</div>`;
-            if (room_emails.some((e) => e.email === checkemail)) {
+            if (room_emails.some((e) => e.email === checkemail && this.chat_space.profile.user_type != "website_user")) {
               $.each(con, function () {
                 group_sections += `
               <div class="d-flex flex-row justify-content-between align-items-center pb-2">
@@ -287,18 +286,21 @@ export default class ChatInfo {
           }
         }
         group_sections += refernce_doctypes_section;
-        group_sections += `<div class="p-4 chat-info-section exit-group d-flex" >
-      <div style="display: flex;flex: none;justify-content: center;margin-right: 16px; color:#ea0038;">
-        <svg viewBox="0 0 24 24" height="24" width="24" preserveAspectRatio="xMidYMid meet" class="" version="1.1" x="0px" y="0px" enable-background="new 0 0 24 24" xml:space="preserve"><path fill="currentColor" d="M16.6,8.1l1.2-1.2l5.1,5.1l-5.1,5.1l-1.2-1.2l3-3H8.7v-1.8h10.9L16.6,8.1z M3.8,19.9h9.1 c1,0,1.8-0.8,1.8-1.8v-1.4h-1.8v1.4H3.8V5.8h9.1v1.4h1.8V5.8c0-1-0.8-1.8-1.8-1.8H3.8C2.8,4,2,4.8,2,5.8v12.4 C2,19.1,2.8,19.9,3.8,19.9z"></path></svg>
-      </div>
-      <div style="box-sizing: border-box;
-      display: flex;
-      flex: 1 1 auto;
-      align-items: center;
-      height: 100%;
-      overflow: hidden;padding-right: 30px; color:#ea0038;">Exit group</div>
-      </div>
-      `;
+        if(this.chat_space.profile.user_type == "system_user" || (this.chat_space.profile.user_type == "website_user" && !this.chat_space.profile.is_website_support_group)){
+          group_sections += `<div class="p-4 chat-info-section exit-group d-flex" >
+          <div style="display: flex;flex: none;justify-content: center;margin-right: 16px; color:#ea0038;">
+            <svg viewBox="0 0 24 24" height="24" width="24" preserveAspectRatio="xMidYMid meet" class="" version="1.1" x="0px" y="0px" enable-background="new 0 0 24 24" xml:space="preserve"><path fill="currentColor" d="M16.6,8.1l1.2-1.2l5.1,5.1l-5.1,5.1l-1.2-1.2l3-3H8.7v-1.8h10.9L16.6,8.1z M3.8,19.9h9.1 c1,0,1.8-0.8,1.8-1.8v-1.4h-1.8v1.4H3.8V5.8h9.1v1.4h1.8V5.8c0-1-0.8-1.8-1.8-1.8H3.8C2.8,4,2,4.8,2,5.8v12.4 C2,19.1,2.8,19.9,3.8,19.9z"></path></svg>
+          </div>
+          <div style="box-sizing: border-box;
+          display: flex;
+          flex: 1 1 auto;
+          align-items: center;
+          height: 100%;
+          overflow: hidden;padding-right: 30px; color:#ea0038;">Exit group</div>
+          </div>
+          `;
+        }
+        
       }
 
       this.$chat_info.append(group_sections);
@@ -329,7 +331,7 @@ export default class ChatInfo {
         if (con.length > 0) {
           contributor_sections += `<div class="p-4 chat-info-section"  >`;
           contributor_sections += `<div class="pb-2 font-weight-bold">On going contributors</div>`;
-          if (room_emails4.some((e) => e.email === checkemail2)) {
+          if (room_emails4.some((e) => e.email === checkemail2 && this.chat_space.profile.user_type != "website_user")) {
             $.each(con, function () {
               contributor_sections += `
             <div class="d-flex flex-row justify-content-between align-items-center pb-2">
@@ -415,7 +417,7 @@ export default class ChatInfo {
         if (con.length > 0) {
           direct_chat_sections += `<div class="p-4 chat-info-section"  >`;
           direct_chat_sections += `<div class="pb-2 font-weight-bold">On going contributors</div>`;
-          if (room_emails4.some((e) => e.email === checkemail2)) {
+          if (room_emails4.some((e) => e.email === checkemail2 && this.chat_space.profile.user_type != "website_user")) {
             $.each(con, function () {
               direct_chat_sections += `
             <div class="d-flex flex-row justify-content-between align-items-center pb-2">
@@ -549,10 +551,6 @@ export default class ChatInfo {
                   user: me.user,
                   room: me.room,
                   email: me.user_email,
-                  send_date: convertToUTC(
-                    frappe.datetime.now_datetime(),
-                    me.chat_space.profile.time_zone
-                  ),
                   is_first_message: 0,
                   sub_channel: me.chat_space.last_active_sub_channel,
                   message_type: "information",
@@ -586,10 +584,6 @@ export default class ChatInfo {
             sub_channel: me.chat_space.last_active_sub_channel,
             message_type: "information",
             message_template_type: "User Left",
-            send_date: convertToUTC(
-              frappe.datetime.now_datetime(),
-              me.chat_space.profile.time_zone
-            ),
             chat_topic: me.chat_space.chat_topic,
           };
 
@@ -607,10 +601,6 @@ export default class ChatInfo {
             parent_channel: me.chat_space.profile.parent_channel,
             user: me.user,
             user_email: me.user_email,
-            creation_date: convertToUTC(
-              frappe.datetime.now_datetime(),
-              me.chat_space.profile.time_zone
-            ),
             last_active_sub_channel: me.chat_space.last_active_sub_channel,
             user_to_remove: me.user_email,
             empty_contributor_list: empty_contributor_list,
@@ -650,10 +640,6 @@ export default class ChatInfo {
                 user: me.user,
                 room: channel,
                 email: me.user_email,
-                send_date: convertToUTC(
-                  frappe.datetime.now_datetime(),
-                  me.chat_space.profile.time_zone
-                ),
                 is_first_message: 0,
                 sub_channel: me.chat_space.last_active_sub_channel,
                 message_type: "information",
@@ -675,10 +661,6 @@ export default class ChatInfo {
               user: me.user,
               room: me.chat_space.profile.room,
               email: me.user_email,
-              send_date: convertToUTC(
-                frappe.datetime.now_datetime(),
-                me.chat_space.profile.time_zone
-              ),
               is_first_message: 0,
               sub_channel: last_active_sub_channel,
               message_type: "information",
@@ -754,10 +736,6 @@ export default class ChatInfo {
                   user: me.user,
                   room: chat_room,
                   email: me.user_email,
-                  send_date: convertToUTC(
-                    frappe.datetime.now_datetime(),
-                    me.chat_space.profile.time_zone
-                  ),
                   is_first_message: 0,
                   sub_channel: me.chat_space.last_active_sub_channel,
                   message_type: "information",
@@ -788,10 +766,6 @@ export default class ChatInfo {
                   user: me.user,
                   room: chat_room,
                   email: me.user_email,
-                  send_date: convertToUTC(
-                    frappe.datetime.now_datetime(),
-                    me.chat_space.profile.time_zone
-                  ),
                   is_first_message: 0,
                   sub_channel: me.chat_space.last_active_sub_channel,
                   message_type: "information",
@@ -847,10 +821,6 @@ export default class ChatInfo {
             user: me.user,
             room: chat_room,
             email: me.user_email,
-            send_date: convertToUTC(
-              frappe.datetime.now_datetime(),
-              me.chat_space.profile.time_zone
-            ),
             is_first_message: 0,
             sub_channel: me.chat_space.last_active_sub_channel,
             message_type: "information",
@@ -922,10 +892,6 @@ export default class ChatInfo {
               user: me.user,
               room: chat_room,
               email: me.user_email,
-              send_date: convertToUTC(
-                frappe.datetime.now_datetime(),
-                me.chat_space.profile.time_zone
-              ),
               is_first_message: 0,
               sub_channel: me.chat_space.last_active_sub_channel,
               message_type: "information",
@@ -1273,7 +1239,7 @@ export default class ChatInfo {
       `;
 
       const show_delete = this.chat_space.chat_members.some(
-        (e) => e.email === this.user_email
+        (e) => e.email === this.user_email && this.chat_space.profile.user_type != "website_user"
       );
       const refernces_doctypes = this.chat_space.reference_doctypes
         .map((doctype) => create_refernce_doctype(doctype, show_delete))
@@ -1448,8 +1414,8 @@ async function leave_contributor(params) {
     parent_channel,
     user,
     user_email,
-    creation_date,
-    last_active_sub_channel,
+    creation_date = null,
+    last_active_sub_channel = null,
     user_to_remove = null,
     empty_contributor_list = 0,
     freeze = false,

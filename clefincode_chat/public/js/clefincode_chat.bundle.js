@@ -1,8 +1,7 @@
 import {
   ChatBubble,
-  ChatbotSpace,
-  ChatList,
-  scroll_to_bottom,
+  ChatPortalSpace,
+  ChatList
 } from "./components";
 
 frappe.provide("frappe.ErpnextChat");
@@ -19,14 +18,14 @@ frappe.ErpnextChat = class {
     this.res = res;
     this.is_desk = "desk" in frappe;
 
-    if (
-      res.enable_portal_support === false ||
-      (!this.is_desk && this.res.is_admin) ||
-      res.user == "Administrator"
-    )
-      return;
+    if (res.user == "Administrator") return;
 
-    if (res.user == "Guest") await this.create_chatbot();
+    if (res.user == "Guest") 
+    {
+      if(!res.enable_portal_support) return ;        
+      await this.create_chatbot();
+      
+    }
     else await this.create_app();
 
     frappe.socketio.init(res.socketio_port);
@@ -53,7 +52,7 @@ frappe.ErpnextChat = class {
       this.setup_socketio();
       this.setup_socketio_mobile();
     } else if (res.is_verified) {
-      this.chatbot_space = new ChatbotSpace({
+      this.chatbot_space = new ChatPortalSpace({
         $wrapper: this.$chat_container,
         chat_bubble: this.chat_bubble,
         profile: {
@@ -67,7 +66,7 @@ frappe.ErpnextChat = class {
       });
       this.chatbot_space.render();
     } else {
-      this.chatbot_space = new ChatbotSpace({
+      this.chatbot_space = new ChatPortalSpace({
         $wrapper: this.$chat_container,
         chat_bubble: this.chat_bubble,
         profile: {
@@ -75,8 +74,8 @@ frappe.ErpnextChat = class {
           token: token,
           user: res.user,
           user_email: res.user_email,
-          chat_support_title: res.chat_support_title,
-          welcome_message: res.welcome_message,
+          // chat_support_title: res.chat_support_title,
+          // welcome_message: res.welcome_message,
         },
       });
       this.chatbot_space.render();
@@ -292,6 +291,8 @@ frappe.ErpnextChat = class {
         user_email: this.res.user_email,
         is_admin: this.res.is_admin,
         time_zone: this.res.time_zone,
+        user_type: this.res.user_type,
+        is_limited_user: this.res.is_limited_user
       });
       this.chat_list.render();
     }
@@ -324,7 +325,7 @@ frappe.ErpnextChat = class {
   setup_events() {
     const me = this;
     $(".chat-navbar-icon").on("click", function () {
-      me.chat_bubble.change_bubble();
+      me.chat_bubble.disk_chat_icon();
     });
   }
 
@@ -343,7 +344,14 @@ frappe.ErpnextChat = class {
     };
 
     const playChatNotificationSound = () => {
-      frappe.utils.play_sound("chat-notification");
+      // this statment don't work on portal
+      // frappe.utils.play_sound("chat-notification");
+
+      // Alternative way for playing the notification sound.
+      const audio = new Audio('/assets/clefincode_chat/sounds/chat-notification.mp3');
+      audio.play().catch(error => {
+          console.error('Error playing sound:', error);
+      });
     };
 
     frappe.realtime.on("new_chat_notification", function (res) {

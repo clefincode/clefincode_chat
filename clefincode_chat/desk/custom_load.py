@@ -161,5 +161,3 @@ def get_topic_title(chat_channel):
 
 def split_channel_name(channel_name):
 	return channel_name[0:40] + "..." if len(channel_name) >= 40 else channel_name
-
-

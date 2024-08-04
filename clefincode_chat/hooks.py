@@ -162,8 +162,8 @@ doc_events = {
 # Overriding Methods
 # ------------------------------
 override_whitelisted_methods = {
-    "frappe.desk.form.load.getdoc": "clefincode_chat.desk.custom_load.getdoc",
-    "frappe.desk.form.load.get_docinfo": "clefincode_chat.desk.custom_load.get_docinfo"
+        "frappe.desk.form.load.getdoc": "clefincode_chat.desk.custom_load.getdoc",
+        "frappe.desk.form.load.get_docinfo": "clefincode_chat.desk.custom_load.get_docinfo"
     }
 #
 # override_whitelisted_methods = {

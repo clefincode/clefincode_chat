@@ -37,12 +37,21 @@ export default class ChatBubble {
     this.setup_events();
   }
 
-  change_bubble() {
+  disk_chat_icon(){
     if (this.parent.chat_list && this.parent.chat_list.is_open == true) {
       return;
     }
     this.parent.is_open = !this.parent.is_open;
-    if (!this.parent.is_admin) {
+    this.parent.show_chat_widget();
+  }
+
+  portal_chat_icon() { 
+    if(this.parent.res.user_type != "guest" && this.parent.is_open){
+      return
+    } 
+
+    this.parent.is_open = !this.parent.is_open;
+    if (this.parent.res.user_type == "guest") {
       if (this.parent.is_open === false) {
         this.$chat_bubble
           .attr({ title: this.open_title })
@@ -54,18 +63,16 @@ export default class ChatBubble {
           .html(this.closed_inner_html);
         this.parent.show_chat_widget();
       }
-    } else {
-      this.$chat_bubble
-        .attr({ title: this.closed_title })
-        .html(this.closed_inner_html);
+    }else{
       this.parent.show_chat_widget();
     }
+   
   }
 
   setup_events() {
     const me = this;
     $("#chat-bubble, .chat-cross-button").on("click", () => {
-      me.change_bubble();
+      me.portal_chat_icon();
     });
   }
 }
