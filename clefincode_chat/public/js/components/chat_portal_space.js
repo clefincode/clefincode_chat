@@ -1,15 +1,13 @@
 import {
   get_current_time,
-  convertToUTC,
-  contains_arabic,
   get_date_from_now,
   is_date_change,
-  get_time,
   get_t,
   scroll_to_bottom,
   get_current_datetime,
 } from "./erpnext_chat_utils";
-export default class ChatbotSpace {
+
+export default class ChatPortalSpace {
   constructor(opts) {
     this.$wrapper = opts.$wrapper; // chat container
     this.profile = opts.profile;
@@ -34,7 +32,7 @@ export default class ChatbotSpace {
       <div class='chat-header'>
           <div class='chat-profile-info'>
               <div class='chat-profile-name'>
-              ${this.profile.chat_support_title}
+              ${erpnext_chat_app.res.chat_support_title}
               <div class='online-circle' style="background:#28a745"></div>
               </div>
           </div>    
@@ -67,7 +65,7 @@ export default class ChatbotSpace {
       this.$chatbot_container.append(date_line);
       const init_message = `
           <div class="sender-message">
-            <div class="message-bubble">${this.profile.welcome_message}</div>            
+            <div class="message-bubble">${erpnext_chat_app.res.welcome_message}</div>            
           </div>
           `;
       this.$chatbot_container.append(init_message);
@@ -103,7 +101,7 @@ export default class ChatbotSpace {
   setup_events() {
     const me = this;
     this.$chatbot_space.find(".close-chat-window").on("click", function () {
-      me.chat_bubble.change_bubble();
+      me.chat_bubble.portal_chat_icon();
     });
 
     this.$chatbot_action.find(".message-send-button").on("click", function () {
@@ -123,7 +121,10 @@ export default class ChatbotSpace {
   setup_socket() {
     const me = this;
     frappe.realtime.on(me.profile.room, function (res) {
-      me.receive_message(res, get_t(res.send_date));
+      if(res.realtime_type == "send_message"){
+        me.receive_message(res, get_t(res.send_date));
+      }
+      
     });
   }
 
@@ -273,32 +274,10 @@ export default class ChatbotSpace {
         respondent_user: this.profile.respondent_user,
       };
       await send_message(guest_message_info);
-      scroll_to_bottom(this.$chatbot_container);
-    }
+      scroll_to_bottom(this.$chatbot_container); 
+      }    
   } //End handle_send_message
 
-  // check_if_content_has_link(message_content) {
-  //   const me = this;
-  //   const parser = new DOMParser();
-  //   const doc = parser.parseFromString(message_content, 'text/html');
-
-  //   const paragraphs = doc.querySelectorAll('p');
-
-  //   paragraphs.forEach((p) => {
-  //     const urlRegex = /((https?:\/\/|www\.|(?<![\w-])[\w-]+\.)[-\w.]+(:\d+)?(\/([\w/_.-]*(\?\S+)?)?)?)/gi;
-  //     Array.from(p.childNodes).forEach((node) => {
-  //       if (node.nodeType === Node.TEXT_NODE) {
-  //         const replacedText = node.textContent.replace(urlRegex, function(matched) {
-  //           me.is_link = 1;
-  //           return '<a href="' + matched + '" target="_blank" style="color:#027eb5">' + matched + '</a>';
-  //         });
-  //         const fragment = document.createRange().createContextualFragment(replacedText);
-  //         p.replaceChild(fragment, node);
-  //       }
-  //     });
-  //   });
-  //   return doc.body.innerHTML;
-  // }
 } // END Class
 
 async function create_guest_profile_and_channel(

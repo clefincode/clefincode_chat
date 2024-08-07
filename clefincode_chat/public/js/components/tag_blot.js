@@ -1,6 +1,5 @@
 import {
     scroll_to_bottom ,
-    convertToUTC,
     send_message,
     create_sub_channel
   } from './erpnext_chat_utils';
@@ -22,7 +21,7 @@ export default class TagBlot {
         overflow: hidden;
         text-overflow: ellipsis;">${this.profile.contributor_name}</span>`);
 
-        if(this.chat_space.profile.room_type != "Contributor"){ 
+        if(this.chat_space.profile.room_type != "Contributor" && this.chat_space.profile.user_type == "system_user"){ 
             this.$close_btn = $(document.createElement("span"));
             this.$close_btn.append(frappe.utils.icon('close' , 'sm'));
             this.$close_btn.addClass("remove-tag");
@@ -38,7 +37,7 @@ export default class TagBlot {
 
     setup_events(){
         const me = this;
-        if(this.chat_space.profile.room_type != "Contributor"){
+        if(this.chat_space.profile.room_type != "Contributor" && this.chat_space.profile.user_type == "system_user"){
             me.$close_btn.on('click', function () {
                 if(me.close_click != undefined){ 
                     clearTimeout(me.close_click);
@@ -72,16 +71,6 @@ export default class TagBlot {
         <span class="sender-user" data-user="${this.chat_space.profile.user_email}"></span><span> removed </span><span class="receiver-user" data-user="${this.profile.contributor_email}"></span>
         </div>`;
 
-    //   this.chat_space.$chat_space_container.append(
-    //     await this.chat_space.make_message({
-    //         content: mention_msg,
-    //         type: "info-message",
-    //         sender: this.chat_space.profile.user,
-    //         message_template_type: "Remove User"
-    //     }));
-
-        const utc_send_date = convertToUTC(frappe.datetime.now_datetime() , this.chat_space.profile.time_zone)
-
         const message_info = {
             content: mention_msg,
             user: this.chat_space.profile.user,
@@ -90,7 +79,6 @@ export default class TagBlot {
             sub_channel: this.chat_space.last_active_sub_channel,
             message_type: "information",
             message_template_type : "Remove User",
-            send_date: utc_send_date,
             chat_topic: this.chat_space.chat_topic
         }
 
@@ -101,7 +89,6 @@ export default class TagBlot {
             parent_channel: room,
             user: user,
             user_email: user_email,
-            creation_date: utc_send_date,
             last_active_sub_channel: last_active_sub_channel,
             user_to_remove: user_to_remove,
             empty_contributor_list: empty_contributor_list,

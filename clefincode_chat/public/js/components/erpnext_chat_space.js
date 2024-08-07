@@ -19,6 +19,8 @@ import {
   get_time_now,
   get_chat_members,
   check_if_contributor_active,
+  hide_overlay,
+  show_overlay,
 } from "./erpnext_chat_utils";
 import { check_if_contact_has_chat } from "./erpnext_chat_contact";
 import TypeMessageInput from "./type_message_input";
@@ -34,6 +36,7 @@ export default class ChatSpace {
     this.$chat_room = opts.$chat_room;
     this.new_group = opts.new_group;
     this.chat_list = opts.chat_list;
+    
     this.file = null;
     this.is_open = 1;
     this.typing = false;
@@ -42,16 +45,14 @@ export default class ChatSpace {
     this.scrollUpThresholdPercent = 90;
     this.bottomThresholdPercent = 25;
     this.audiodict = [];
-
     this.messages_limit = 10;
     this.messages_offset = 0;
-
     this.isTypingIndicatorActive = false;
     this.typingTimeout = false;
     this.contributors = [];
     this.reference_doctypes = [];
-
     this.online_timeout = null;
+    this.is_disk = "desk" in frappe;
 
     // open chat space for showing topic information
     this.chat_topic_space = opts.chat_topic;
@@ -301,16 +302,6 @@ export default class ChatSpace {
           </div>
       `;
         this.$chat_space_container.append(scroll_arrow);
-
-        const send_date = get_time(
-          frappe.datetime.now_time(),
-          this.profile.time_zone
-        ); //get time depend on erpnext user timezone
-        const utc_send_date = convertToUTC(
-          frappe.datetime.now_datetime(),
-          this.profile.time_zone
-        );
-
         const content = `
       <div class="create-group" data-template = "create_group_template">
       <span class="sender-user" data-user="${this.profile.user_email}"></span><span> created this group </span>
@@ -324,7 +315,6 @@ export default class ChatSpace {
           email: this.profile.user_email,
           is_first_message: 1,
           message_type: "information",
-          send_date: utc_send_date,
           message_template_type: "Create Group",
         };
         send_message(message_info);
@@ -583,7 +573,7 @@ export default class ChatSpace {
           );
       }
 
-      $(this).closest(".chat-window").remove();
+      $(this).closest(".chat-window").remove();           
     });
 
     this.$chat_space.find(".avatar").on("click", function () {
@@ -664,17 +654,29 @@ export default class ChatSpace {
 
     if (this.$chat_actions && this.$chat_actions.length > 0) {
       this.$chat_actions.find(".open-attach-items").on("click", function () {
-        // const allow_multiple = !me.profile.room ? false : true;
-        let file_uploader = new frappe.ui.FileUploader({
-          allow_multiple: false,
-          async on_success(file) {
-            await me.handle_send_message(
-              file.file_url,
-              file.file_name,
-              file.name
-            );
-          },
-        });
+        if(!me.is_disk){
+          me.$chat_actions.find('#chat-file-uploader').click();
+        }else{
+          new frappe.ui.FileUploader({
+            allow_multiple: false,
+            async on_success(file) {
+              await me.handle_send_message(
+                file.file_url,
+                file.file_name,
+                file.name
+              );
+            },
+          });
+        }        
+      });
+
+      this.$chat_actions.find('#chat-file-uploader').on('change', function () {
+        if (this.files.length > 0) {
+          me.file = {};
+          me.file.file_obj = this.files[0];
+          me.handle_upload_file(me.file);
+          me.file = null;
+        }
       });
 
       this.$chat_actions.find(".message-send-button").on("click", function () {
@@ -763,6 +765,80 @@ export default class ChatSpace {
 
     me.setup_voice_clip_event();
   } //End setup_events
+
+  async handle_upload_file(file) {
+    const dataurl = await frappe.dom.file_to_base64(file.file_obj);
+    file.dataurl = dataurl;
+    file.name = file.file_obj.name;
+    return this.upload_file(file);
+  }
+
+  upload_file(file) {
+    const me = this;        
+
+    return new Promise((resolve, reject) => {
+      show_overlay("Uploading...");
+      let xhr = new XMLHttpRequest();
+
+      xhr.upload.addEventListener('load', () => {        
+        resolve();
+      });
+
+      xhr.addEventListener('error', () => {
+        hide_overlay();
+        reject(frappe.throw(__('Internal Server Error')));
+      });
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState == XMLHttpRequest.DONE) {
+          if (xhr.status === 200) {
+            let r = null;
+            let file_doc = null;
+            try {
+              r = JSON.parse(xhr.responseText);
+              if (r.message.doctype === 'File') {
+                file_doc = r.message;
+              }
+            } catch (e) {
+              r = xhr.responseText;
+            }
+            try {
+              if (file_doc === null) {
+                hide_overlay();
+                reject(frappe.throw(__('File upload failed!')));
+              }              
+              me.handle_send_message(file_doc.file_url, file_doc.file_name, file_doc.name);
+            } catch (error) {
+              console.log(error)
+            }
+          } else {
+            try {
+              const error = JSON.parse(xhr.responseText);
+              const messages = JSON.parse(error._server_messages);
+              const errorObj = JSON.parse(messages[0]);
+              hide_overlay();
+              reject(frappe.throw(__(errorObj.message)));
+            } catch (e) {
+              console.log(e)
+            }
+          }
+        }
+      };
+
+      xhr.open('POST', '/api/method/upload_file', true);
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.setRequestHeader('X-Frappe-CSRF-Token', frappe.csrf_token);
+
+      let form_data = new FormData();
+
+      form_data.append('file', file.file_obj, file.name);
+      form_data.append('is_private', +false);
+
+      form_data.append('doctype', 'ClefinCode Chat Message');
+      form_data.append('docname', this.profile.room);
+      form_data.append('optimize', +true);
+      xhr.send(form_data);
+    });
+  }
 
   setup_voice_clip_event() {
     let me = this;
@@ -1374,6 +1450,13 @@ export default class ChatSpace {
       is_screenshot = 1;
     }
 
+    if(!this.profile.room && this.profile.is_website_support_group == 1){
+      const results = await create_website_support_group(this.profile.user_email, content)
+      this.profile.room = results.room;
+      this.profile.respondent_user = results.respondent_user;
+      this.setup_socketio();
+    }
+
     if (!this.profile.room) {
       await this.create_direct_channel(content);
     }
@@ -1398,14 +1481,6 @@ export default class ChatSpace {
     } else {
       chat_room = this.profile.room;
     }
-    const send_date = get_time(
-      frappe.datetime.now_datetime(),
-      this.profile.time_zone
-    ); //get time depend on erpnext user timezone
-    const utc_send_date = convertToUTC(
-      frappe.datetime.now_datetime(),
-      this.profile.time_zone
-    );
 
     this.$chat_actions.find(".ql-editor").html("");
     this.voice_clip.$voice_clip.css("display", "block");
@@ -1524,7 +1599,6 @@ export default class ChatSpace {
           is_document: this.is_document,
           is_voice_clip: this.is_voice_clip,
           file_id: file_id,
-          send_date: utc_send_date,
           chat_topic: this.chat_topic,
         };
         this.last_chat_space_message = await send_message(message_info);
@@ -1649,7 +1723,6 @@ export default class ChatSpace {
           is_document: this.is_document,
           is_voice_clip: this.is_voice_clip,
           file_id: file_id,
-          send_date: utc_send_date,
           chat_topic: this.chat_topic,
         };
 
@@ -1698,11 +1771,12 @@ export default class ChatSpace {
       is_document: this.is_document,
       is_voice_clip: this.is_voice_clip,
       file_id: file_id,
-      send_date: utc_send_date,
       chat_topic: this.chat_topic,
       is_screenshot: is_screenshot,
     };
     this.last_chat_space_message = await send_message(message_info);
+
+    hide_overlay();
   } //End handle_send_message
 
   async handle_mentions(
@@ -1733,7 +1807,6 @@ export default class ChatSpace {
       parent_channel: chat_room,
       user: this.profile.user,
       user_email: this.profile.user_email,
-      creation_date: convertToUTC(frappe.datetime.now_datetime()),
       last_active_sub_channel: this.last_active_sub_channel,
     });
 
@@ -1746,10 +1819,6 @@ export default class ChatSpace {
         this.last_active_sub_channel == chat_room
           ? ""
           : this.last_active_sub_channel,
-      send_date: convertToUTC(
-        frappe.datetime.now_datetime(),
-        this.profile.time_zone
-      ),
       message_type: "information",
       message_template_type: "Add User",
       chat_topic: this.chat_topic,
@@ -1835,11 +1904,7 @@ export default class ChatSpace {
         type: "Direct",
         last_message: content,
         creator_email: this.profile.user_email,
-        creator: this.profile.user,
-        creation_date: convertToUTC(
-          frappe.datetime.now_datetime(),
-          frappe.boot.user.time_zone
-        ),
+        creator: this.profile.user
       },
       callback: function (r) {
         return r.message;
@@ -2739,7 +2804,7 @@ export default class ChatSpace {
     <div> 
       <span class="topic-status mr-2">${chat_topic_status_icon}</span>     
       ${
-        this.profile.room_type != "Contributor" && this.profile.is_removed != 1
+        this.profile.room_type != "Contributor" && this.profile.is_removed != 1 && this.profile.user_type != "website_user"
           ? `
       <span class="edit-chat-topic-subject mr-2" ><img src="/assets/clefincode_chat/icons/edit.svg"></span>
       <span class="remove-topic" ><img src="/assets/clefincode_chat/icons/close.svg"></span>
@@ -2820,7 +2885,8 @@ export default class ChatSpace {
 
     if (
       this.profile.room_type != "Contributor" &&
-      this.profile.is_removed != 1
+      this.profile.is_removed != 1 && 
+      this.profile.user_type != "website_user"
     ) {
       this.$chat_space.find(".topic-status").on("click", function () {
         const chat_channel =
@@ -3221,4 +3287,16 @@ async function send_topic_access_request(
     },
   });
   return await res.message;
+}
+
+async function create_website_support_group(website_user_email, content) {
+  const res = await frappe.call({
+    method:
+      "clefincode_chat.api.api_1_0_1.chat_portal.create_website_support_group",
+    args: {
+      website_user_email: website_user_email,
+      content: content
+    },
+  });
+  return await res.message.results[0];
 }

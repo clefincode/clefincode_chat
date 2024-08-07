@@ -1,3 +1,5 @@
+@import "frappe/public/css/fonts/fontawesome/font-awesome.min.css";
+
 $font-size-xs: 0.75rem;
 $font-size-sm: 0.875rem;
 $font-size-base: 1rem;
@@ -22,7 +24,7 @@ $height: 582px;
   right: 0px;
   display: flex;
   flex-direction: row;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: flex-end;
   min-width: 350px;
   // width: 100%;
@@ -73,6 +75,7 @@ $height: 582px;
     flex-direction: column;
     align-items: flex-end;
     justify-content: flex-end;
+    align-self:flex-end;
 
     .chat-element {
       height: $height;
@@ -558,10 +561,17 @@ $height: 582px;
 .chat-list,
 .chat-contact-list,
 .conversation-list {
-  .chat-list-header {
+  .chat-list-header {    
     padding: $padding-chat-lr $padding-chat-lr 0 $padding-chat-lr;
     justify-content: space-between;
     display: flex;
+
+    h3{
+      font-size: 1.25rem;
+      font-weight : 700 !important;
+      margin-top:0px;
+      margin-bottom: 15px;
+    }
 
     .add-participants,
     .select-contacts {
@@ -591,6 +601,7 @@ $height: 582px;
       .show-all-contacts,
       .show-rooms,
       .new-chat,
+      .support-icon,
       .thumbtack-icon,
       .rotate-thumbtack-icon,
       .save-icon {
@@ -1494,6 +1505,10 @@ $height: 582px;
       font-size: $font-size-sm;
       padding: 0px;
     }
+
+    .form-control{
+      height:unset;
+    } 
 
     .voice-clip {
       cursor: pointer;
