@@ -15,7 +15,7 @@ def get_user_round_robin(last_user):
 	Get next user based on round robin
 	"""
 	respondent_user_role = frappe.db.get_single_value("ClefinCode Chat Settings", "role")
-	users = frappe.db.get_all("Has Role", {"role": respondent_user_role}, "parent", order_by = "parent")
+	users = frappe.db.get_all("Has Role", {"role": respondent_user_role , "parenttype": "User"}, "parent", order_by = "parent")
 	# first time, pick the first
 	if not users: return
 
