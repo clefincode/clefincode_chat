@@ -57,7 +57,7 @@ def get_user_round_robin(last_user):
 def get_user_load_balancing():
 	"""Assign to the user with least number of open assignments"""
 	respondent_user_role = frappe.db.get_single_value("ClefinCode Chat Settings", "role")
-	users = frappe.db.get_all("Has Role", {"role": respondent_user_role}, "parent", order_by = "parent")
+	users = frappe.db.get_all("Has Role", {"role": respondent_user_role, "parenttype": "User"}, "parent", order_by = "parent")
 	userslist, offlineusers = [], []
 	for user in users:
 		user_doc = frappe.get_doc("User", user.parent)
