@@ -1,62 +1,80 @@
 import frappe
-from pyfcm import FCMNotification
+import json
+import firebase_admin
+from firebase_admin import  credentials, messaging
 from bs4 import BeautifulSoup
 
-@frappe.whitelist(allow_guest = True)
-def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None): 
-    firebase_server_key = frappe.db.get_single_value("ClefinCode Chat Settings" , "firebase_server_key")
-    if not firebase_server_key:
+def initialize_firebase():
+    firebase_server_key = frappe.db.get_single_value("ClefinCode Chat Settings", "firebase_server_key")
+    cleaned_key = firebase_server_key.strip() if firebase_server_key else None
+
+    if not cleaned_key:
         return
-    push_service = FCMNotification(api_key=firebase_server_key)
+    else:
+        cred_dict = json.loads(cleaned_key)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+
+initialize_firebase()
+
+@frappe.whitelist(allow_guest = True)
+def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None):    
+    message=None
+
     if realtime_type in ["typing", "update_sub_channel_for_last_message"] or same_user == 1:        
         try:
-            push_service.notify_single_device(
-                registration_id= registration_token,
-                message_title= None,
-                message_body=None,
-                data_message= {"route" : str(info) , "realtime_type" : realtime_type, "content_available": True, "same_user" : same_user},
-                content_available=True
-            )
+            message = messaging.Message(
+                notification =messaging.Notification(title= None, body= None), 
+                data = {"route" : str(info) , "realtime_type" : realtime_type, "content_available": "true", "same_user" : str(same_user)},
+                token = registration_token,  
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
+            ) 
+            messaging.send(message)
+
         except Exception as e:
             frappe.log_error(f"Error in sending notifications: {str(e)}")   
     else:  
         if platform == "ios":
-            try:
-                if info and info.get("is_voice_clip") == "1":
-                    soup = BeautifulSoup(info["content"], 'html.parser')
-                    voice_clip_containers = soup.find_all('div', class_='voice-clip-container')
-                    for container in voice_clip_containers:
-                        for child in container.find_all('button', recursive=False):
-                            child.decompose()
-                    info["content"] = str(soup)
-                
-                push_service.notify_single_device(
-                    registration_id= registration_token,
-                    message_title= None,
-                    message_body=None,
-                    data_message= {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body, "no_duplicate" : "true", "content_available": True, "same_user" : same_user},
-                    content_available=True
-                )
+            if info and info.get("is_voice_clip") == "1":
+                soup = BeautifulSoup(info["content"], 'html.parser')
+                voice_clip_containers = soup.find_all('div', class_='voice-clip-container')
+                for container in voice_clip_containers:
+                    for child in container.find_all('button', recursive=False):
+                        child.decompose()
+                info["content"] = str(soup)
 
-                push_service.notify_single_device(
-                    registration_id= registration_token,
-                    message_title= title,
-                    message_body=body,
-                    data_message= {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body, "same_user" : same_user},
-                    sound = "default"
+            try:
+                message = messaging.Message(
+                notification = messaging.Notification(title= None, body= None),
+                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body, "no_duplicate" : "true", "content_available": "true", "same_user" : str(same_user),"content_available": "true"},
+                token = registration_token,   
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
+                )        
+                
+                messaging.send(message)
+
+                message1 = messaging.Message(
+                notification =messaging.Notification(title=title,body=body),
+                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body, "same_user" : str(same_user),"content_available": "true"},
+                token = registration_token, 
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
                 )
+                
+                messaging.send(message1)   
 
                 
             except Exception as e:
-                frappe.log_error(f"Error in sending notifications: {str(e)}")
+                frappe.log_error(f"IOS Error in sending notifications: {str(e)}")
         else:            
-            try:
-                push_service.notify_single_device(
-                    registration_id= registration_token,
-                    data_message= {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body},
+            try:                
+                message = messaging.Message(
+                notification =messaging.Notification(),   
+                data = {"route" : str(info) , "realtime_type" : realtime_type , "notification_title" : title ,"notification_body": body},
+                token = registration_token,       
                 )
-            except Exception as e:
-                frappe.log_error(f"Error in sending notifications: {str(e)}")
+                messaging.send(message)
 
+            except Exception as e:
+                frappe.log_error(f"Android Error in sending notifications: {str(e)}")
 # # ============================================================================
 
