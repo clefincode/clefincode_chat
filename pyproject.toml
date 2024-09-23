@@ -10,7 +10,7 @@ dynamic = ["version"]
 dependencies = [
   "moviepy~=1.0.3",
   "pydub~=0.25.1",
-  "pyfcm"
+  "firebase-admin"
 ]
 
 [deploy.dependencies.apt]
