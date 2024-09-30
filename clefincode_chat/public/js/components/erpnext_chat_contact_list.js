@@ -120,7 +120,9 @@ export default class ChatContactList {
           this.chat_info.chat_space.chat_members,
           this.chat_info.chat_space.contributors
         );
-      } else {
+      } else if(this.new_group == 1){
+        this.contacts = await get_contacts_for_new_group(this.profile.user_email);
+      }else{
         this.contacts = await get_contacts(this.profile.user_email);
       }
       if (this.contacts.length == 0) {
@@ -173,9 +175,9 @@ export default class ChatContactList {
     this.chat_contacts = [];
     
     this.contacts.forEach((element) => {
-      if (this.new_group == 1 && !element.user_id) {
-        return;
-      }
+      // if (this.new_group == 1 && !element.user_id) {
+      //   return;
+      // }
 
       let profile = {
         user: this.profile.user,
@@ -473,7 +475,18 @@ async function get_contacts(user_email) {
   return await res.message.results[0].contacts;
 }
 
-async function create_group(selected_contacts_list, user, creation_date = null) {
+async function get_contacts_for_new_group(user_email) {
+  const res = await frappe.call({
+    type: "GET",
+    method: "clefincode_chat.api.api_1_0_1.api.get_contacts_for_new_group",
+    args: {
+      user_email: user_email,
+    },
+  });
+  return await res.message.results[0].contacts;
+}
+
+export async function create_group(selected_contacts_list, user, creation_date = null) {
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_0_1.api.create_group",
     args: {
@@ -503,7 +516,7 @@ async function get_contacts_for_adding_to_group(
   return await res.message.results[0].contacts;
 }
 
-async function add_group_member(new_members, room, last_active_sub_channel) {
+export async function add_group_member(new_members, room, last_active_sub_channel) {
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_0_1.api.add_group_member",
     args: {

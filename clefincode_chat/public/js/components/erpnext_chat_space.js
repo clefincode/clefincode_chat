@@ -28,6 +28,7 @@ import TagBlot from "./tag_blot";
 import ChatInfo from "./erpnext_chat_info";
 import VoiceClip from "./voice_clip_widget";
 import ChatWindow from "./erpnext_chat_window";
+import { add_group_member, create_group } from "./erpnext_chat_contact_list";
 
 export default class ChatSpace {
   constructor(opts) {
@@ -52,7 +53,7 @@ export default class ChatSpace {
     this.contributors = [];
     this.reference_doctypes = [];
     this.online_timeout = null;
-    this.is_disk = "desk" in frappe;
+    this.is_disk = "desk" in frappe;  
 
     // open chat space for showing topic information
     this.chat_topic_space = opts.chat_topic;
@@ -61,6 +62,12 @@ export default class ChatSpace {
     this.chat_topic_space_subject = opts.chat_topic_subject;
     this.alternative_subject = opts.alternative_subject;
     this.not_authorized_user = false;
+
+    if(this.profile.platform == "WhatsApp"){
+      this.platform_profile = "ClefinCode WhatsApp Profile"
+      this.default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number 
+      this.default_whatsapp_type = erpnext_chat_app.res.default_whatsapp_type 
+    }
 
     if (this.chat_topic_space) {
       this.profile.room_type = "Topic";
@@ -124,7 +131,7 @@ export default class ChatSpace {
       if (!res && !res2) {
         this.request_for_access_topic();
         return;
-      }
+      }      
     }
     this.profile.room || this.chat_topic_space
       ? await this.fetch_and_setup_messages()
@@ -226,6 +233,12 @@ export default class ChatSpace {
                 last_active != user_datetime ? last_active : ""
               }</div>
           </div>    
+
+          ${
+            this.profile.platform === "WhatsApp" && this.profile.room_type == "Direct"
+              ? `<img title=${this.default_whatsapp_number} src="/assets/clefincode_chat/icons/whatsapp.svg" style="margin-right:8px">`
+              : ``
+          }
 
           ${
             this.profile.is_admin === true && this.profile.room_type != "Topic"
@@ -1458,7 +1471,48 @@ export default class ChatSpace {
     }
 
     if (!this.profile.room) {
-      await this.create_direct_channel(content);
+      if(this.default_whatsapp_number && this.profile.platform == "WhatsApp"){
+        if(this.default_whatsapp_type != "Support"){
+          await this.create_direct_channel(content);
+        }else{
+          let selected_contacts_list = []
+          let recipient_profile = {
+            "email": this.profile.contact,
+            "platform" : this.profile.platform,
+            "platform_profile": this.platform_profile,
+            "platform_gateway": this.default_whatsapp_number
+          }
+          selected_contacts_list.push(recipient_profile)
+          let results = await create_group(selected_contacts_list , this.profile.user_email)
+          this.profile.room = results[0].room;
+          this.set_channel_realtime(this.profile.room);
+          this.$chat_space
+            .closest(".chat-window")
+            .attr("data-room", this.profile.room);
+          frappe.ErpnextChat.settings.open_chat_space_rooms.push(this.profile.room);
+          this.is_first_message = 0;
+        }
+      }else{
+        await this.create_direct_channel(content);
+      }            
+    }
+
+    if(this.profile.new_member == 1){
+      const new_member = [{"email" : this.profile.user_email , "platform" : "Chat"}]
+      await add_group_member(
+        new_member,
+        this.profile.room
+      );
+      this.profile.new_member = 0
+
+      const message_info = {
+        content: `${this.profile.user} Joined`,
+        user: this.profile.user,
+        room: this.profile.room,
+        email: this.profile.user_email   ,
+        message_type : "information"
+      };
+      this.last_chat_space_message = await send_message(message_info);
     }
 
     if (attachment) {
@@ -1796,7 +1850,7 @@ export default class ChatSpace {
     this.contributors = contributors;
 
     const mention_msg = `
-  <div class="add-user" data-template="added_user_template"><span class="sender-user" data-user="${this.profile.user_email}"></span><span> added </span><span class="receiver-user" data-user="${mentioned_users_emails}">${mentioned_users_name}</span></div>`;
+  <div class="add-user" data-template="added_user_template"><span class="sender-user" data-user="${this.profile.user_email}"></span><span> added </span><span class="receiver-user" data-user="${mentioned_users_emails}"></span></div>`;
 
     this.$chat_actions.find(".ql-editor").html("");
     this.voice_clip.$voice_clip.css("display", "block");
@@ -1890,10 +1944,14 @@ export default class ChatSpace {
     this.chat_members.push({
       email: this.profile.user_email,
       name: this.profile.user_email,
+      platform: "Chat"      
     });
     this.chat_members.push({
       email: this.profile.contact,
       name: this.profile.room_name,
+      platform: this.profile.platform,
+      platform_profile: this.platform_profile,
+      platform_gateway: this.default_whatsapp_number
     });
     this.is_first_message = 1;
     let res = await frappe.call({

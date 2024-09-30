@@ -1,6 +1,6 @@
 import frappe
 import datetime
-from clefincode_chat.clefincode_chat.doctype.clefincode_chat_settings.clefincode_chat_settings import get_user_round_robin, get_user_load_balancing
+from clefincode_chat.utils.utils import choose_user_to_respond
 from clefincode_chat.api.api_1_0_1.api import get_profile_id , convert_utc_to_user_timezone , get_user_timezone , send_notification, share_doctype, get_contact_full_name
 
 @frappe.whitelist(allow_guest = True)
@@ -11,7 +11,7 @@ def create_guest_profile_and_channel(content , sender , sender_email , creation_
         "is_guest" : 1,
     }).insert(ignore_permissions = True)
 
-    respondent_user = choose_user_to_respond()    
+    respondent_user = choose_user_to_respond("ClefinCode Chat Settings")    
 
     new_channel = frappe.get_doc({
         "doctype": "ClefinCode Chat Channel",
@@ -31,18 +31,6 @@ def create_guest_profile_and_channel(content , sender , sender_email , creation_
     send(content , new_channel.name , sender , sender_email , creation_date , respondent_user) 
 
     return {"results" : [{"room" : new_channel.name , "token" : profile.token , "respondent_user" : respondent_user}] }
-# ==========================================================================================
-@frappe.whitelist()
-def choose_user_to_respond():
-    user = None
-    rule  = frappe.db.get_single_value("ClefinCode Chat Settings", "rule")
-    last_user = frappe.db.get_single_value("ClefinCode Chat Settings", "last_user")
-    if rule == "Round Robin":
-        user = get_user_round_robin(last_user)        
-    elif rule == "Load Balancing":
-        user = get_user_load_balancing()
-    else: return
-    return user
 # ==========================================================================================
 @frappe.whitelist(allow_guest=True)
 def send(content , room , sender , sender_email , send_date , respondent_user):    
@@ -107,7 +95,7 @@ def get_respondent_user(room):
 # ==========================================================================================
 @frappe.whitelist()
 def create_website_support_group(website_user_email, content):
-    respondent_user = choose_user_to_respond()
+    respondent_user = choose_user_to_respond("ClefinCode Chat Settings")
     creation_date = datetime.datetime.utcnow()
     new_channel = frappe.get_doc({
         'doctype': 'ClefinCode Chat Channel',

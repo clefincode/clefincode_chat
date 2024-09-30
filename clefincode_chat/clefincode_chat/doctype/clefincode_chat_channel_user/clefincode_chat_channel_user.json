@@ -1,101 +1,121 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "creation": "2023-07-05 12:24:16.143600",
-  "doctype": "DocType",
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "field_order": [
-    "profile_id",
-    "user",
-    "platform",
-    "active",
-    "last_message_read",
-    "unread_messages",
-    "is_removed",
-    "remove_date",
-    "is_admin",
-    "channel_last_message_number"
-  ],
-  "fields": [
-    {
-      "fieldname": "user",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "User"
-    },
-    {
-      "fieldname": "last_message_read",
-      "fieldtype": "Int",
-      "in_list_view": 1,
-      "label": "Last Message Read"
-    },
-    {
-      "default": "1",
-      "fieldname": "unread_messages",
-      "fieldtype": "Check",
-      "in_list_view": 1,
-      "label": "Unread Messages"
-    },
-    {
-      "fieldname": "platform",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Platform",
-      "read_only": 1
-    },
-    {
-      "default": "0",
-      "fieldname": "active",
-      "fieldtype": "Check",
-      "in_list_view": 1,
-      "label": "Active"
-    },
-    {
-      "columns": 1,
-      "default": "0",
-      "fieldname": "is_removed",
-      "fieldtype": "Check",
-      "in_list_view": 1,
-      "label": "Is Removed"
-    },
-    {
-      "fieldname": "remove_date",
-      "fieldtype": "Datetime",
-      "in_list_view": 1,
-      "label": "Remove Date"
-    },
-    {
-      "columns": 1,
-      "default": "0",
-      "fieldname": "is_admin",
-      "fieldtype": "Check",
-      "in_list_view": 1,
-      "label": "Is Admin"
-    },
-    {
-      "fieldname": "channel_last_message_number",
-      "fieldtype": "Int",
-      "label": "Channel Last Message Number"
-    },
-    {
-      "fieldname": "profile_id",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Profile Id",
-      "options": "ClefinCode Chat Profile"
-    }
-  ],
-  "index_web_pages_for_search": 1,
-  "istable": 1,
-  "links": [],
-  "modified": "2024-02-25 11:13:03.990929",
-  "modified_by": "Administrator",
-  "module": "ClefinCode Chat",
-  "name": "ClefinCode Chat Channel User",
-  "owner": "Administrator",
-  "permissions": [],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": []
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2023-07-05 12:24:16.143600",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "profile_id",
+  "user",
+  "platform",
+  "active",
+  "last_message_read",
+  "unread_messages",
+  "is_removed",
+  "remove_date",
+  "is_admin",
+  "channel_last_message_number",
+  "platform_profile",
+  "platform_gateway",
+  "pending_messages"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "User"
+  },
+  {
+   "fieldname": "last_message_read",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Last Message Read"
+  },
+  {
+   "default": "1",
+   "fieldname": "unread_messages",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Unread Messages"
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Platform"
+  },
+  {
+   "default": "0",
+   "fieldname": "active",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Active"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "is_removed",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Removed"
+  },
+  {
+   "fieldname": "remove_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Remove Date"
+  },
+  {
+   "columns": 1,
+   "default": "0",
+   "fieldname": "is_admin",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Admin"
+  },
+  {
+   "fieldname": "channel_last_message_number",
+   "fieldtype": "Int",
+   "label": "Channel Last Message Number"
+  },
+  {
+   "fieldname": "profile_id",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Profile Id",
+   "options": "ClefinCode Chat Profile"
+  },
+  {
+   "fieldname": "platform_profile",
+   "fieldtype": "Link",
+   "label": "Platform",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "platform_gateway",
+   "fieldtype": "Dynamic Link",
+   "label": "Platform Gateway",
+   "options": "platform_profile"
+  },
+  {
+   "default": "0",
+   "fieldname": "pending_messages",
+   "fieldtype": "Int",
+   "label": "Pending Messages"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2024-09-26 22:01:48.568590",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode Chat Channel User",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
 }

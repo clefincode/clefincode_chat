@@ -29,8 +29,8 @@
   "last_message",
   "column_break_g8y26",
   "last_message_number",
+  "last_responder_user",
   "section_break_q5hau",
-  "chat_history",
   "channel_image"
  ],
  "fields": [
@@ -153,11 +153,6 @@
    "fieldtype": "Section Break"
   },
   {
-   "fieldname": "chat_history",
-   "fieldtype": "JSON",
-   "label": "Chat History"
-  },
-  {
    "fieldname": "channel_image",
    "fieldtype": "Attach Image",
    "label": "Channel Image"
@@ -168,12 +163,18 @@
    "fieldname": "is_website_support_group",
    "fieldtype": "Check",
    "label": "Is Website Support Group"
+  },
+  {
+   "fieldname": "last_responder_user",
+   "fieldtype": "Link",
+   "label": "Last Responder User",
+   "options": "ClefinCode Chat Profile"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-06-13 13:22:34.519650",
+ "modified": "2024-08-29 11:01:30.876154",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Channel",

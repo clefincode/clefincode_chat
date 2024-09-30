@@ -1,167 +1,166 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "creation": "2023-07-05 12:13:53.247400",
-  "default_view": "List",
-  "doctype": "DocType",
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "field_order": [
-    "firebase_server_key_section",
-    "firebase_server_key",
-    "enable_mobile_notifications_section_section",
-    "enable_mobile_notifications",
-    "with_message_content",
-    "section_break_4",
-    "start_time",
-    "end_time",
-    "portal_support_section",
-    "enable_portal_support",
-    "assign_to_users_section",
-    "role",
-    "rule",
-    "last_user",
-    "column_break_8",
-    "chat_support_title",
-    "welcome_message",
-    "doctype_shortcuts",
-    "doctype_shortcut"
-  ],
-  "fields": [
-    {
-      "default": "0",
-      "fieldname": "enable_portal_support",
-      "fieldtype": "Check",
-      "label": "Enable Portal Support"
-    },
-    {
-      "fieldname": "start_time",
-      "fieldtype": "Time",
-      "hidden": 1,
-      "label": "Start Time"
-    },
-    {
-      "fieldname": "end_time",
-      "fieldtype": "Time",
-      "hidden": 1,
-      "label": "End Time"
-    },
-    {
-      "depends_on": "eval: doc.enable_portal_support == 1",
-      "fieldname": "assign_to_users_section",
-      "fieldtype": "Section Break",
-      "label": "Chat Support Settings"
-    },
-    {
-      "default": "Round Robin",
-      "fieldname": "rule",
-      "fieldtype": "Select",
-      "hidden": 1,
-      "label": "Rule",
-      "options": "Round Robin\nLoad Balancing"
-    },
-    {
-      "fieldname": "role",
-      "fieldtype": "Link",
-      "label": "Role",
-      "mandatory_depends_on": "eval: doc.enable_portal_support == 1",
-      "options": "Role"
-    },
-    {
-      "fieldname": "last_user",
-      "fieldtype": "Link",
-      "label": "Last Respondent User",
-      "options": "User",
-      "read_only": 1
-    },
-    {
-      "allow_bulk_edit": 1,
-      "fieldname": "doctype_shortcut",
-      "fieldtype": "Table",
-      "label": "DocType Shortcut",
-      "options": "ClefinCode DocType Shortcut"
-    },
-    {
-      "fieldname": "doctype_shortcuts",
-      "fieldtype": "Section Break",
-      "label": "DocType Shortcuts"
-    },
-    {
-      "fieldname": "column_break_8",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "chat_support_title",
-      "fieldtype": "Data",
-      "label": "Chat Support Title",
-      "mandatory_depends_on": "eval: doc.enable_portal_support == 1"
-    },
-    {
-      "fieldname": "welcome_message",
-      "fieldtype": "Text",
-      "label": "Welcome Message",
-      "mandatory_depends_on": "eval: doc.enable_portal_support == 1"
-    },
-    {
-      "fieldname": "enable_mobile_notifications_section_section",
-      "fieldtype": "Section Break",
-      "label": "Mobile Notifications"
-    },
-    {
-      "default": "1",
-      "fieldname": "enable_mobile_notifications",
-      "fieldtype": "Check",
-      "label": "Enable Mobile Notifications"
-    },
-    {
-      "default": "1",
-      "depends_on": "eval: doc.enable_mobile_notifications == 1",
-      "fieldname": "with_message_content",
-      "fieldtype": "Check",
-      "label": "With Message Content"
-    },
-    {
-      "fieldname": "section_break_4",
-      "fieldtype": "Section Break"
-    },
-    {
-      "fieldname": "portal_support_section",
-      "fieldtype": "Section Break",
-      "label": "Portal Support"
-    },
-    {
-      "fieldname": "firebase_server_key_section",
-      "fieldtype": "Section Break",
-      "hidden": 1,
-      "label": "Firebase Server Key"
-    },
-    {
-      "fieldname": "firebase_server_key",
-      "fieldtype": "Text",
-      "label": "Firebase Server Key"
-    }
-  ],
-  "index_web_pages_for_search": 1,
-  "issingle": 1,
-  "links": [],
-  "modified": "2024-03-21 15:43:00.815395",
-  "modified_by": "Administrator",
-  "module": "ClefinCode Chat",
-  "name": "ClefinCode Chat Settings",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "print": 1,
-      "read": 1,
-      "role": "System Manager",
-      "share": 1,
-      "write": 1
-    }
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": []
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2023-07-05 12:13:53.247400",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "firebase_server_key_section",
+  "firebase_server_key",
+  "enable_mobile_notifications_section_section",
+  "enable_mobile_notifications",
+  "with_message_content",
+  "section_break_4",
+  "start_time",
+  "end_time",
+  "portal_support_section",
+  "enable_portal_support",
+  "assign_to_users_section",
+  "role",
+  "rule",
+  "last_user",
+  "column_break_8",
+  "chat_support_title",
+  "welcome_message",
+  "doctype_shortcuts",
+  "doctype_shortcut"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enable_portal_support",
+   "fieldtype": "Check",
+   "label": "Enable Portal Support"
+  },
+  {
+   "fieldname": "start_time",
+   "fieldtype": "Time",
+   "hidden": 1,
+   "label": "Start Time"
+  },
+  {
+   "fieldname": "end_time",
+   "fieldtype": "Time",
+   "hidden": 1,
+   "label": "End Time"
+  },
+  {
+   "depends_on": "eval: doc.enable_portal_support == 1",
+   "fieldname": "assign_to_users_section",
+   "fieldtype": "Section Break",
+   "label": "Chat Support Settings"
+  },
+  {
+   "default": "Round Robin",
+   "fieldname": "rule",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Rule",
+   "options": "Round Robin\nLoad Balancing"
+  },
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "label": "Role",
+   "mandatory_depends_on": "eval: doc.enable_portal_support == 1",
+   "options": "Role"
+  },
+  {
+   "fieldname": "last_user",
+   "fieldtype": "Link",
+   "label": "Last Respondent User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "allow_bulk_edit": 1,
+   "fieldname": "doctype_shortcut",
+   "fieldtype": "Table",
+   "label": "DocType Shortcut",
+   "options": "ClefinCode DocType Shortcut"
+  },
+  {
+   "fieldname": "doctype_shortcuts",
+   "fieldtype": "Section Break",
+   "label": "DocType Shortcuts"
+  },
+  {
+   "fieldname": "column_break_8",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "chat_support_title",
+   "fieldtype": "Data",
+   "label": "Chat Support Title",
+   "mandatory_depends_on": "eval: doc.enable_portal_support == 1"
+  },
+  {
+   "fieldname": "welcome_message",
+   "fieldtype": "Text",
+   "label": "Welcome Message",
+   "mandatory_depends_on": "eval: doc.enable_portal_support == 1"
+  },
+  {
+   "fieldname": "enable_mobile_notifications_section_section",
+   "fieldtype": "Section Break",
+   "label": "Mobile Notifications"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_mobile_notifications",
+   "fieldtype": "Check",
+   "label": "Enable Mobile Notifications"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval: doc.enable_mobile_notifications == 1",
+   "fieldname": "with_message_content",
+   "fieldtype": "Check",
+   "label": "With Message Content"
+  },
+  {
+   "fieldname": "section_break_4",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "portal_support_section",
+   "fieldtype": "Section Break",
+   "label": "Portal Support"
+  },
+  {
+   "fieldname": "firebase_server_key_section",
+   "fieldtype": "Section Break",
+   "label": "Firebase Server Key"
+  },
+  {
+   "fieldname": "firebase_server_key",
+   "fieldtype": "Text",
+   "label": "Firebase Server Key"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-09-23 21:44:26.134866",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode Chat Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
 }
