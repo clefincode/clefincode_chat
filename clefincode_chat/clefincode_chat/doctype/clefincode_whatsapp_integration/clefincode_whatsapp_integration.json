@@ -19,6 +19,7 @@
    "length": 250
   },
   {
+   "description": "A unique token to verify the identity of incoming webhook requests, ensuring security.",
    "fieldname": "webhook_verify_token",
    "fieldtype": "Data",
    "label": "Webhook Verify Token",
@@ -27,13 +28,14 @@
   {
    "fieldname": "base_url",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Base URL"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2024-09-12 23:47:58.151027",
+ "modified": "2024-10-12 13:56:55.255092",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode WhatsApp Integration",

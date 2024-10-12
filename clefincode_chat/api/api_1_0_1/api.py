@@ -826,13 +826,15 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             }
         ).insert(ignore_permissions=True)
         
-        if is_screenshot == "1":
+        if is_screenshot == "1":  
             content = extract_images_from_html(new_message, content, True)
             is_media = 1
             file_type = "image"
             new_message.content = content
             new_message.is_media = is_media
-            new_message.file_type = file_type       
+            new_message.file_type = file_type
+            new_message.is_screenshot = 1  
+            new_message.file_id = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "name")               
             new_message.save(ignore_permissions = True)
 
         if attachment: set_attach_message(attachment, new_message.name)
@@ -974,11 +976,11 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
-                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip)
+                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot)
                     if member.pending_messages >= 1:
                         frappe.db.set_value('ClefinCode Chat Channel User', member.name, 'pending_messages', member.pending_messages +1)
             for contributor in channel_doc.contributors:
-                if contributor.active == 1 and contributor.platform == "Chat":
+                if contributor.active == 1 and contributor.platform == "Chat":                    
                     if share_everyone == 0: share_doctype("ClefinCode Chat Message", new_message.name, contributor.user)
                     results["room"] = sub_channel
                     results["parent_channel"] = room
@@ -2619,8 +2621,8 @@ def search_in_message_contents(channel , query, sub_channel = None):
 #############################################################################################
 ######################################## WhatsApp Functions #################################
 #############################################################################################
-def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip):    
-    responder_user_profile = get_profile_id(email)
+def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot):    
+    responder_user_profile = get_profile_id(email)     
     message = None
     is_group_message = (channel_doc.type == "Group" and 
                         last_responder_user and 
@@ -2631,7 +2633,10 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
         message_content = process_message_template(content)
         message = f"_{BeautifulSoup(message_content, 'html.parser').get_text()}_"
     elif file_type in ["image", "video", "audio", "document"]:
-        message = attachment
+        if is_screenshot:
+            message = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "file_url")
+        else:
+            message = attachment
     else:
         if is_group_message:
             message = f"*{get_chat_profile_first_name(responder_user_profile)}*:\n{BeautifulSoup(content, 'html.parser').get_text()}"

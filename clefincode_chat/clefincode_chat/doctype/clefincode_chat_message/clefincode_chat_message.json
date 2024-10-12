@@ -28,6 +28,7 @@
   "is_link",
   "is_voice_clip",
   "is_mention",
+  "is_screenshot",
   "whatsapp_message_id"
  ],
  "fields": [
@@ -155,12 +156,18 @@
    "fieldname": "is_mention",
    "fieldtype": "Check",
    "label": "Is Mention"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_screenshot",
+   "fieldtype": "Check",
+   "label": "Is Screenshot"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-09-26 23:48:42.313985",
+ "modified": "2024-10-04 23:29:25.649943",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Message",

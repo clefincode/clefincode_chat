@@ -1,4 +1,10 @@
 import frappe
+from pydub import AudioSegment
+import io
+import subprocess
+import tempfile
+import os
+import base64
 import unicodedata
 from werkzeug.wrappers import Response
 import datetime
@@ -8,7 +14,7 @@ import mimetypes
 from mimetypes import guess_type
 from frappe.utils import random_string
 from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status
-from clefincode_chat.api.api_1_0_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel, send_message_confirm_template, process_whatsapp_message, remove_group_member
+from clefincode_chat.api.api_1_0_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel, send_message_confirm_template, process_whatsapp_message, remove_group_member, get_last_active_sub_channel
 
 @frappe.whitelist(allow_guest=True)
 def handle():
@@ -39,6 +45,7 @@ def handle():
             if not channel:
                 return
             
+            last_sub_channel = get_last_active_sub_channel(channel)["results"][0]["last_active_sub_channel"]
             last_message_info = get_last_message_sent(channel)
             if not last_message_info:
                 return
@@ -46,12 +53,12 @@ def handle():
             sender, sender_email = last_message_info
 
             if not message_template or not template_status:
-                content = "<p style='color:#0089FF'> It has been over 24 hours since the last reply. The confirmation message wasn't sent. Please review the confirmation message template in your WhatsApp profile.</p>"
-                send(content = content, user = sender, room = channel, email = sender_email, message_type = "information", message_template_type = "Send Confirmation")                
+                content = "<p style='color:#0089FF'> No confirmation sent in over 24 hours. Please check the template in your WhatsApp profile.</p>"
+                send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")                
                 return
             
-            content = "<p style='color:#FF0000'> It has been over 24 hours since the last reply. A confirmation message will be sent automatically to check interest.</p>"
-            send(content = content, user = sender, room = channel, email = sender_email, message_type = "information", message_template_type = "Send Confirmation")
+            content = "<p style='color:#FF0000'> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p>"
+            send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")
             
             send_message_confirm_template(receiver_number, sender_number, channel, message_template)
             return
@@ -60,7 +67,12 @@ def handle():
         media_url , mime_type, file_url = None , None, None           
 
         sender_number, sender_profile_name = get_sender_info(messages, form_dict)
+
+        frappe.log_error(title="sender_profile_name" , message = str(sender_profile_name))
+
         chat_profile = get_or_create_chat_profile(sender_number, sender_profile_name)
+
+        frappe.log_error(title="chat_profile" , message = str(chat_profile))
 
         receiver_number = get_receiver_number(form_dict)
         if not validate_receiver_profile(receiver_number):
@@ -68,7 +80,11 @@ def handle():
 
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
         chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages)
+
+        frappe.log_error(title="chat_channel_info" , message = str(chat_channel_info))
+
         chat_channel , pending_messages = chat_channel_info
+        last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
         response = None
         if pending_messages and pending_messages > 0:
@@ -79,16 +95,15 @@ def handle():
                 response = "resend"
 
         if message_type == "text":
-            send(format_html_string(messages[0]["text"]["body"]), sender_profile_name, chat_channel, sender_number)
+            send(content= format_html_string(messages[0]["text"]["body"]), user = sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel)
         elif message_type == "button":
-            send(format_html_string( messages[0]["button"]["text"]), sender_profile_name, chat_channel, sender_number)
+            send(content= format_html_string( messages[0]["button"]["text"]), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel)
         elif message_type in ['image' , 'sticker' , 'video', 'audio' , 'document']:
             media_id =  messages[0][message_type]["id"] 
             media_url , mime_type = retrieve_media_url(media_id)
-            file_url = download_media(media_url , mime_type)
+            file_url = download_media(media_url , mime_type , message_type)
             content = handle_attachment(file_url[0], messages[0][message_type].get("filename", ""), message_type)
-            
-            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, attachment = file_url[0], is_media = 1)
+            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = 1, file_id = file_url[2])
         if response == "resend":
             # reset pending messages to zero
             frappe.db.set_value('ClefinCode Chat Channel User', {"parent": chat_channel , "user": sender_number, "platform_gateway": receiver_number}, 'pending_messages', 0)
@@ -98,17 +113,17 @@ def handle():
             remove_group_member(sender_number, chat_channel)
 
     except Exception as e:
-        log_error(e)
+        frappe.log_error(title = "Error when handling webhook" , message = str(e))
 
 def handle_attachment(file_url, file_name, message_type):
     if message_type == 'image':
-        return f"<a href='{file_url}' target='_blank'><img src='{file_url}' class='img-responsive chat-image'><span class='hidden'>{file_name}</span></a>"
+        return f"""<a href="{file_url}" target="_blank"><img src="{file_url}" class="img-responsive chat-image"><span class="hidden">{file_name}</span></a>"""
 
     elif message_type == 'video':
-        return f"<div><video src='{file_url}' controls='controls' style='width:235px'></video><span class='hidden'>{file_name}</span></div>"
+        return f"""<div><video src="{file_url}" controls="controls" style="width:235px"></video><span class="hidden">{file_name}</span></div>"""
 
     elif message_type == 'audio':
-        return f"<audio src='{file_url}' controls='controls' class='voice-clip' style='width: 235px;'></audio>"
+        return f"""<audio src="{file_url}" controls="controls" class="voice-clip" style="width: 235px;"></audio>"""
 
     elif message_type == 'document':
         # Determine the appropriate icon based on file extension
@@ -134,7 +149,7 @@ def handle_attachment(file_url, file_name, message_type):
         </div>
         """
     else:
-        return f"<a href='{file_url}' target='_blank' style='color: #027eb5;'>{file_name}</a>"
+        return f"""<a href="{file_url}" target="_blank" style="color: #027eb5;">{file_name}</a>"""
 
 
 def log_webhook(form_dict):
@@ -220,7 +235,7 @@ def build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number):
         for profile in whatsapp_profile_doc.chat_profiles:
             user_email = get_email_from_chat_profile(profile.chat_profile)
             if user_email and user_email != responder_user:
-                recipients_list.append(build_chat_recipients(profile.chat_profile, whatsapp_profile_doc))
+                recipients_list.append(build_chat_recipients(profile.chat_profile))
     
     
 
@@ -236,7 +251,7 @@ def build_whatsapp_recipient_gateway(profile_id, whatsapp_profile_doc, sender_nu
         "platform_gateway": whatsapp_profile_doc.name
     }
 
-def build_chat_recipients(profile_id, whatsapp_profile_doc):
+def build_chat_recipients(profile_id):
     return {
         "profile_id": profile_id,
         "email": get_email_from_chat_profile(profile_id),
@@ -245,28 +260,31 @@ def build_chat_recipients(profile_id, whatsapp_profile_doc):
 
 
 def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages):
-    receiver_chat_profile = whatsapp_profile_doc.chat_profile
+    frappe.log_error(title="manage_personal_channel")
     receiver_user_email = whatsapp_profile_doc.user
     channel_info = check_if_channel_exists(sender_number, receiver_number, "Personal")
+    frappe.log_error(title="channel_info" , message = str(channel_info))
     if not channel_info:
         chat_channel = create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number)
+        frappe.log_error(title="chat_channel" , message = str(chat_channel))
         return [chat_channel , None]
     else:    
         chat_channel , pending_messages = channel_info 
         return [chat_channel , pending_messages] 
 
 
-def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number): 
+def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
+    frappe.log_error(title="create_direct_channel")     
     channel_name = get_profile_full_name(receiver_user_email)   
     recipients_list = [
-        build_chat_recipients(get_profile_id(receiver_user_email), whatsapp_profile_doc),
+        build_chat_recipients(get_profile_id(receiver_user_email)),
         build_whatsapp_recipient_gateway(chat_profile, whatsapp_profile_doc, sender_number)
     ]
     return create_channel(
         get_profile_full_name(sender_number) ,
         json.dumps(recipients_list),
         "Direct",
-        messages[0]["text"]["body"],
+        format_html_string(messages[0]["text"]["body"]),
         receiver_user_email,
         channel_name
     )["results"][0]["room"]
@@ -334,18 +352,27 @@ def retrieve_media_url(id):
     if response.ok:
         return response.json().get("url") , response.json().get("mime_type")
 
-def download_media(url , mime_type, file_name = None):
+def download_media(url , mime_type, message_type , file_name = None ):
     access_token = get_access_token()
     response = requests.get(
         url,
         headers={
             "Authorization": "Bearer " + access_token,
         },
-    )        
-    mimetypes.add_type('image/webp', '.webp')
-    extension = mimetypes.guess_extension(mime_type, strict=False)
+    )
+          
     
-    file_bytes = response.content
+    mimetypes.add_type('image/webp', '.webp')
+    # mimetypes.add_type('audio/aac', '.acc')
+    
+    extension = None
+    file_bytes=None
+    if message_type == 'audio':
+        file_bytes= convert_opus_to_aac(response.content)
+        extension = ".aac"
+    else:
+        file_bytes = response.content
+        extension = mimetypes.guess_extension(mime_type, strict=False)
     
     file_doc = frappe.get_doc({
         "doctype": "File",
@@ -356,12 +383,8 @@ def download_media(url , mime_type, file_name = None):
     })
     file_doc.insert(ignore_permissions = True)
     frappe.db.commit()
-    return file_doc.file_url , file_doc.file_size
+    return file_doc.file_url , file_doc.file_size , file_doc.name
 
-def log_error(exception):
-    file_path = "/home/ubuntu/frappe-bench/apps/clefincode_chat/clefincode_chat/webhook.txt"
-    with open(file_path, "a") as file:
-        file.write(f"{frappe.get_traceback()}\n===========================\n")
 
 def format_html_string(input_string):
 
@@ -371,7 +394,7 @@ def format_html_string(input_string):
         return f'<div style="direction: rtl; text-align: right;"><p>{input_string}</p></div>'
         
     else:
-        return f'<p>{input_string}</p>'
+        return f'<p>{str(input_string)}</p>'
 
 def is_arabic_char(char):
     return unicodedata.name(char).startswith('ARABIC')
@@ -399,7 +422,7 @@ def resend_pending_messages(chat_channel, pending_messages_list, platform_gatewa
         if message_doc.file_id:
             attachment = frappe.db.get_value("File" , message_doc.file_id, "file_url")
 
-        process_whatsapp_message(platform_gateway, sender_number, message_doc.sender_email, channel_doc, channel_doc.last_responder_user, message_doc, message_doc.file_type, attachment, message_doc.content, message_doc.is_voice_clip)
+        process_whatsapp_message(platform_gateway, sender_number, message_doc.sender_email, channel_doc, channel_doc.last_responder_user, message_doc, message_doc.file_type, attachment, message_doc.content, message_doc.is_voice_clip, message_doc.is_screenshot)
 
 def get_last_message_sent(channel):
     results = frappe.db.sql(f"""
@@ -415,4 +438,23 @@ def get_last_message_sent(channel):
     if results:
         return [results[0].sender , results[0].sender_email]
     return None
-# ==========================================================================================
+
+def convert_opus_to_aac(ogg_binary_data):
+    # Create a subprocess to call ffmpeg
+    process = subprocess.Popen(
+        ['ffmpeg', '-i', 'pipe:0', '-f', 'adts', 'pipe:1'],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+
+    # Send the binary OGG data to ffmpeg and get the AAC output
+    aac_output, error = process.communicate(input=ogg_binary_data)
+
+    # Check if there was an error during conversion
+    if process.returncode != 0:
+        raise RuntimeError(f"FFmpeg error: {error.decode('utf-8')}")
+
+    return aac_output
+
+
