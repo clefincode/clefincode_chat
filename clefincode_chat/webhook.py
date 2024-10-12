@@ -67,12 +67,7 @@ def handle():
         media_url , mime_type, file_url = None , None, None           
 
         sender_number, sender_profile_name = get_sender_info(messages, form_dict)
-
-        frappe.log_error(title="sender_profile_name" , message = str(sender_profile_name))
-
         chat_profile = get_or_create_chat_profile(sender_number, sender_profile_name)
-
-        frappe.log_error(title="chat_profile" , message = str(chat_profile))
 
         receiver_number = get_receiver_number(form_dict)
         if not validate_receiver_profile(receiver_number):
@@ -80,9 +75,6 @@ def handle():
 
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
         chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages)
-
-        frappe.log_error(title="chat_channel_info" , message = str(chat_channel_info))
-
         chat_channel , pending_messages = chat_channel_info
         last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
@@ -260,13 +252,10 @@ def build_chat_recipients(profile_id):
 
 
 def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages):
-    frappe.log_error(title="manage_personal_channel")
     receiver_user_email = whatsapp_profile_doc.user
     channel_info = check_if_channel_exists(sender_number, receiver_number, "Personal")
-    frappe.log_error(title="channel_info" , message = str(channel_info))
     if not channel_info:
         chat_channel = create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number)
-        frappe.log_error(title="chat_channel" , message = str(chat_channel))
         return [chat_channel , None]
     else:    
         chat_channel , pending_messages = channel_info 
@@ -274,7 +263,6 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
 
 
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
-    frappe.log_error(title="create_direct_channel")     
     channel_name = get_profile_full_name(receiver_user_email)   
     recipients_list = [
         build_chat_recipients(get_profile_id(receiver_user_email)),
