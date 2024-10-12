@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2024-09-10 22:47:09.163868",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "type",
+  "button_text",
+  "url_type",
+  "website_url",
+  "country",
+  "phone_number",
+  "offer_code"
+ ],
+ "fields": [
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "Custom\nVisit website\nCall phone number\nComplete flow\nCopy offer code"
+  },
+  {
+   "fieldname": "button_text",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Button Text"
+  },
+  {
+   "depends_on": "eval: doc.type == \"Visit website\"",
+   "fieldname": "url_type",
+   "fieldtype": "Select",
+   "label": "URL Type",
+   "options": "Static\nDynamic"
+  },
+  {
+   "depends_on": "eval: doc.type == \"Visit website\"",
+   "fieldname": "website_url",
+   "fieldtype": "Data",
+   "label": "Website URL",
+   "mandatory_depends_on": "eval: doc.type == \"Visit website\""
+  },
+  {
+   "depends_on": "eval: doc.type == \"Call phone number\"",
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "mandatory_depends_on": "eval: doc.type == \"Call phone number\"",
+   "options": "Country"
+  },
+  {
+   "depends_on": "eval: doc.type == \"Call phone number\"",
+   "fieldname": "phone_number",
+   "fieldtype": "Data",
+   "label": "Phone Number",
+   "mandatory_depends_on": "eval: doc.type == \"Call phone number\""
+  },
+  {
+   "depends_on": "eval: doc.type == \"Copy offer code\"",
+   "fieldname": "offer_code",
+   "fieldtype": "Data",
+   "label": "Offer Code",
+   "mandatory_depends_on": "eval: doc.type == \"Copy offer code\""
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2024-09-10 22:57:44.837507",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode WhatsApp Template Button",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

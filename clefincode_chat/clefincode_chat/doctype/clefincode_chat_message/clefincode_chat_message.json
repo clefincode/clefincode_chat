@@ -1,172 +1,192 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "creation": "2023-07-05 12:36:20.537618",
-  "default_view": "List",
-  "doctype": "DocType",
-  "editable_grid": 1,
-  "engine": "InnoDB",
-  "field_order": [
-    "chat_channel",
-    "sub_channel",
-    "chat_topic",
-    "sender",
-    "sender_email",
-    "column_break_xyikf",
-    "send_date",
-    "message_type",
-    "message_template_type",
-    "only_receive_by",
-    "section_break_jqmrp",
-    "is_first_message",
-    "content",
-    "type",
-    "file_id",
-    "file_type",
-    "is_media",
-    "is_document",
-    "is_link",
-    "is_voice_clip"
-  ],
-  "fields": [
-    {
-      "fieldname": "chat_channel",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Chat Channel",
-      "options": "ClefinCode Chat Channel"
-    },
-    {
-      "fieldname": "sub_channel",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "Sub Channel",
-      "options": "ClefinCode Chat Channel"
-    },
-    {
-      "fieldname": "chat_topic",
-      "fieldtype": "Link",
-      "label": "Chat Topic",
-      "options": "ClefinCode Chat Topic"
-    },
-    {
-      "fieldname": "sender",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Sender"
-    },
-    {
-      "fieldname": "sender_email",
-      "fieldtype": "Data",
-      "label": "Sender Email",
-      "options": "Email"
-    },
-    {
-      "fieldname": "column_break_xyikf",
-      "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "send_date",
-      "fieldtype": "Datetime",
-      "label": "Send Date"
-    },
-    {
-      "fieldname": "message_type",
-      "fieldtype": "Select",
-      "in_list_view": 1,
-      "label": "Message Type",
-      "options": "\ninformation"
-    },
-    {
-      "fieldname": "message_template_type",
-      "fieldtype": "Select",
-      "label": "Message Template type",
-      "options": "\nCreate Group\nRename Group\nAdd User\nRemove User\nUser Left\nSet Admin\nSet Avatar\nSet Topic\nRename Topic\nRemove Topic\nAdd Doctype\nRemove Doctype\nSet Topic Status\nRemove Contributors"
-    },
-    {
-      "fieldname": "only_receive_by",
-      "fieldtype": "Data",
-      "label": "Only Receive By"
-    },
-    {
-      "fieldname": "section_break_jqmrp",
-      "fieldtype": "Section Break"
-    },
-    {
-      "default": "0",
-      "fieldname": "is_first_message",
-      "fieldtype": "Check",
-      "label": "Is First Message"
-    },
-    {
-      "fieldname": "content",
-      "fieldtype": "Long Text",
-      "ignore_xss_filter": 1,
-      "label": "Content"
-    },
-    {
-      "fieldname": "type",
-      "fieldtype": "Select",
-      "label": "Type"
-    },
-    {
-      "fieldname": "file_id",
-      "fieldtype": "Data",
-      "label": "File Id"
-    },
-    {
-      "fieldname": "file_type",
-      "fieldtype": "Data",
-      "label": "File Type"
-    },
-    {
-      "default": "0",
-      "fieldname": "is_media",
-      "fieldtype": "Check",
-      "label": "Is Media"
-    },
-    {
-      "default": "0",
-      "fieldname": "is_document",
-      "fieldtype": "Check",
-      "label": "Is Document"
-    },
-    {
-      "default": "0",
-      "fieldname": "is_link",
-      "fieldtype": "Check",
-      "label": "Is Link"
-    },
-    {
-      "default": "0",
-      "fieldname": "is_voice_clip",
-      "fieldtype": "Check",
-      "label": "Is Voice Clip"
-    }
-  ],
-  "in_create": 1,
-  "index_web_pages_for_search": 1,
-  "links": [],
-  "modified": "2024-03-17 15:06:16.552803",
-  "modified_by": "Administrator",
-  "module": "ClefinCode Chat",
-  "name": "ClefinCode Chat Message",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "export": 1,
-      "print": 1,
-      "read": 1,
-      "report": 1,
-      "role": "Chat Administrator",
-      "share": 1,
-      "write": 1
-    }
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": []
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2023-07-05 12:36:20.537618",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "chat_channel",
+  "sub_channel",
+  "chat_topic",
+  "sender",
+  "sender_email",
+  "column_break_xyikf",
+  "send_date",
+  "message_type",
+  "message_template_type",
+  "only_receive_by",
+  "section_break_jqmrp",
+  "is_first_message",
+  "content",
+  "type",
+  "file_id",
+  "file_type",
+  "is_media",
+  "is_document",
+  "is_link",
+  "is_voice_clip",
+  "is_mention",
+  "is_screenshot",
+  "whatsapp_message_id"
+ ],
+ "fields": [
+  {
+   "fieldname": "chat_channel",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Chat Channel",
+   "options": "ClefinCode Chat Channel"
+  },
+  {
+   "fieldname": "sub_channel",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sub Channel",
+   "options": "ClefinCode Chat Channel"
+  },
+  {
+   "fieldname": "chat_topic",
+   "fieldtype": "Link",
+   "label": "Chat Topic",
+   "options": "ClefinCode Chat Topic"
+  },
+  {
+   "fieldname": "sender",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Sender"
+  },
+  {
+   "fieldname": "sender_email",
+   "fieldtype": "Data",
+   "label": "Sender Email"
+  },
+  {
+   "fieldname": "column_break_xyikf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "send_date",
+   "fieldtype": "Datetime",
+   "label": "Send Date"
+  },
+  {
+   "fieldname": "message_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Message Type",
+   "options": "\ninformation"
+  },
+  {
+   "fieldname": "message_template_type",
+   "fieldtype": "Select",
+   "label": "Message Template type",
+   "options": "\nCreate Group\nRename Group\nAdd User\nRemove User\nUser Left\nSet Admin\nSet Avatar\nSet Topic\nRename Topic\nRemove Topic\nAdd Doctype\nRemove Doctype\nSet Topic Status\nRemove Contributors\nSend Confirmation"
+  },
+  {
+   "fieldname": "only_receive_by",
+   "fieldtype": "Data",
+   "label": "Only Receive By"
+  },
+  {
+   "fieldname": "section_break_jqmrp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_first_message",
+   "fieldtype": "Check",
+   "label": "Is First Message"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Long Text",
+   "ignore_xss_filter": 1,
+   "label": "Content"
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "label": "Type"
+  },
+  {
+   "fieldname": "file_id",
+   "fieldtype": "Data",
+   "label": "File Id"
+  },
+  {
+   "fieldname": "file_type",
+   "fieldtype": "Data",
+   "label": "File Type"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_media",
+   "fieldtype": "Check",
+   "label": "Is Media"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_document",
+   "fieldtype": "Check",
+   "label": "Is Document"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_link",
+   "fieldtype": "Check",
+   "label": "Is Link"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_voice_clip",
+   "fieldtype": "Check",
+   "label": "Is Voice Clip"
+  },
+  {
+   "fieldname": "whatsapp_message_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Whatsapp Message Id"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_mention",
+   "fieldtype": "Check",
+   "label": "Is Mention"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_screenshot",
+   "fieldtype": "Check",
+   "label": "Is Screenshot"
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-10-04 23:29:25.649943",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode Chat Message",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Chat Administrator",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
 }

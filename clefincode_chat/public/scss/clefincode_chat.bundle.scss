@@ -704,18 +704,26 @@ $height: 582px;
           font-weight: bold;
           display: flex;
           align-items: center;
+          width:150px;
+          max-width:150px;
         }
 
         .chat-icons {
           display: flex;
-          padding: 0px 30px;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0px 15px;
+          width:100px;
+          max-width: 100px;
 
           .icon {
-            // margin:0px 10px
+            margin:0;
           }
 
-          .chat-icon {
-            margin-right: 20px;
+          .dropdown-toggle{
+            display: flex;
+            justify-content: center;
+            width:40px
           }
 
           .selected {
@@ -724,7 +732,15 @@ $height: 582px;
               // bottom: 16px;
             }
           }
-        }
+          .dropdown-toggle:after{
+            display: none !important;
+          } 
+
+          .dropdown-item{
+            display: flex;
+            align-items: center;
+          }      
+    }
       }
 
       .chat-date {
@@ -1677,7 +1693,7 @@ $height: 582px;
     margin-right: auto;
     //custom update alaa
     display: flex;
-    width: 226px;
+    // width: 226px;
     height: 52px;
     flex-direction: column;
     justify-content: center;

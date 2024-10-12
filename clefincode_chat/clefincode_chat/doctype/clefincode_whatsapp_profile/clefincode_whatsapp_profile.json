@@ -1,0 +1,203 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:whatsapp_number",
+ "creation": "2024-08-11 12:48:43.652617",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "whatsapp_number",
+  "type",
+  "default",
+  "section_break_3",
+  "phone_number_id",
+  "column_break_3",
+  "business_account_id",
+  "receive_by_role_section",
+  "role",
+  "rule",
+  "last_user",
+  "column_break_12",
+  "section_break_11",
+  "receive_by_profile",
+  "chat_profiles",
+  "user",
+  "section_break_17",
+  "authorized_users",
+  "confirm_message_template_section",
+  "message_template",
+  "meta_template_name",
+  "template_content"
+ ],
+ "fields": [
+  {
+   "fieldname": "whatsapp_number",
+   "fieldtype": "Data",
+   "label": "WhatsApp Number",
+   "unique": 1
+  },
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "label": "Role",
+   "mandatory_depends_on": "eval:doc.type == \"Support\"",
+   "options": "Role"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval: doc.type == \"Support\"",
+   "fieldname": "receive_by_profile",
+   "fieldtype": "Check",
+   "label": "Receive By Profile",
+   "mandatory_depends_on": "eval:doc.type == \"Personal\""
+  },
+  {
+   "depends_on": "eval:doc.receive_by_profile == 1 && doc.type == \"Support\"",
+   "fieldname": "chat_profiles",
+   "fieldtype": "Table",
+   "label": "Chat Profiles",
+   "mandatory_depends_on": "eval:doc.receive_by_profile == 1 && doc.type == \"Support\"",
+   "options": "ClefinCode WhatsApp Profile Detail"
+  },
+  {
+   "fieldname": "phone_number_id",
+   "fieldtype": "Data",
+   "label": "Phone Number ID"
+  },
+  {
+   "fieldname": "business_account_id",
+   "fieldtype": "Data",
+   "label": "Business Account ID"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_12",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.receive_by_role == 1",
+   "fieldname": "last_user",
+   "fieldtype": "Data",
+   "label": "Last User",
+   "read_only": 1
+  },
+  {
+   "default": "Round Robin",
+   "depends_on": "eval:doc.receive_by_role == 1",
+   "fieldname": "rule",
+   "fieldtype": "Select",
+   "label": "Rule",
+   "options": "Round Robin\nLoad Balancing",
+   "read_only": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "Personal\nSupport",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_3",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.type == \"Support\"",
+   "fieldname": "receive_by_role_section",
+   "fieldtype": "Section Break",
+   "label": "Receive By Role"
+  },
+  {
+   "fieldname": "section_break_11",
+   "fieldtype": "Section Break",
+   "label": "Receive By Profile"
+  },
+  {
+   "fieldname": "section_break_17",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval: doc.type == \"Support\"",
+   "fieldname": "authorized_users",
+   "fieldtype": "Table",
+   "label": "Authorized Users",
+   "options": "Authorized Users"
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.type == \"Personal\"",
+   "fieldname": "default",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Default"
+  },
+  {
+   "depends_on": "eval:doc.type == \"Personal\"",
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "mandatory_depends_on": "eval:doc.type == \"Personal\"",
+   "options": "User"
+  },
+  {
+   "depends_on": "eval:!doc.__islocal",
+   "description": "WhatsApp message template for continuing communication with the customer outside the 24-hour window.",
+   "fieldname": "message_template",
+   "fieldtype": "Link",
+   "label": "Message Template",
+   "options": "ClefinCode WhatsApp Template"
+  },
+  {
+   "depends_on": "eval: doc.__islocal",
+   "description": "Template names must use only lowercase letters and underscores.",
+   "fieldname": "meta_template_name",
+   "fieldtype": "Data",
+   "label": "Meta Template Name",
+   "mandatory_depends_on": "eval: doc.__islocal"
+  },
+  {
+   "fieldname": "confirm_message_template_section",
+   "fieldtype": "Section Break",
+   "label": "Confirm Message Template"
+  },
+  {
+   "default": "You have a pending message. Would you like to view\u00a0it\u00a0now?",
+   "depends_on": "eval: doc.__islocal",
+   "fieldname": "template_content",
+   "fieldtype": "Text",
+   "label": "Template Content",
+   "mandatory_depends_on": "eval: doc.__islocal"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2024-10-12 13:56:13.483483",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode WhatsApp Profile",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

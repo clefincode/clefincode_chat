@@ -1,0 +1,211 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:template_name",
+ "creation": "2024-09-10 22:23:54.460427",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "template_status",
+  "business_account_section",
+  "whatsapp_profile",
+  "col_break",
+  "whatsapp_business_account_id",
+  "template_name_and_language_section",
+  "template_name",
+  "meta_template_name",
+  "category",
+  "column_break_8",
+  "template_language",
+  "content_section",
+  "header_type",
+  "header",
+  "header_attachment",
+  "body",
+  "footer",
+  "buttons_section",
+  "buttons",
+  "whatsapp_template_id",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "label": "Template Name",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "default": "en",
+   "fieldname": "template_language",
+   "fieldtype": "Link",
+   "label": "Template Language",
+   "options": "Language",
+   "read_only": 1
+  },
+  {
+   "fieldname": "template_name_and_language_section",
+   "fieldtype": "Section Break",
+   "label": "Template name and language"
+  },
+  {
+   "fieldname": "content_section",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Text Editor",
+   "label": "Body",
+   "reqd": 1
+  },
+  {
+   "fieldname": "footer",
+   "fieldtype": "Data",
+   "label": "Footer"
+  },
+  {
+   "fieldname": "header_type",
+   "fieldtype": "Select",
+   "label": "Header Type",
+   "options": "\nText\nImage\nVideo\nDocument\nLocation"
+  },
+  {
+   "depends_on": "eval: doc.header_type == \"Text\"",
+   "fieldname": "header",
+   "fieldtype": "Data",
+   "label": "Header",
+   "mandatory_depends_on": "eval: doc.header_type == \"Text\""
+  },
+  {
+   "depends_on": "eval: doc.header_type && doc.header_type != \"Text\" && doc.header_type != \"Location\"",
+   "fieldname": "header_attachment",
+   "fieldtype": "Attach",
+   "label": "Header Attachment",
+   "mandatory_depends_on": "eval: doc.header_type && doc.header_type != \"Text\""
+  },
+  {
+   "fieldname": "buttons_section",
+   "fieldtype": "Section Break",
+   "label": "Buttons"
+  },
+  {
+   "fieldname": "buttons",
+   "fieldtype": "Table",
+   "label": "Buttons",
+   "options": "ClefinCode WhatsApp Template Button"
+  },
+  {
+   "fieldname": "business_account_section",
+   "fieldtype": "Section Break",
+   "label": "Business Account"
+  },
+  {
+   "fieldname": "whatsapp_profile",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Whatsapp Profile",
+   "options": "ClefinCode WhatsApp Profile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "col_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "whatsapp_profile.business_account_id",
+   "fieldname": "whatsapp_business_account_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Business Account ID",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "whatsapp_template_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Template ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Marketing\nUtility\nAuthentication"
+  },
+  {
+   "fieldname": "column_break_8",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "template_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Template Status",
+   "options": "\nPENDING\nAPPROVED\nREJECTED"
+  },
+  {
+   "fieldname": "meta_template_name",
+   "fieldtype": "Data",
+   "label": "Meta Template Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "ClefinCode WhatsApp Template",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2024-09-30 21:17:26.830097",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode WhatsApp Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [
+  {
+   "color": "Orange",
+   "title": "PENDING"
+  },
+  {
+   "color": "Green",
+   "title": "APPROVED"
+  },
+  {
+   "color": "Red",
+   "title": "REJECTED"
+  }
+ ],
+ "title_field": "meta_template_name"
+}
