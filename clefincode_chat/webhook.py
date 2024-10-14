@@ -95,7 +95,14 @@ def handle():
             media_url , mime_type = retrieve_media_url(media_id)
             file_url = download_media(media_url , mime_type , message_type)
             content = handle_attachment(file_url[0], messages[0][message_type].get("filename", ""), message_type)
-            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = 1, file_id = file_url[2])
+            is_media , is_document , is_voice_clip = 0 , 0 , 0
+            if message_type in ['image' , 'sticker' , 'video']:
+                is_media=1
+            elif message_type == "document":
+                is_document=1
+            else:
+                is_voice_clip=1
+            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = is_media, is_document = is_document , is_voice_clip = is_voice_clip , file_id = file_url[2])
         if response == "resend":
             # reset pending messages to zero
             frappe.db.set_value('ClefinCode Chat Channel User', {"parent": chat_channel , "user": sender_number, "platform_gateway": receiver_number}, 'pending_messages', 0)
