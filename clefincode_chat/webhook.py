@@ -96,7 +96,7 @@ def handle():
             file_url = download_media(media_url , mime_type , message_type)
             content = handle_attachment(file_url[0], messages[0][message_type].get("filename", ""), message_type)
             is_media , is_document , is_voice_clip = 0 , 0 , 0
-            if message_type == "video" or  message_type == "image":
+            if message_type in ['image' , 'sticker' , 'video']:
                 is_media=1
             elif message_type == "document":
                 is_document=1
