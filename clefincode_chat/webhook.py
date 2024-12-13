@@ -53,11 +53,11 @@ def handle():
             sender, sender_email = last_message_info
 
             if not message_template or not template_status:
-                content = "<p style='color:#0089FF'> No confirmation sent in over 24 hours. Please check the template in your WhatsApp profile.</p>"
+                content = '<div class="handle-error-whatsapp" data-template="handle_error_whatsapp"><p style="color:#0089FF"> No confirmation sent in over 24 hours. Please check the template in your WhatsApp profile.</p>/div>'
                 send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")                
                 return
             
-            content = "<p style='color:#FF0000'> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p>"
+            content = '<div class="handle-error-whatsapp" data-template="handle_error_whatsapp"><p style="color:#FF0000"> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p></div>'
             send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")
             
             send_message_confirm_template(receiver_number, sender_number, channel, message_template)
@@ -89,7 +89,7 @@ def handle():
         if message_type == "text":
             send(content= format_html_string(messages[0]["text"]["body"]), user = sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel)
         elif message_type == "button":
-            send(content= format_html_string( messages[0]["button"]["text"]), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel)
+            send(content= format_html_string( messages[0]["button"]["text"],True), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,message_type='information')
         elif message_type in ['image' , 'sticker' , 'video', 'audio' , 'document']:
             media_id =  messages[0][message_type]["id"] 
             media_url , mime_type = retrieve_media_url(media_id)
@@ -381,7 +381,7 @@ def download_media(url , mime_type, message_type , file_name = None ):
     return file_doc.file_url , file_doc.file_size , file_doc.name
 
 
-def format_html_string(input_string):
+def format_html_string(input_string, button = None):
 
     is_arabic = any(is_arabic_char(char) for char in input_string)
 
@@ -389,6 +389,8 @@ def format_html_string(input_string):
         return f'<div style="direction: rtl; text-align: right;"><p>{input_string}</p></div>'
         
     else:
+        if button:
+            return f'<div class="approve-button-whatsapp" data-template="approve_button_whatsapp"><p>{str(input_string)}</p></div>'
         return f'<p>{str(input_string)}</p>'
 
 def is_arabic_char(char):

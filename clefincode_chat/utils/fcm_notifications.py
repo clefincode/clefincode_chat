@@ -31,12 +31,12 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
                 notification =messaging.Notification(title= None, body= None), 
                 data = {"route" : str(info) , "realtime_type" : realtime_type, "content_available": "true", "same_user" : str(same_user)},
                 token = registration_token,  
-                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True,)))
             ) 
             messaging.send(message)
 
         except Exception as e:
-            frappe.log_error(f"Error in sending notifications: {str(e)}")   
+            frappe.log_error(f"Error in sending notifications: {str(e)}")
     else:  
         if platform == "ios":
             if info and info.get("is_voice_clip") == "1":
@@ -50,16 +50,16 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
             try:
                 message = messaging.Message(
                 notification = messaging.Notification(title= None, body= None),
-                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body, "no_duplicate" : "true", "content_available": "true", "same_user" : str(same_user),"content_available": "true"},
+                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title or '' ,"notification_body": body or '', "content_available": "true", "same_user" : str(same_user),"content_available": "true"},
                 token = registration_token,   
-                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True)))
                 )        
                 
                 messaging.send(message)
 
                 message1 = messaging.Message(
                 notification =messaging.Notification(title=title,body=body),
-                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title ,"notification_body": body, "same_user" : str(same_user),"content_available": "true"},
+                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title or '' ,"notification_body": body or '',"no_duplicate" : "true", "same_user" : str(same_user),"content_available": "true"},
                 token = registration_token, 
                 apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
                 )
