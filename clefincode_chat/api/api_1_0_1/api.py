@@ -3003,21 +3003,34 @@ def get_user_timezone(user_email):
 def set_user_timezone(user_email , time_zone):  
     frappe.db.set_value("User" , user_email , "time_zone" , time_zone)
 # ==========================================================================================
-def convert_utc_to_user_timezone(utc_time, user_timezone , formatted = None):
+def convert_utc_to_user_timezone(utc_time, user_timezone, formatted=None):
+    # Preprocess user_timezone to ensure it's a string
+    if isinstance(user_timezone, dict):
+        if "timezone" in user_timezone:
+            user_timezone = user_timezone["timezone"]
+        elif "time_zone" in user_timezone:
+            user_timezone = user_timezone["time_zone"]
+        else:
+            raise ValueError("Invalid timezone format: no valid key found in dictionary")
+
+    if not isinstance(user_timezone, str):
+        raise ValueError(f"Invalid user_timezone type: {type(user_timezone)}. Expected a string.")
+
     # Convert naive datetime to aware datetime in UTC
     utc_time = pytz.utc.localize(utc_time)
 
-    # Define user timezone    
+    # Define user timezone
     user_tz = pytz.timezone(user_timezone)
-    
+
     # Convert to user timezone
     user_time = utc_time.astimezone(user_tz)
-    
+
+    # Format the time if needed
     if formatted:
-    # Format the time in the desired format
         user_time = user_time.strftime("%I:%M %p")
 
     return user_time
+
 # ========================================================================================== 
 @frappe.whitelist()   
 def get_time_now(user_email, formatted = None):
