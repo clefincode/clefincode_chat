@@ -2432,11 +2432,14 @@ def get_chat_profile_first_name(chat_profile):
     return frappe.db.get_value("ClefinCode Chat Profile", chat_profile , "full_name").split(' ')[0]
 # ==========================================================================================
 def get_contact_first_name(contact):
-    return frappe.db.sql(f"""
+    first_name = frappe.db.sql(f"""
         SELECT ChatProfile.full_name
         FROM `tabClefinCode Chat Profile` AS ChatProfile, `tabClefinCode Chat Profile Contact Details` AS ContactDetails
         WHERE ContactDetails.parent = ChatProfile.name AND ChatProfile.is_support <> 1 AND ContactDetails.contact_info = '{contact}'
-        """ , as_dict = True)[0].full_name.split(' ')[0]
+        """ , as_dict = True)
+    if first_name:
+        return first_name[0].full_name.split(' ')[0]
+
 # ==========================================================================================
 def get_contact_full_name(contact): 
     full_name = frappe.db.sql(f"""
