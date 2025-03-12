@@ -117,7 +117,7 @@ frappe.ErpnextChat = class {
                         method:
                           "clefincode_chat.api.api_1_0_1.api.mark_messsages_as_read",
                         args: {
-                          user: me.user_email ,
+                          user: me.frappe.session.user ,
                           channel: null,
                           parent_channel: parent_channel
                         }
@@ -130,7 +130,7 @@ frappe.ErpnextChat = class {
                         method:
                           "clefincode_chat.api.api_1_0_1.api.mark_messsages_as_read",
                         args: {
-                          user: me.user_email ,
+                          user: me.frappe.session.user ,
                           channel: room,
                         }
                       });
