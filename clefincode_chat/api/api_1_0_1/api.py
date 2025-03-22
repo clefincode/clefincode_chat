@@ -804,6 +804,16 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 @frappe.whitelist()
 def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
     try:
+        from packaging import version
+        # Get current Frappe version
+        frappe_version = frappe.__version__
+
+        # Define room logic based on version
+        if version.parse(frappe_version) >= version.parse("15.0.0"):
+            guest_room_name = "user:Guest"
+        else:
+            guest_room_name = f"{frappe.local.site}:user:Guest"
+            
         if is_media or is_document or message_template_type == "Remove User":
             time.sleep(3)
         file_type = ''
@@ -941,7 +951,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             results["room"] = room        
             if channel_doc.chat_profile.startswith("Guest"):
                 results["send_date"] = convert_utc_to_user_timezone(send_date, get_time_zone())
-                frappe.publish_realtime(event=room, message=results , room = f"{frappe.local.site}:user:Guest")
+                frappe.publish_realtime(event=room, message=results , room = guest_room_name)
                 for member in channel_doc.members:
                     if share_everyone == 0: share_doctype("ClefinCode Chat Message", new_message.name, member.user)
                     results["room"] = room
