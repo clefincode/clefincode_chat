@@ -1114,11 +1114,11 @@ def get_messages_latest(room , user_email , room_type, remove_date = None , last
 @frappe.whitelist()
 def get_latest_channels_updates(user_email, last_message_date):
     """This API provides a solution for iOS devices to view new messages through notifications while using another app."""
-    user_email_param = frappe.db.escape(user_email)
-    last_message_date_param = frappe.db.escape(last_message_date)
+    user_email_param = frappe.safe_eval(user_email)
+    last_message_date_param = frappe.safe_eval(last_message_date)
 
     results = frappe.db.sql(
-        f"""
+        """
         SELECT
             ChatChannel.name AS room,
             NULL AS parent_channel,
@@ -1132,9 +1132,11 @@ def get_latest_channels_updates(user_email, last_message_date):
             NULL AS remove_date
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = {user_email_param}
-        WHERE type = 'Guest' AND ChatChannel.modified_date > {last_message_date_param}
+            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = %s
+        WHERE type = 'Guest' AND ChatChannel.modified_date > %s
+
         UNION ALL
+
         SELECT DISTINCT
             ChatChannel.name AS room,
             NULL AS parent_channel,
@@ -1148,9 +1150,11 @@ def get_latest_channels_updates(user_email, last_message_date):
             ChatChannelUser.remove_date
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = {user_email_param}
-        WHERE type = 'Group' AND ChatChannelUser.platform = 'Chat' AND ChatChannel.modified_date > {last_message_date_param}
+            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = %s
+        WHERE type = 'Group' AND ChatChannelUser.platform = 'Chat' AND ChatChannel.modified_date > %s
+
         UNION ALL
+
         SELECT
             ChatChannel.name AS room,
             NULL AS parent_channel,
@@ -1164,11 +1168,13 @@ def get_latest_channels_updates(user_email, last_message_date):
             NULL AS remove_date
         FROM `tabClefinCode Chat Channel` AS ChatChannel
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = {user_email_param}
+            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = %s
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser2
-            ON ChatChannelUser2.parent = ChatChannel.name AND ChatChannelUser2.user <> {user_email_param}
-                            AND type = 'Direct' AND is_parent = 1 AND ChatChannel.modified_date > {last_message_date_param}
+            ON ChatChannelUser2.parent = ChatChannel.name AND ChatChannelUser2.user <> %s
+                            AND type = 'Direct' AND is_parent = 1 AND ChatChannel.modified_date > %s
+
         UNION ALL
+
         SELECT
             ChatChannelContributor.channel AS room,
             ChatChannel.name AS parent_channel,
@@ -1183,10 +1189,16 @@ def get_latest_channels_updates(user_email, last_message_date):
         FROM `tabClefinCode Chat Channel` AS ChatChannel
         INNER JOIN `tabClefinCode Chat Channel Contributor` AS ChatChannelContributor
             ON ChatChannelContributor.parent = ChatChannel.name
-            AND is_parent = 1 AND ChatChannelContributor.user = {user_email_param}
-            AND ChatChannel.modified_date > {last_message_date_param}
+            AND is_parent = 1 AND ChatChannelContributor.user = %s
+            AND ChatChannel.modified_date > %s
         GROUP BY ChatChannelContributor.user, ChatChannel.name
         """,
+        (
+            user_email, last_message_date,    # for 'Guest'
+            user_email, last_message_date,    # for 'Group'
+            user_email, user_email, last_message_date,  # for 'Direct'
+            user_email, last_message_date     # for 'Contributor'
+        ),
         as_dict=True
     )
 
