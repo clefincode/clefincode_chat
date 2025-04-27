@@ -1114,8 +1114,16 @@ def get_messages_latest(room , user_email , room_type, remove_date = None , last
 @frappe.whitelist()
 def get_latest_channels_updates(user_email, last_message_date):
     """This API provides a solution for iOS devices to view new messages through notifications while using another app."""
-    user_email_param = frappe.safe_eval(user_email)
-    last_message_date_param = frappe.safe_eval(last_message_date)
+    
+    def ensure_quoted(value):
+        if isinstance(value, str):
+            if not (value.startswith("'") and value.endswith("'")) and not (value.startswith('"') and value.endswith('"')):
+                return f'"{value}"'
+        return value
+
+    user_email_param = frappe.safe_eval(ensure_quoted(user_email))
+    last_message_date_param = frappe.safe_eval(ensure_quoted(last_message_date))
+
 
     results = frappe.db.sql(
         """
@@ -1194,10 +1202,10 @@ def get_latest_channels_updates(user_email, last_message_date):
         GROUP BY ChatChannelContributor.user, ChatChannel.name
         """,
         (
-            user_email, last_message_date,    # for 'Guest'
-            user_email, last_message_date,    # for 'Group'
-            user_email, user_email, last_message_date,  # for 'Direct'
-            user_email, last_message_date     # for 'Contributor'
+            user_email_param, last_message_date_param,    # for 'Guest'
+            user_email_param, last_message_date_param,    # for 'Group'
+            user_email_param, user_email_param, last_message_date_param,  # for 'Direct'
+            user_email_param, last_message_date_param     # for 'Contributor'
         ),
         as_dict=True
     )
