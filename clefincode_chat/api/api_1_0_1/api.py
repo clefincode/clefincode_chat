@@ -804,6 +804,16 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 @frappe.whitelist()
 def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
     try:
+        from packaging import version
+        # Get current Frappe version
+        frappe_version = frappe.__version__
+
+        # Define room logic based on version
+        if version.parse(frappe_version) >= version.parse("15.0.0"):
+            guest_room_name = "user:Guest"
+        else:
+            guest_room_name = f"{frappe.local.site}:user:Guest"
+            
         if is_media or is_document or message_template_type == "Remove User":
             time.sleep(3)
         file_type = ''
@@ -941,7 +951,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             results["room"] = room        
             if channel_doc.chat_profile.startswith("Guest"):
                 results["send_date"] = convert_utc_to_user_timezone(send_date, get_time_zone())
-                frappe.publish_realtime(event=room, message=results , room = f"{frappe.local.site}:user:Guest")
+                frappe.publish_realtime(event=room, message=results , room = guest_room_name)
                 for member in channel_doc.members:
                     if share_everyone == 0: share_doctype("ClefinCode Chat Message", new_message.name, member.user)
                     results["room"] = room
@@ -1104,11 +1114,19 @@ def get_messages_latest(room , user_email , room_type, remove_date = None , last
 @frappe.whitelist()
 def get_latest_channels_updates(user_email, last_message_date):
     """This API provides a solution for iOS devices to view new messages through notifications while using another app."""
-    user_email_param = frappe.db.escape(user_email)
-    last_message_date_param = frappe.db.escape(last_message_date)
+    
+    def ensure_quoted(value):
+        if isinstance(value, str):
+            if not (value.startswith("'") and value.endswith("'")) and not (value.startswith('"') and value.endswith('"')):
+                return f'"{value}"'
+        return value
+
+    user_email_param = frappe.safe_eval(ensure_quoted(user_email))
+    last_message_date_param = frappe.safe_eval(ensure_quoted(last_message_date))
+
 
     results = frappe.db.sql(
-        f"""
+        """
         SELECT
             ChatChannel.name AS room,
             NULL AS parent_channel,
@@ -1122,9 +1140,11 @@ def get_latest_channels_updates(user_email, last_message_date):
             NULL AS remove_date
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = {user_email_param}
-        WHERE type = 'Guest' AND ChatChannel.modified_date > {last_message_date_param}
+            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = %s
+        WHERE type = 'Guest' AND ChatChannel.modified_date > %s
+
         UNION ALL
+
         SELECT DISTINCT
             ChatChannel.name AS room,
             NULL AS parent_channel,
@@ -1138,9 +1158,11 @@ def get_latest_channels_updates(user_email, last_message_date):
             ChatChannelUser.remove_date
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = {user_email_param}
-        WHERE type = 'Group' AND ChatChannelUser.platform = 'Chat' AND ChatChannel.modified_date > {last_message_date_param}
+            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = %s
+        WHERE type = 'Group' AND ChatChannelUser.platform = 'Chat' AND ChatChannel.modified_date > %s
+
         UNION ALL
+
         SELECT
             ChatChannel.name AS room,
             NULL AS parent_channel,
@@ -1154,11 +1176,13 @@ def get_latest_channels_updates(user_email, last_message_date):
             NULL AS remove_date
         FROM `tabClefinCode Chat Channel` AS ChatChannel
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = {user_email_param}
+            ON ChatChannelUser.parent = ChatChannel.name AND ChatChannelUser.user = %s
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser2
-            ON ChatChannelUser2.parent = ChatChannel.name AND ChatChannelUser2.user <> {user_email_param}
-                            AND type = 'Direct' AND is_parent = 1 AND ChatChannel.modified_date > {last_message_date_param}
+            ON ChatChannelUser2.parent = ChatChannel.name AND ChatChannelUser2.user <> %s
+                            AND type = 'Direct' AND is_parent = 1 AND ChatChannel.modified_date > %s
+
         UNION ALL
+
         SELECT
             ChatChannelContributor.channel AS room,
             ChatChannel.name AS parent_channel,
@@ -1173,10 +1197,16 @@ def get_latest_channels_updates(user_email, last_message_date):
         FROM `tabClefinCode Chat Channel` AS ChatChannel
         INNER JOIN `tabClefinCode Chat Channel Contributor` AS ChatChannelContributor
             ON ChatChannelContributor.parent = ChatChannel.name
-            AND is_parent = 1 AND ChatChannelContributor.user = {user_email_param}
-            AND ChatChannel.modified_date > {last_message_date_param}
+            AND is_parent = 1 AND ChatChannelContributor.user = %s
+            AND ChatChannel.modified_date > %s
         GROUP BY ChatChannelContributor.user, ChatChannel.name
         """,
+        (
+            user_email_param, last_message_date_param,    # for 'Guest'
+            user_email_param, last_message_date_param,    # for 'Group'
+            user_email_param, user_email_param, last_message_date_param,  # for 'Direct'
+            user_email_param, last_message_date_param     # for 'Contributor'
+        ),
         as_dict=True
     )
 
@@ -2432,11 +2462,14 @@ def get_chat_profile_first_name(chat_profile):
     return frappe.db.get_value("ClefinCode Chat Profile", chat_profile , "full_name").split(' ')[0]
 # ==========================================================================================
 def get_contact_first_name(contact):
-    return frappe.db.sql(f"""
+    first_name = frappe.db.sql(f"""
         SELECT ChatProfile.full_name
         FROM `tabClefinCode Chat Profile` AS ChatProfile, `tabClefinCode Chat Profile Contact Details` AS ContactDetails
         WHERE ContactDetails.parent = ChatProfile.name AND ChatProfile.is_support <> 1 AND ContactDetails.contact_info = '{contact}'
-        """ , as_dict = True)[0].full_name.split(' ')[0]
+        """ , as_dict = True)
+    if first_name:
+        return first_name[0].full_name.split(' ')[0]
+
 # ==========================================================================================
 def get_contact_full_name(contact): 
     full_name = frappe.db.sql(f"""
@@ -3003,21 +3036,34 @@ def get_user_timezone(user_email):
 def set_user_timezone(user_email , time_zone):  
     frappe.db.set_value("User" , user_email , "time_zone" , time_zone)
 # ==========================================================================================
-def convert_utc_to_user_timezone(utc_time, user_timezone , formatted = None):
+def convert_utc_to_user_timezone(utc_time, user_timezone, formatted=None):
+    # Preprocess user_timezone to ensure it's a string
+    if isinstance(user_timezone, dict):
+        if "timezone" in user_timezone:
+            user_timezone = user_timezone["timezone"]
+        elif "time_zone" in user_timezone:
+            user_timezone = user_timezone["time_zone"]
+        else:
+            raise ValueError("Invalid timezone format: no valid key found in dictionary")
+
+    if not isinstance(user_timezone, str):
+        raise ValueError(f"Invalid user_timezone type: {type(user_timezone)}. Expected a string.")
+
     # Convert naive datetime to aware datetime in UTC
     utc_time = pytz.utc.localize(utc_time)
 
-    # Define user timezone    
+    # Define user timezone
     user_tz = pytz.timezone(user_timezone)
-    
+
     # Convert to user timezone
     user_time = utc_time.astimezone(user_tz)
-    
+
+    # Format the time if needed
     if formatted:
-    # Format the time in the desired format
         user_time = user_time.strftime("%I:%M %p")
 
     return user_time
+
 # ========================================================================================== 
 @frappe.whitelist()   
 def get_time_now(user_email, formatted = None):

@@ -84,6 +84,8 @@ def get_docinfo(doc=None, doctype=None, name=None):
 
 	add_comments(doc, docinfo)
 	add_chat_topics(doc, docinfo)
+	# Ensure doc.name is always a string to avoid type issues when its int and we need it as string in other function
+	doc.name = str(doc.name)
 	docinfo.update(
 		{
 			"doctype": doc.doctype,
