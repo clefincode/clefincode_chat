@@ -499,7 +499,7 @@ function approve_access_request(
   reference_docname
 ) {
   const res = frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.approve_access_request",
+    method: "clefincode_chat.api.api_1_2_1.api.approve_access_request",
     args: {
       sender: sender,
       reciever: reciever,

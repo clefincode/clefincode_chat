@@ -288,7 +288,7 @@ async function create_guest_profile_and_channel(
 ) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_0_1.chat_portal.create_guest_profile_and_channel",
+      "clefincode_chat.api.api_1_2_1.chat_portal.create_guest_profile_and_channel",
     args: {
       content: content,
       sender: sender,
@@ -303,7 +303,7 @@ async function send_message(params) {
   const { content, room, sender, sender_email, send_date, respondent_user } =
     params;
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.chat_portal.send",
+    method: "clefincode_chat.api.api_1_2_1.chat_portal.send",
     args: {
       content: content,
       room: room,
@@ -318,7 +318,7 @@ async function send_message(params) {
 
 async function get_messages(room) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.chat_portal.get_messages",
+    method: "clefincode_chat.api.api_1_2_1.chat_portal.get_messages",
     args: {
       room: room,
     },
@@ -328,7 +328,7 @@ async function get_messages(room) {
 
 async function get_respondent_user(room) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.chat_portal.get_respondent_user",
+    method: "clefincode_chat.api.api_1_2_1.chat_portal.get_respondent_user",
     args: {
       room: room,
     },

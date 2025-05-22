@@ -87,7 +87,7 @@
    "fieldname": "platform",
    "fieldtype": "Select",
    "label": "Platform",
-   "options": "ERPNext Chat\nERPNext Chat WhatsApp"
+   "options": "ERPNext Chat\nERPNext Chat WhatsApp\nERPNext Chat Instagram\nERPNext Chat Messenger\nERPNext Chat Telegram"
   },
   {
    "fieldname": "type",
@@ -174,7 +174,7 @@
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-08-29 11:01:30.876154",
+ "modified": "2025-04-29 17:29:52.899333",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Channel",

@@ -37,7 +37,6 @@ export default class ChatSpace {
     this.$chat_room = opts.$chat_room;
     this.new_group = opts.new_group;
     this.chat_list = opts.chat_list;
-    
     this.file = null;
     this.is_open = 1;
     this.typing = false;
@@ -62,12 +61,10 @@ export default class ChatSpace {
     this.chat_topic_space_subject = opts.chat_topic_subject;
     this.alternative_subject = opts.alternative_subject;
     this.not_authorized_user = false;
+    this.chat_status = opts.chat_status;
 
-    if(this.profile.platform == "WhatsApp"){
-      this.platform_profile = "ClefinCode WhatsApp Profile"
-      this.default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number 
-      this.default_whatsapp_type = erpnext_chat_app.res.default_whatsapp_type 
-    }
+
+
 
     if (this.chat_topic_space) {
       this.profile.room_type = "Topic";
@@ -86,6 +83,27 @@ export default class ChatSpace {
     }
 
     this.setup();
+  }
+  
+  
+
+  async get_platform_icon() {
+    const platform = this.profile.platform
+    let platform_icon = "";
+  
+    if (platform === "WhatsApp" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="${this.default_whatsapp_number}" src="/assets/clefincode_chat/icons/whatsapp.svg" style="margin-right:8px; margin-left:8px;">`;
+    } else if (platform === "Instagram" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="Instagram" src="/assets/clefincode_chat/icons/instagram.svg" style="margin-right:8px; width:20px; height:20px; margin-left:8px;">`;
+    } else if (platform === "Messenger" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="Messenger" src="/assets/clefincode_chat/icons/messenger.svg" style="margin-right:8px; width:20px; height:20px; margin-left:8px;">`;
+    } else if (platform === "Chat" && this.profile.room_type === "Direct") {
+      platform_icon = `<svg class="icon icon-lg" style="margin-right:8px; width:20px; height:20px; margin-left:8px;"><use href="#icon-small-message"></use></svg>`;
+    } else if (platform === "Telegram" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="Telegram" src="/assets/clefincode_chat/icons/telegram.svg" style="margin-right:6px; width:25px; margin-left:8px;">`;
+    }
+  
+    return platform_icon;
   }
 
   async setup() {
@@ -168,106 +186,75 @@ export default class ChatSpace {
   async setup_header() {
     let header_title;
     let header_full_name;
+
     if (this.chat_topic_space) {
-      this.avatar_html = "";
-      if (this.chat_topic_space) {
+        this.avatar_html = "";
         header_title = this.chat_topic_space_subject
-          ? this.chat_topic_space_subject.replace(/"/g, "")
-          : this.alternative_subject;
+            ? this.chat_topic_space_subject.replace(/"/g, "")
+            : this.alternative_subject;
         header_full_name = header_title;
-        header_title =
-          header_title.length > 25
-            ? header_title.substring(0, 25) + "..."
-            : header_title;
-      }
+        header_title = header_title.length > 25 ? header_title.substring(0, 25) + "..." : header_title;
     } else {
-      this.avatar_html = get_avatar_html(
-        this.profile.room_name,
-        this.profile.room_type
-      );
-      header_full_name = this.profile.room_name;
-      header_title =
-        this.profile.room_name.length > 20
-          ? this.profile.room_name.substring(0, 20) + "..."
-          : this.profile.room_name;
+        this.avatar_html = get_avatar_html(this.profile.room_name, this.profile.room_type);
+        header_full_name = this.profile.room_name;
+        header_title = this.profile.room_name.length > 20 ? this.profile.room_name.substring(0, 20) + "..." : this.profile.room_name;
     }
 
     let last_active = "";
     let user_datetime = "";
-    if (this.profile.room_type == "Direct") {
-      const last_active_value = await get_last_active(
-        this.profile.contact,
-        this.profile.user_email
-      );
-      if (last_active_value) {
-        last_active =
-          get_date_from_now(
-            last_active_value,
-            "space",
-            this.profile.time_zone
-          ) +
-          " " +
-          get_time(last_active_value, this.profile.time_zone);
-        const current_user_datetime = await get_time_now(
-          this.profile.user_email
-        );
-        user_datetime =
-          get_date_from_now(
-            current_user_datetime,
-            "space",
-            this.profile.time_zone
-          ) +
-          " " +
-          get_time(current_user_datetime, this.profile.time_zone);
-      }
+
+    if (this.profile.room_type === "Direct") {
+        const last_active_value = await get_last_active(this.profile.contact, this.profile.user_email);
+        if (last_active_value) {
+            last_active =
+                get_date_from_now(last_active_value, "space", this.profile.time_zone) +
+                " " +
+                get_time(last_active_value, this.profile.time_zone);
+            const current_user_datetime = await get_time_now(this.profile.user_email);
+            user_datetime =
+                get_date_from_now(current_user_datetime, "space", this.profile.time_zone) +
+                " " +
+                get_time(current_user_datetime, this.profile.time_zone);
+        }
     }
+    
+
+    const icon_html = await this.get_platform_icon();
 
     const header_html = `
-      <div class='chat-header'>
-          ${this.avatar_html}
-          <div class='chat-profile-info'>
-              <div class='chat-profile-name' title = "${header_full_name}">
-              ${header_title}              
-              </div>
-              <div class='chat-profile-status'>${
-                last_active != user_datetime ? last_active : ""
-              }</div>
-          </div>    
+        <div class='chat-header'>
+            ${this.avatar_html}
+            <div class='chat-profile-info'>
+                <div class='chat-profile-name' title="${header_full_name}">${header_title}</div>
+                <div class='chat-profile-status'>${last_active !== user_datetime ? last_active : ""}</div>
+            </div>
+            ${icon_html}
+            ${
+                this.profile.is_admin === true && this.profile.room_type !== "Topic"
+                    ? `<span class='collapse-chat-window'>${frappe.utils.icon("collapse", "md")}</span>`
+                    : ``
+            }
+            ${
+                this.profile.is_admin === true
+                    ? `<span class='close-chat-window'>${frappe.utils.icon("close", "lg")}</span>`
+                    : ``
+            }
+        </div>
+    `;
 
-          ${
-            this.profile.platform === "WhatsApp" && this.profile.room_type == "Direct"
-              ? `<img title=${this.default_whatsapp_number} src="/assets/clefincode_chat/icons/whatsapp.svg" style="margin-right:8px">`
-              : ``
-          }
 
-          ${
-            this.profile.is_admin === true && this.profile.room_type != "Topic"
-              ? `<span class='collapse-chat-window' >${frappe.utils.icon(
-                  "collapse",
-                  "md"
-                )}</span>`
-              : ``
-          }
-          ${
-            this.profile.is_admin === true
-              ? `<span class='close-chat-window' >${frappe.utils.icon(
-                  "close",
-                  "lg"
-                )}</span>`
-              : ``
-          }
-      </div>
-  `;
     this.$chat_space.append(header_html);
+
     if (
-      this.profile.room_type == "Direct" &&
-      last_active &&
-      user_datetime &&
-      last_active == user_datetime
+        this.profile.room_type === "Direct" &&
+        last_active &&
+        user_datetime &&
+        last_active === user_datetime
     ) {
-      this.set_online();
+        this.set_online();
     }
-  }
+}
+
 
   async get_sub_channels_info() {
     await this.get_last_active_sub_channel();
@@ -461,6 +448,38 @@ export default class ChatSpace {
       }
     });
 
+    // frappe.realtime.on("trigger_channel_status", function (res) {
+    //     // if (res.status == "Open") {
+    //       me.profile.is_removed = 0;
+    //       me.chat_status = 'Open';
+
+    //       // 2) Remove the “closed” UI you injected
+    //       me.$chat_actions.remove();
+    //       me.$chat_space.find('.no-messages-info').remove();
+
+
+    //       // 4) Reload the last N messages and scroll to bottom
+    //       me.messages_offset = 0;
+    //       me.messages_limit = 10;
+    //       me.fetch_and_setup_messages();
+        // }
+
+        // else {
+        //   // me.chat_space.chat_status = "Closed";
+        //   me.chat_status = "Closed";
+
+        //   $(".close-chat-window").click();
+
+        //   const $btn = me.chat_info.$chat_info.find(".close-channel");
+        //   if (me.chat_status === "Closed") {
+        //     $btn.prop("disabled", true).text("Closed");
+        //   } else {
+        //     $btn.prop("disabled", false).text("Close Channel");
+        //   }
+        // }
+    // });
+
+
     if (!this.profile.room) return;
 
     const target_channel =
@@ -479,7 +498,83 @@ export default class ChatSpace {
       return;
     }
 
-    if (this.profile.room_type == "Group") {
+    if (this.profile.room_type == "Group" || this.chat_status == "Closed") {
+      
+      if (this.chat_status == "Closed") {
+        this.$chat_actions = $(document.createElement("div"))
+          .addClass("chat-space-actions text-center")
+          .css({
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+            marginBottom: "40px",
+          });
+
+        // Add info message
+        this.$chat_actions.append(
+          `<div style="margin-bottom: 10px;">This is a closed channel. To start chatting, create a new one or reopen this one.</div>`
+        );
+
+        // Add Reopen button
+        const $reopenBtn = $(
+          `<button class="btn btn-primary">Reopen</button>`
+        ).css({ marginRight: "10px" });
+
+        // Add Create New button
+        const $createNewBtn = $(
+          `<button class="btn btn-secondary">Create New</button>`
+        );
+
+        // Append buttons inside a wrapper
+        const $btnWrapper = $("<div>")
+          .css({ display: "flex", justifyContent: "center", gap: "10px" })
+          .append($reopenBtn, $createNewBtn);
+
+        this.$chat_actions.append($btnWrapper);
+        this.$chat_space.append(this.$chat_actions);
+
+        const room = this.profile.room;
+
+        // Set up button events
+        $reopenBtn.on("click", () => {
+          frappe.call({
+            method: "clefincode_chat.api.api_1_2_1.api.trigger_chat_channel_status",
+            args: { room: room,
+                    is_open: false
+                  },
+            callback: async (r) => {
+              if (!r.exc) {
+                // 1) Flip your local state so you’re no longer “removed / closed”
+                this.profile.is_removed = 0;
+                this.chat_status = 'Open';
+
+                // 2) Remove the “closed” UI you injected
+                this.$chat_actions.remove();
+                this.$chat_space.find('.no-messages-info').remove();
+
+                // 3) Reset any “previous message” memory so the date-line will render
+                this.prevMessage = {};
+
+                // 4) Reload the last N messages and scroll to bottom
+                this.messages_offset = 0;
+                this.messages_limit = 10;
+
+                await this.fetch_and_setup_messages();
+              }
+            }
+          });
+        });
+
+        $createNewBtn.on("click", () => {
+          const contact = this.profile.contact;
+          const contact_name = this.profile.room_name;
+          const platform = this.profile.platform;
+          this.open_chat_space(contact, contact_name, platform);
+        });
+
+        return;
+      }
+
       if (this.profile.is_removed == 1) {
         this.$chat_actions = $(document.createElement("div")).addClass(
           "chat-space-actions text-center"
@@ -600,6 +695,7 @@ export default class ChatSpace {
       me.$chat_space.find(".mentioned-doctype-section").remove();
       me.chat_info = new ChatInfo({
         chat_space: me,
+        chat_status: this.chat_status
       });
       me.$chat_space.find(".arrow-button").css("z-index", "0");
     });
@@ -964,7 +1060,7 @@ export default class ChatSpace {
     );
   }
 
-  async check_if_contact_has_chat(user_email, contact, contact_name, platform) {
+  async check_if_contact_has_chat(user_email, contact, contact_name, platform="test") {
     const me = this;
     const room = await check_if_contact_has_chat(user_email, contact, platform);
     if (room.results.name) {
@@ -999,7 +1095,6 @@ export default class ChatSpace {
         is_first_message: 0,
         platform: platform,
       };
-
       this.chat_space = new ChatSpace({
         $wrapper: this.chat_window.$chat_window,
         profile: profile,
@@ -1009,10 +1104,10 @@ export default class ChatSpace {
         $(".expand-chat-window[data-id|='" + contact + "']").click();
         return;
       }
-
       this.chat_window = new ChatWindow({
         profile: {
           contact: contact,
+          platform: platform,
         },
       });
 
@@ -1471,31 +1566,56 @@ export default class ChatSpace {
     }
 
     if (!this.profile.room) {
-      if(this.default_whatsapp_number && this.profile.platform == "WhatsApp"){
-        if(this.default_whatsapp_type != "Support"){
-          await this.create_direct_channel(content);
-        }else{
-          let selected_contacts_list = []
-          let recipient_profile = {
-            "email": this.profile.contact,
-            "platform" : this.profile.platform,
-            "platform_profile": this.platform_profile,
-            "platform_gateway": this.default_whatsapp_number
-          }
-          selected_contacts_list.push(recipient_profile)
-          let results = await create_group(selected_contacts_list , this.profile.user_email)
-          this.profile.room = results[0].room;
-          this.set_channel_realtime(this.profile.room);
-          this.$chat_space
-            .closest(".chat-window")
-            .attr("data-room", this.profile.room);
-          frappe.ErpnextChat.settings.open_chat_space_rooms.push(this.profile.room);
-          this.is_first_message = 0;
-        }
-      }else{
+      // Handle platform-specific gateway assignment
+      switch (this.profile.platform) {
+        case "WhatsApp":
+          this.platform_gateway = this.default_whatsapp_number;
+          break;
+        case "Instagram":
+          this.platform_gateway = this.default_instagram_profile;
+          break;
+        case "Messenger":
+          this.platform_gateway = this.default_messenger_profile;
+          break;
+        case "Telegram":
+          this.platform_gateway = this.default_telegram_profile;
+          break;
+      }
+    
+      // Special condition to create a group chat for WhatsApp/Instagram/Messenger/Telegram + Support
+      const isSupportChannel =
+        this.profile.platform === "WhatsApp" && this.default_whatsapp_type === "Support" ||
+        this.profile.platform === "Instagram" && this.default_instagram_type === "Support" ||
+        this.profile.platform === "Messenger" && this.default_messenger_type === "Support" ||
+        this.profile.platform === "Telegram" && this.default_telegram_type === "Support";
+    
+      if (
+        this.platform_gateway &&
+        isSupportChannel
+      ) {
+        // Create a group chat instead of a direct one
+        let selected_contacts_list = [{
+          email: this.profile.contact,
+          platform: this.profile.platform,
+          platform_profile: this.platform_profile,
+          platform_gateway: this.platform_gateway
+        }];
+    
+        let results = await create_group(selected_contacts_list, this.profile.user_email);
+        this.profile.room = results[0].room;
+        this.set_channel_realtime(this.profile.room);
+        this.$chat_space
+          .closest(".chat-window")
+          .attr("data-room", this.profile.room);
+        frappe.ErpnextChat.settings.open_chat_space_rooms.push(this.profile.room);
+        this.is_first_message = 0;
+      } else {
+        // For all other scenarios: create a direct channel
         await this.create_direct_channel(content);
-      }            
+      }
     }
+    
+    
 
     if(this.profile.new_member == 1){
       const new_member = [{"email" : this.profile.user_email , "platform" : "Chat"}]
@@ -1941,6 +2061,29 @@ export default class ChatSpace {
   }
 
   async create_direct_channel(content) {
+
+
+    switch (this.profile.platform) {
+      case "WhatsApp":
+        this.platform_profile = "ClefinCode WhatsApp Profile";
+        this.platform_gateway = window.erpnext_chat_app.res.default_whatsapp_number;
+        break;
+      case "Instagram":
+        this.platform_profile = "ClefinCode Instagram Profile" ;
+        this.platform_gateway = window.erpnext_chat_app.res.default_instagram_profile;
+        break;
+      case "Messenger":
+        this.platform_profile = "ClefinCode Facebook Messenger Profile";
+        this.platform_gateway = window.erpnext_chat_app.res.default_messenger_profile;
+        break;
+      case "Telegram":
+        this.platform_profile = "ClefinCode Telegram Profile";
+        this.platform_gateway = window.erpnext_chat_app.res.default_telegram_profile;
+        break;
+    }
+
+
+
     this.chat_members.push({
       email: this.profile.user_email,
       name: this.profile.user_email,
@@ -1951,11 +2094,12 @@ export default class ChatSpace {
       name: this.profile.room_name,
       platform: this.profile.platform,
       platform_profile: this.platform_profile,
-      platform_gateway: this.default_whatsapp_number
+      platform_gateway: this.platform_gateway
     });
+
     this.is_first_message = 1;
     let res = await frappe.call({
-      method: "clefincode_chat.api.api_1_0_1.api.create_channel",
+      method: "clefincode_chat.api.api_1_2_1.api.create_channel",
       args: {
         channel_name: "",
         users: this.chat_members,
@@ -2785,7 +2929,7 @@ export default class ChatSpace {
 
   callSetTypingAPI(user, room, isTyping) {
     frappe.call({
-      method: "clefincode_chat.api.api_1_0_1.api.set_typing",
+      method: "clefincode_chat.api.api_1_2_1.api.set_typing",
       args: {
         user: user,
         room: room,
@@ -2918,7 +3062,7 @@ export default class ChatSpace {
           var data = d.get_values();
 
           frappe.call({
-            method: "clefincode_chat.api.api_1_0_1.api.set_topic_subject",
+            method: "clefincode_chat.api.api_1_2_1.api.set_topic_subject",
             args: {
               chat_topic: me.chat_topic,
               new_subject: data.chat_topic_subject,
@@ -2967,7 +3111,7 @@ export default class ChatSpace {
           primary_action_label: `Set as ${toggle_chat_topic_status}`,
           async primary_action() {
             frappe.call({
-              method: "clefincode_chat.api.api_1_0_1.api.set_topic_status",
+              method: "clefincode_chat.api.api_1_2_1.api.set_topic_status",
               args: {
                 chat_topic: me.chat_topic,
                 chat_topic_status: toggle_chat_topic_status,
@@ -3137,7 +3281,7 @@ async function get_messages(
   offset
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_messages",
+    method: "clefincode_chat.api.api_1_2_1.api.get_messages",
     args: {
       room: room,
       user_email: user_email,
@@ -3154,7 +3298,7 @@ async function get_messages(
 async function get_contributors(room) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_contributors",
+    method: "clefincode_chat.api.api_1_2_1.api.get_contributors",
     args: {
       room: room,
     },
@@ -3165,7 +3309,7 @@ async function get_contributors(room) {
 async function get_sub_channel_members(room, user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_sub_channel_members",
+    method: "clefincode_chat.api.api_1_2_1.api.get_sub_channel_members",
     args: {
       room: room,
       user_email: user_email,
@@ -3177,7 +3321,7 @@ async function get_sub_channel_members(room, user_email) {
 async function get_last_active_sub_channel(room) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_last_active_sub_channel",
+    method: "clefincode_chat.api.api_1_2_1.api.get_last_active_sub_channel",
     args: {
       room: room,
     },
@@ -3192,7 +3336,7 @@ async function get_all_sub_channels_for_contributor(
   const res = await frappe.call({
     type: "GET",
     method:
-      "clefincode_chat.api.api_1_0_1.api.get_all_sub_channels_for_contributor",
+      "clefincode_chat.api.api_1_2_1.api.get_all_sub_channels_for_contributor",
     args: {
       parent_channel: parent_channel,
       user_email: user_email,
@@ -3214,7 +3358,7 @@ async function update_sub_channel_for_last_message(
   const res = frappe.call({
     type: "POST",
     method:
-      "clefincode_chat.api.api_1_0_1.api.update_sub_channel_for_last_message",
+      "clefincode_chat.api.api_1_2_1.api.update_sub_channel_for_last_message",
     args: {
       user: user,
       user_email: user_email,
@@ -3231,7 +3375,7 @@ async function update_sub_channel_for_last_message(
 
 async function get_last_active(contact_email, user_email) {
   const last_active = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_last_active",
+    method: "clefincode_chat.api.api_1_2_1.api.get_last_active",
     args: {
       contact_email: contact_email,
       user_email: user_email,
@@ -3246,7 +3390,7 @@ async function add_reference_doctype(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.add_reference_doctype",
+    method: "clefincode_chat.api.api_1_2_1.api.add_reference_doctype",
     args: {
       mention_doctypes: mention_doctypes,
       chat_topic: chat_topic,
@@ -3258,7 +3402,7 @@ async function add_reference_doctype(
 
 async function get_topic_info(chat_channel) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_topic_info",
+    method: "clefincode_chat.api.api_1_2_1.api.get_topic_info",
     args: {
       chat_channel: chat_channel,
     },
@@ -3272,7 +3416,7 @@ async function create_chat_topic(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.create_chat_topic",
+    method: "clefincode_chat.api.api_1_2_1.api.create_chat_topic",
     args: {
       mention_doctypes: mention_doctypes,
       chat_channel: chat_channel,
@@ -3288,7 +3432,7 @@ export async function remove_chat_topic(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.remove_chat_topic",
+    method: "clefincode_chat.api.api_1_2_1.api.remove_chat_topic",
     args: {
       chat_topic: chat_topic,
       chat_channel: chat_channel,
@@ -3304,7 +3448,7 @@ async function check_if_user_has_permission(
   chat_topic_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.check_if_user_has_permission",
+    method: "clefincode_chat.api.api_1_2_1.api.check_if_user_has_permission",
     args: {
       user_email: user_email,
       chat_topic: chat_topic_space,
@@ -3316,7 +3460,7 @@ async function check_if_user_has_permission(
 
 async function check_if_user_send_request(user_email, chat_topic_space) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.check_if_user_send_request",
+    method: "clefincode_chat.api.api_1_2_1.api.check_if_user_send_request",
     args: {
       user_email: user_email,
       chat_topic: chat_topic_space,
@@ -3334,7 +3478,8 @@ async function send_topic_access_request(
   reference_docname
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.send_topic_access_request",
+    method: "clefincode_chat.api.api_1_2_1.api.send_topic_access_request",
+
     args: {
       user_email: user_email,
       chat_topic: chat_topic_space,
@@ -3350,7 +3495,7 @@ async function send_topic_access_request(
 async function create_website_support_group(website_user_email, content) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_0_1.chat_portal.create_website_support_group",
+      "clefincode_chat.api.api_1_2_1.chat_portal.create_website_support_group",
     args: {
       website_user_email: website_user_email,
       content: content

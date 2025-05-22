@@ -14,6 +14,7 @@ import { remove_chat_topic } from "./erpnext_chat_space";
 export default class ChatInfo {
   constructor(opts) {
     this.chat_space = opts.chat_space;
+    this.chat_status = opts.chat_status;
     this.roomtype = this.chat_space.profile.room_type;
     this.roomname = this.chat_space.profile.room_name;
     this.contact = this.chat_space.profile.contact;
@@ -57,7 +58,7 @@ export default class ChatInfo {
   setup_header() {
     var header = ``;
     header += `  <div class="infoheader p-4 d-flex  flex-row-reverse justify-content-end align-items-center">
-  <span style="font-size:24px; margin-left: 8px;">`;
+    <span style="font-size:24px; margin-left: 8px;">`;
     if (this.roomtype == "Direct") {
       header += `Contact Info`;
     } else if (this.roomtype == "Group") {
@@ -132,8 +133,18 @@ export default class ChatInfo {
 
   async setup_sections() {
     const me = this;
+    const isClosed = (this.chat_status || this.chat_space.chat_status) === "Closed";
     const media_links_docs_section = `  
   <div class="p-4 chat-info-section openMedia"  style="cursor: pointer;">Media, links and docs</div>
+  <div class="p-4 chat-info-section" style="display:flex; justify-content:center;">
+  <button
+      class="btn btn-sm btn-danger close-channel"
+      ${isClosed ? "disabled" : ""}
+    >
+      ${isClosed ? "Closed" : "Close Channel"}
+  </button>
+</div>
+
   <div class=" chat-media" 
   style="position: absolute;
   top: 0;
@@ -508,6 +519,36 @@ export default class ChatInfo {
       me.chat_space.$wrapper.find(".chat-info").remove();
     });
 
+    
+    // Close channel
+    this.$chat_info.find(".close-channel").on("click", async () => {
+      const room = this.chat_space.profile.room;
+      
+      await frappe.call({
+        method: "clefincode_chat.api.api_1_2_1.api.trigger_chat_channel_status",
+        args: {
+          room: room,
+          is_open: true
+        }
+      });
+      this.chat_space.chat_status = "Closed";
+      this.chat_status = "Closed";
+
+      $(".close-chat-window").click();
+
+      this.$chat_info.find(".close-channel").prop("disabled", true).text("Closed");
+
+
+      const $btn = this.$chat_info.find(".close-channel");
+      if (this.chat_space.chat_status === "Closed") {
+        $btn.prop("disabled", true).text("Closed");
+      } else {
+        $btn.prop("disabled", false).text("Close Channel");
+      }
+
+    });
+
+
     this.$chat_info.find(".back-to-chat-info").on("click", function () {
       me.chat_space.$wrapper.find(".chat-info").show();
     });
@@ -534,7 +575,7 @@ export default class ChatInfo {
             .text(newname);
 
           await frappe.call({
-            method: "clefincode_chat.api.api_1_0_1.api.set_group_name",
+            method: "clefincode_chat.api.api_1_2_1.api.set_group_name",
             args: {
               room: me.room,
               newname: newname,
@@ -994,7 +1035,7 @@ export default class ChatInfo {
                   var data = dd.get_values();
                   frappe.call({
                     method:
-                      "clefincode_chat.api.api_1_0_1.api.set_topic_subject",
+                      "clefincode_chat.api.api_1_2_1.api.set_topic_subject",
                     args: {
                       chat_topic: me.chat_space.chat_topic,
                       new_subject: data.chat_topic_subject,
@@ -1167,7 +1208,9 @@ export default class ChatInfo {
     });
   } // end of setup_events
 
-  open_chat_space(channel, channel_name) {
+
+
+  open_chat_space(channel, channel_name, roome_type = "Group") {
     if (check_if_chat_window_open(channel, "room")) {
       $(".expand-chat-window[data-id|='" + channel + "']").click();
       return;
@@ -1185,14 +1228,14 @@ export default class ChatInfo {
       user_email: frappe.session.user,
       room: channel,
       room_name: channel_name,
-      room_type: "Group",
+      room_type: roome_type,
       is_first_message: 0,
       platform: "Chat",
     };
-
     new ChatSpace({
       $wrapper: chat_window.$chat_window,
       profile: profile,
+      chat_status: this.chat_status,
     });
   }
 
@@ -1285,7 +1328,7 @@ export default class ChatInfo {
 async function get_room_creator(room) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_room_creator",
+    method: "clefincode_chat.api.api_1_2_1.api.get_room_creator",
     args: {
       room: room,
     },
@@ -1296,7 +1339,7 @@ async function get_room_creator(room) {
 async function get_room_in_common(email1, email2) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_room_in_common",
+    method: "clefincode_chat.api.api_1_2_1.api.get_room_in_common",
     args: {
       email1: email1,
       email2: email2,
@@ -1307,7 +1350,7 @@ async function get_room_in_common(email1, email2) {
 
 async function get_links(channel, useremail, remove_date) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_chat_links",
+    method: "clefincode_chat.api.api_1_2_1.api.get_chat_links",
     args: {
       channel: channel,
       useremail: useremail,
@@ -1319,7 +1362,7 @@ async function get_links(channel, useremail, remove_date) {
 
 async function get_media(channel, useremail, remove_date) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_chat_media",
+    method: "clefincode_chat.api.api_1_2_1.api.get_chat_media",
     args: {
       channel: channel,
       useremail: useremail,
@@ -1331,7 +1374,7 @@ async function get_media(channel, useremail, remove_date) {
 
 async function get_docs(channel, useremail, remove_date) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_chat_docs",
+    method: "clefincode_chat.api.api_1_2_1.api.get_chat_docs",
     args: {
       channel: channel,
       useremail: useremail,
@@ -1343,7 +1386,7 @@ async function get_docs(channel, useremail, remove_date) {
 
 async function remove_group_member(email, room, last_active_sub_channel) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.remove_group_member",
+    method: "clefincode_chat.api.api_1_2_1.api.remove_group_member",
     args: {
       email: email,
       room: room,
@@ -1361,7 +1404,7 @@ async function remove_group_member_and_assign_new_admin(
 ) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_0_1.api.remove_group_member_and_assign_new_admin",
+      "clefincode_chat.api.api_1_2_1.api.remove_group_member_and_assign_new_admin",
     args: {
       email: email,
       room: room,
@@ -1374,7 +1417,7 @@ async function remove_group_member_and_assign_new_admin(
 
 async function get_room_admins(room, email) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_room_admins",
+    method: "clefincode_chat.api.api_1_2_1.api.get_room_admins",
     args: {
       room: room,
       email: email,
@@ -1385,7 +1428,7 @@ async function get_room_admins(room, email) {
 
 async function is_member(room) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.are_members",
+    method: "clefincode_chat.api.api_1_2_1.api.are_members",
     args: {
       room: room,
     },
@@ -1399,7 +1442,7 @@ async function disable_contributors(
 ) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.disable_contributors",
+    method: "clefincode_chat.api.api_1_2_1.api.disable_contributors",
     args: {
       parent_channel: parent_channel,
       last_active_sub_channel: last_active_sub_channel,
@@ -1421,7 +1464,7 @@ async function leave_contributor(params) {
     freeze = false,
   } = params;
   await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.leave_contributor",
+    method: "clefincode_chat.api.api_1_2_1.api.leave_contributor",
     args: {
       parent_channel: parent_channel,
       user: user,
@@ -1441,7 +1484,7 @@ async function remove_reference_doctype(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.remove_reference_doctype",
+    method: "clefincode_chat.api.api_1_2_1.api.remove_reference_doctype",
     args: {
       chat_topic: chat_topic,
       reference_doctype: reference_doctype,
@@ -1454,7 +1497,7 @@ async function remove_reference_doctype(
 
 async function get_topic_contributors(chat_topic) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_topic_contributors",
+    method: "clefincode_chat.api.api_1_2_1.api.get_topic_contributors",
     args: {
       chat_topic: chat_topic,
     },

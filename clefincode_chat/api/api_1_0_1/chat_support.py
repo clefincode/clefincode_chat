@@ -1,5 +1,5 @@
 import frappe
-from clefincode_chat.api.api_1_0_1.api import get_profile_id
+from clefincode_chat.api.api_1_2_1.api import get_profile_id
 
 
 @frappe.whitelist()

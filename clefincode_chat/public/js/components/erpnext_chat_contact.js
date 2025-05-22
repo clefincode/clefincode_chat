@@ -9,7 +9,7 @@ import {
 
 export default class ChatContact {
   constructor(opts) {
-    this.$wrapper = opts.$wrapper; //chat-container
+    this.$wrapper = opts.$wrapper; 
     this.$chat_contacts_container = opts.$chat_contacts_container;
     this.profile = opts.profile;
     this.chat_contact_list = opts.chat_contact_list;
@@ -21,96 +21,107 @@ export default class ChatContact {
 
   get_contact_details() {
     const me = this;
-    const check_icon = `<div class="check-icon" style="display:none"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="15" height="15" viewBox="0 0 256 256" xml:space="preserve"><defs></defs><g style="stroke: none; stroke-width: 0; stroke-dasharray: none; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: none; fill-rule: nonzero; opacity: 1;" transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)" ><path d="M 89.328 2.625 L 89.328 2.625 c -1.701 -2.859 -5.728 -3.151 -7.824 -0.568 L 46.532 45.173 c -0.856 1.055 -2.483 0.997 -3.262 -0.115 l -8.382 -11.97 c -2.852 -4.073 -8.789 -4.335 -11.989 -0.531 l 0 0 c -2.207 2.624 -2.374 6.403 -0.408 9.211 l 17.157 24.502 c 2.088 2.982 6.507 2.977 8.588 -0.011 l 4.925 -7.07 L 89.135 7.813 C 90.214 6.272 90.289 4.242 89.328 2.625 z" style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 10; fill: rgb(0,0,0); fill-rule: nonzero; opacity: 1;" transform=" matrix(1 0 0 1 0 0) " stroke-linecap="round" /></g></svg></div>`;
-    if (this.profile.contact_details.length == 1) {
-      me.profile.default_contact = this.profile.contact_details[0].contact_info;
-      me.profile.default_platform = this.profile.contact_details[0].contact_type;
-      me.get_default_platform_icon(this.profile.contact_details[0].contact_type, this.profile.contact_details[0].contact_info, check_icon)
-    }
-    this.no_default = 1;
+    let has_default = false;
+    
     this.profile.contact_details.forEach((element) => {
-      if (element.default == 1) {
-        me.profile.default_contact = element.contact_info;
-        me.profile.default_platform = element.contact_type;
-        me.get_default_platform_icon(element.contact_type, element.contact_info, check_icon)        
-        this.no_default = 0;
-      }
+        if (element.contact_type == "Chat") {
+            me.profile.chat_contact = element.contact_info;
+            me.chat_icon = `<div class="icon chat-icon" data-contact=${element.contact_info}><svg class="icon icon-lg"><use href="#icon-small-message"></use></svg></div>`;
+        } else if (element.contact_type == "WhatsApp") {
+            me.profile.whatsapp_contact = element.contact_info;
+            me.whatsapp_icon = `<div class="icon whatsapp-icon" data-contact=${element.contact_info}><img title="WhatsApp" src="/assets/clefincode_chat/icons/whatsapp.svg"></div>`;
+        } else if (element.contact_type == "Instagram") {
+            me.profile.instagram_contact = element.contact_info;
+            me.instagram_icon = `<div class="icon instagram-icon" data-contact=${element.contact_info}><img title="Instagram" src="/assets/clefincode_chat/icons/instagram.svg"></div>`;
+        } else if (element.contact_type == "Messenger") {
+            me.profile.messenger_contact = element.contact_info;
+            me.messenger_icon = `<div class="icon messenger-icon" data-contact=${element.contact_info}><img title="Messenger" src="/assets/clefincode_chat/icons/messenger.svg"></div>`;
+        } else if (element.contact_type == "Telegram") {
+            me.profile.telegram_contact = element.contact_info;
+            me.telegram_icon = `<div class="icon telegram-icon" data-contact=${element.contact_info}><img title="Telegram" src="/assets/clefincode_chat/icons/telegram.svg"></div>`;
+        } else if (element.contact_type == "Email") {
+            me.profile.mail_contact = element.contact_info;
+            me.mail_icon = `<div class="icon mail-icon" data-contact=${element.contact_info}>...</div>`;
+        }
 
-      if (element.contact_type == "Chat") {
-        me.profile.chat_contact = element.contact_info;
-        me.chat_icon = `<div class="icon chat-icon" data-contact=${element.contact_info}><svg class="icon icon-lg"><use href="#icon-small-message"></use></svg>${check_icon}</div>`;
-      } else if (element.contact_type == "WhatsApp") {
-        me.profile.whatsapp_contact = element.contact_info;
-        me.whatsapp_icon = `<div class="icon whatsapp-icon" data-contact=${element.contact_info}><img title="WhatsApp" src="/assets/clefincode_chat/icons/whatsapp.svg">${check_icon}</div>`;
-      } else if (element.contact_type == "Email") {
-        me.profile.mail_contact = element.contact_info;
-        me.mail_icon = `<div class="icon mail-icon" data-contact=${element.contact_info}><svg version="1.1" id="Icons" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve"><g><g><path d="M16,16.8l13.8-9.2C29.2,5.5,27.3,4,25,4H7C4.7,4,2.8,5.5,2.2,7.6L16,16.8z"/></g><g><path d="M16.6,18.8C16.4,18.9,16.2,19,16,19s-0.4-0.1-0.6-0.2L2,9.9V23c0,2.8,2.2,5,5,5h18c2.8,0,5-2.2,5-5V9.9L16.6,18.8z"/></g></g></svg>${check_icon}</div>`;
-      }
+        if (element.default == 1) {
+            me.profile.default_contact = element.contact_info;
+            me.profile.default_platform = element.contact_type;
+            has_default = true;
+        }
     });
 
-    if (this.no_default == 1 && me.profile.contact_details.length > 1) {
-      me.profile.default_contact = me.profile.contact_details[0].contact_info;
-      me.profile.default_platform = me.profile.contact_details[0].contact_type;
-      me.get_default_platform_icon(me.profile.contact_details[0].contact_type, me.profile.contact_details[0].contact_info, check_icon)
+    // NOW call it after icons are created
+    if (has_default) {
+        me.get_default_platform_icon(me.profile.default_platform, me.profile.default_contact);
+    } else if (this.profile.contact_details.length == 1) {
+        me.profile.default_contact = this.profile.contact_details[0].contact_info;
+        me.profile.default_platform = this.profile.contact_details[0].contact_type;
+        me.get_default_platform_icon(this.profile.contact_details[0].contact_type, this.profile.contact_details[0].contact_info);
+    } else {
+        me.profile.default_contact = me.profile.contact_details[0].contact_info;
+        me.profile.default_platform = me.profile.contact_details[0].contact_type;
+        me.get_default_platform_icon(me.profile.contact_details[0].contact_type, me.profile.contact_details[0].contact_info);
     }
-  }
+}
 
-  get_default_platform_icon(default_platform, contact_info, check_icon){
+
+  get_default_platform_icon(default_platform, contact_info){
     if (default_platform == "Chat") {
-      this.profile.default_platform_icon = `<div class="icon chat-icon" data-contact=${contact_info}><svg class="icon icon-lg"><use href="#icon-small-message"></use></svg>${check_icon}</div>`;
+      this.profile.default_platform_icon = `<div class="icon chat-icon" data-contact=${contact_info}><svg class="icon icon-lg"><use href="#icon-small-message"></use></svg></div>`;
     } else if (default_platform == "WhatsApp") {
-      this.profile.default_platform_icon = `<div class="icon whatsapp-icon" data-contact=${contact_info}><img title="WhatsApp" src="/assets/clefincode_chat/icons/whatsapp.svg">${check_icon}</div>`;      
+      this.profile.default_platform_icon = `<div class="icon whatsapp-icon" data-contact=${contact_info}><img title="WhatsApp" src="/assets/clefincode_chat/icons/whatsapp.svg"></div>`;      
     } else if (default_platform == "Email") {
-      this.profile.default_platform_icon = `<div class="icon mail-icon" data-contact=${contact_info}><svg version="1.1" id="Icons" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve"><g><g><path d="M16,16.8l13.8-9.2C29.2,5.5,27.3,4,25,4H7C4.7,4,2.8,5.5,2.2,7.6L16,16.8z"/></g><g><path d="M16.6,18.8C16.4,18.9,16.2,19,16,19s-0.4-0.1-0.6-0.2L2,9.9V23c0,2.8,2.2,5,5,5h18c2.8,0,5-2.2,5-5V9.9L16.6,18.8z"/></g></g></svg>${check_icon}</div>`;
-    }
+      this.profile.default_platform_icon = `<div class="icon mail-icon" data-contact=${contact_info}><svg version="1.1" id="Icons" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" viewBox="0 0 32 32" style="enable-background:new 0 0 32 32;" xml:space="preserve"><g><g><path d="M16,16.8l13.8-9.2C29.2,5.5,27.3,4,25,4H7C4.7,4,2.8,5.5,2.2,7.6L16,16.8z"/></g><g><path d="M16.6,18.8C16.4,18.9,16.2,19,16,19s-0.4-0.1-0.6-0.2L2,9.9V23c0,2.8,2.2,5,5,5h18c2.8,0,5-2.2,5-5V9.9L16.6,18.8z"/></g></g></svg></div>`;
+    } else if (default_platform == "Messenger") {
+      this.profile.default_platform_icon = `<div class="icon messenger-icon" data-contact=${contact_info}><img title="Messenger" src="/assets/clefincode_chat/icons/messenger.svg"></div>`;
+    } else if (default_platform == "Instagram") {
+      this.profile.default_platform_icon = `<div class="icon instagram-icon" data-contact=${contact_info}><img title="Instagram" src="/assets/clefincode_chat/icons/instagram.svg"></div>`;
+    } else if (default_platform == "Telegram") {
+      this.profile.default_platform_icon = `<div class="icon telegram-icon" data-contact=${contact_info}><img title="Telegram" src="/assets/clefincode_chat/icons/telegram.svg" style="scale:120%;"></div>`;
+    } 
   }
 
   setup() {
-    this.$chat_contact = $(document.createElement("div")).addClass(
-      "chat-contact"
-    );
-    const avatar_html = frappe.get_avatar(
-      "avatar-medium",
-      this.profile.contact_name
-    );
-    let info_html = ``;
-    if(this.chat_contact_list.new_group == 1 || this.chat_contact_list.add_member == 1){
-      info_html = `
-			<div class='contact-profile-info'>
-				<div class='contact-name'>
-					${
-            this.profile.contact_name.length > 20
-              ? this.profile.contact_name.substring(0, 20) + "..."
-              : this.profile.contact_name
-          } 	
-          </div>
-          <div class="chat-icons">
-            ${this.chat_icon ? this.chat_icon : ""}
-          </div>				
-				</div>`;        
-    }else{
-      info_html = `
-			<div class='contact-profile-info'>
-				<div class='contact-name'>
-					${
-            this.profile.contact_name.length > 20
-              ? this.profile.contact_name.substring(0, 20) + "..."
-              : this.profile.contact_name
-          } 					
-				</div>
-        <div class="chat-icons">
-          ${this.profile.default_platform_icon ? this.profile.default_platform_icon : ""}
-          ${this.profile.contact_details.length > 1 ? this.get_contact_options() : "<div style='width:40px'></div>"}                   
-        </div>
-      </div>				
-		`;
-    }
+    this.$chat_contact = $(document.createElement("div")).addClass("chat-contact");
+
+    // Generate the avatar HTML
+    const avatar_html = frappe.get_avatar("avatar-medium", this.profile.contact_name);
     
+    let icons_html = `
+    ${this.profile.default_platform_icon ? this.profile.default_platform_icon : ""}`;
+
+
+
+
+    // Generate the info HTML for contact details
+    let info_html = `
+        <div class='contact-profile-info'>
+            <div class='contact-name'>
+                ${
+                    this.profile.contact_name.length > 20
+                        ? this.profile.contact_name.substring(0, 20) + "..."
+                        : this.profile.contact_name
+                }
+            </div>
+            <div class="chat-icons">
+                ${icons_html}
+                ${this.profile.contact_details.length > 1 ? this.get_contact_options() : "<div style='width:40px'></div>"}
+            </div>
+        </div>
+    `;
+
+    // Combine avatar and contact info HTML
     const innerhtml = avatar_html + info_html;
+
+    // Add the combined HTML to the chat contact container
     this.$chat_contact.html(innerhtml);
     this.$chat_contacts_container.append(this.$chat_contact);
+
+    // Set up events for this contact
     this.setup_events();
-  }
+}
+
 
   get_contact_options(){
     let html_options = `<div class="dropdown options-icon" style="font-size:24px; font-weight:bold">
@@ -119,9 +130,12 @@ export default class ChatContact {
     </div>
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">`;
     const contact_details = this.profile.contact_details;
+
     if(this.no_default == 1){
       for(let i = 1; i<contact_details.length; i++){
-        html_options+=`<a class="dropdown-item ${contact_details[i].contact_type}" data-contact ="${contact_details[i].contact_info}"><div style="margin-right:6px">${this.get_icon(contact_details[i].contact_type)}</div> <div>${contact_details[i].contact_info}</div></a>`;
+        if (contact_details[i].contact_type != "Instagram" && contact_details[i].contact_type != "Messenger" && contact_details[i].contact_type != "Telegram"){
+          html_options+=`<a class="dropdown-item ${contact_details[i].contact_type}" data-contact ="${contact_details[i].contact_info}"><div style="margin-right:6px">${this.get_icon(contact_details[i].contact_type)}</div> <div>${contact_details[i].contact_info}</div></a>`;
+        }
       }
     }else{
       for(let option of contact_details){
@@ -149,14 +163,16 @@ export default class ChatContact {
   }
 
   click_on_contact(e) {
-    const me = this;
-    const contact_element = $(e).closest(".chat-icon, .Chat, .mail-icon, .Email, .chat-contact, .whatsapp-icon, .WhatsApp, .options-icon");
+    const contact_element = $(e).closest(
+        ".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact, .options-icon"
+    );
 
-    // If the element has the 'options-icon' class, return early
+    // If the element is the dropdown menu, return early
     if (contact_element.hasClass("options-icon")) {
         return;
     }
 
+    // Handle based on contact type
     if (contact_element.length > 0) {
         if (contact_element.hasClass("chat-icon") || contact_element.hasClass("Chat")) {
             this.handle_chat_icon_click(contact_element);
@@ -164,11 +180,42 @@ export default class ChatContact {
             this.handle_mail_icon_click(contact_element);
         } else if (contact_element.hasClass("whatsapp-icon") || contact_element.hasClass("WhatsApp")) {
             this.handle_whatsapp_icon_click();
+        } else if (contact_element.hasClass("instagram-icon") || contact_element.hasClass("Instagram")) {
+            this.handle_instagram_icon_click(contact_element);
         } else if (contact_element.hasClass("chat-contact")) {
             this.handle_chat_contact_click();
-        }
+        } else if (contact_element.hasClass("messenger-icon") || contact_element.hasClass("Messenger")) {
+          this.handle_messenger_icon_click(contact_element);
+        } else if (contact_element.hasClass("telegram-icon") || contact_element.hasClass("Telegram")) {
+          this.handle_telegram_icon_click(contact_element);
+        }     
     }
 }
+
+
+handle_instagram_icon_click(contact_element) {
+  const contact = contact_element.data("contact");
+  const platform = "Instagram";
+
+  this.check_if_contact_has_chat(this.profile.user_email, contact, platform);
+}
+
+
+handle_messenger_icon_click(contact_element) {
+  const contact = contact_element.data("contact");
+  const platform = "Messenger";
+
+  this.check_if_contact_has_chat(this.profile.user_email, contact, platform);
+}
+
+
+handle_telegram_icon_click(contact_element) {
+  const contact = contact_element.data("contact");
+  const platform = "Telegram";
+
+  this.check_if_contact_has_chat(this.profile.user_email, contact, platform);
+}
+
 
 handle_chat_icon_click(contact_element) {
     this.check_if_contact_has_chat(
@@ -215,30 +262,23 @@ handle_whatsapp_icon_click() {
 }
 
 handle_chat_contact_click() {
-    if (this.profile.default_platform === "WhatsApp") {
-        this.handle_whatsapp_icon_click();
-    } else if (this.profile.default_platform === "Email") {
-        this.composer = new frappe.views.CommunicationComposer({
-            recipients: this.profile.default_contact,
-            message: "",
-            sender: this.profile.user_email,
-        });
-    } else if (this.profile.default_platform === "Chat") {
-        if (check_if_chat_window_open(this.profile.default_contact, "contact")) {
-            return;
-        }
-        this.check_if_contact_has_chat(
-            this.profile.user_email,
-            this.profile.default_contact,
-            this.profile.default_platform
-        );
-    }
+  const contact = this.profile.default_contact;
+  const platform = this.profile.default_platform;
+
+
+  if (!contact || !platform) {
+      frappe.msgprint(__("No contact details available."));
+      return;
+  }
+
+  this.check_if_contact_has_chat(this.profile.user_email, contact, platform);
 }
+
 
   select_contact(e) {
     const me = this;
     let icon, platform;
-    const contact_element = $(e).closest(".chat-icon, .Chat, .mail-icon, .Email, .chat-contact , .whatsapp-icon, .WhatsApp, .options-icon");
+    const contact_element = $(e).closest(".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact,.options-icon");
     if(contact_element.hasClass("options-icon")){
       return
     }else if (contact_element.length > 0) { 
@@ -249,10 +289,16 @@ handle_chat_contact_click() {
         platform = "Email";
       } else if (contact_element.hasClass("whatsapp-icon") || contact_element.hasClass("WhatsApp")) {
         platform = "WhatsApp";        
+      } else if ($(e).hasClass("instagram-icon") || contact_element.hasClass("Instagram")) {
+        platform = "Instagram";
+      } else if (contact_element.hasClass("messenger-icon") || contact_element.hasClass("Messenger")) {
+        platform = "Messenger";
+      } else if (contact_element.hasClass("telegram-icon") || contact_element.hasClass("Telegram")) {
+        platform = "Telegram";
       } 
       else if (contact_element.hasClass("chat-contact")) {
         platform = "Chat"; 
-        icon = $(e).closest('.chat-contact').find('.chat-icon')     
+        icon = $(e).closest('.chat-contact').find('.chat-icon')    
       } 
     }
 
@@ -275,14 +321,55 @@ handle_chat_contact_click() {
   }
 
   add_contact_from_selected_contacts(platform, contact) {
-    this.chat_contact_list.selected_contacts.push({
-      profile_id: this.profile.profile_id,
-      email: contact,
-      name: this.profile.contact_name,
-      platform: platform,
-      platform_profile: platform == "WhatsApp" ? "ClefinCode WhatsApp Profile" : null,
-      platform_gateway: platform == "WhatsApp" ? erpnext_chat_app.res.default_whatsapp_number : null
-    });
+    if (platform == "Whatsapp") {
+      this.chat_contact_list.selected_contacts.push({
+        profile_id: this.profile.profile_id,
+        email: contact,
+        name: this.profile.contact_name,
+        platform: platform,
+        platform_profile: platform == "WhatsApp" ? "ClefinCode WhatsApp Profile" : null,
+        platform_gateway: platform == "WhatsApp" ? erpnext_chat_app.res.default_whatsapp_number : null
+      });
+    }
+    
+    else if (platform == "Instagram") {
+      this.chat_contact_list.selected_contacts.push({
+        profile_id: this.profile.profile_id,
+        email: contact,
+        name: this.profile.contact_name,
+        platform: platform,
+        platform_profile: platform == "Instagram" ? "ClefinCode Instagram Profile" : null,
+        platform_gateway: platform == "Instagram" ? erpnext_chat_app.res.default_instagram_profile : null
+      });
+    }
+    else if (platform == "Messenger") {
+      this.chat_contact_list.selected_contacts.push({
+        profile_id: this.profile.profile_id,
+        email: contact,
+        name: this.profile.contact_name,
+        platform: platform,
+        platform_profile: platform == "Messenger" ? "ClefinCode Facebook Messenger Profile" : null,
+        platform_gateway: platform == "Messenger" ? erpnext_chat_app.res.default_messenger_profile : null
+      });
+    }
+    else if (platform == "Telegram") {
+      this.chat_contact_list.selected_contacts.push({
+        profile_id: this.profile.profile_id,
+        email: contact,
+        name: this.profile.contact_name,
+        platform: platform,
+        platform_profile: platform == "Telegram" ? "ClefinCode Telegram Profile" : null,
+        platform_gateway: platform == "Telegram" ? erpnext_chat_app.res.default_telegram_profile : null
+      });
+    }
+    else {
+      this.chat_contact_list.selected_contacts.push({
+        profile_id: this.profile.profile_id,
+        email: contact,
+        name: this.profile.contact_name,
+        platform: platform,
+      });
+    }
   }
 
   remove_contact_from_selected_contacts(platform, contact) {
@@ -353,7 +440,8 @@ handle_chat_contact_click() {
     return user_phone_list;
   }
 
-  open_chat_space(contact, platform, room = null, room_type = "Direct", new_member = null) {
+  open_chat_space(contact, platform, room = null, room_type = "Direct", new_member = null, room_status) {
+    this.chat_status = room_status;
     if (room) {
       if (check_if_chat_window_open(room, "room")) {
         $(".expand-chat-window[data-id|='" + contact + "']").click();
@@ -380,16 +468,18 @@ handle_chat_contact_click() {
         new_member: new_member
       };
 
+
       this.chat_space = new ChatSpace({
         $wrapper: this.chat_window.$chat_window,
         profile: profile,
+        chat_status: this.chat_status
       });
+
     } else {
       if (check_if_chat_window_open(contact, "contact")) {
         $(".expand-chat-window[data-id|='" + contact + "']").click();
         return;
       }
-
       this.chat_window = new ChatWindow({
         profile: {
           contact: contact,
@@ -408,7 +498,6 @@ handle_chat_contact_click() {
         is_first_message: 1,
         platform: platform,
       };
-
       this.chat_space = new ChatSpace({
         $wrapper: this.chat_window.$chat_window,
         profile: profile,
@@ -418,8 +507,10 @@ handle_chat_contact_click() {
   
   async check_if_contact_has_chat(user_email, contact, platform) {
     const room = await check_if_contact_has_chat(user_email, contact, platform);
+    const room_type = "Direct"
+    const new_member = null
     if (room.results.name) {
-      this.open_chat_space(contact, platform, room.results.name);
+      this.open_chat_space(contact, platform, room.results.name, room_type, new_member, room.results.chat_status);
     } else {
       this.open_chat_space(contact, platform);
     }
@@ -440,21 +531,28 @@ handle_chat_contact_click() {
     }
 }
 
-get_icon(contact_type){
-  if(contact_type == 'Chat'){
-    return this.chat_icon
-  }else if(contact_type == 'WhatsApp'){
-    return this.whatsapp_icon
-  }else if(contact_type == 'Email'){
-    return this.mail_icon
-  }
+get_icon(contact_type) {
+  if (contact_type == "Chat") {
+      return this.chat_icon;
+  } else if (contact_type == "WhatsApp") {
+      return this.whatsapp_icon;
+  } else if (contact_type == "Instagram") {
+      return this.instagram_icon;
+  } else if (contact_type == "Email") {
+      return this.mail_icon;
+  } else if (contact_type == "Messenger") {
+      return this.messenger_icon;
+  } else if (contact_type == "Telegram") {
+    return this.telegram_icon;
 }
+}
+
 } // END Class
 
 export async function check_if_contact_has_chat(user_email, contact, platform) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.check_if_contact_has_chat",
+    method: "clefincode_chat.api.api_1_2_1.api.check_if_contact_has_chat",
     args: {
       user_email: user_email,
       contact: contact,
@@ -467,7 +565,7 @@ export async function check_if_contact_has_chat(user_email, contact, platform) {
 export async function check_if_contact_has_whatsapp_chat(default_whatsapp_number, default_whatsapp_type, contact, platform, user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.check_if_contact_has_whatsapp_chat",
+    method: "clefincode_chat.api.api_1_2_1.api.check_if_contact_has_whatsapp_chat",
     args: {
       default_whatsapp_number: default_whatsapp_number,
       default_whatsapp_type: default_whatsapp_type,

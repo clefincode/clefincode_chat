@@ -1,7 +1,7 @@
 import frappe
 import datetime
 from clefincode_chat.utils.utils import choose_user_to_respond
-from clefincode_chat.api.api_1_0_1.api import get_profile_id , convert_utc_to_user_timezone , get_user_timezone , send_notification, share_doctype, get_contact_full_name
+from clefincode_chat.api.api_1_2_1.api import get_profile_id , convert_utc_to_user_timezone , get_user_timezone , send_notification, share_doctype, get_contact_full_name
 
 @frappe.whitelist(allow_guest = True)
 def create_guest_profile_and_channel(content , sender , sender_email , creation_date):    
