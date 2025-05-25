@@ -31,6 +31,35 @@ export default class ChatList {
     this.setup_socketio();
   }
 
+
+  async handleSearch(q) {
+    q = q.trim().toLowerCase();
+    if (!q) {
+      // Reset pagination & reload first page
+      this.offset = 0;
+      return this.fetch_and_setup_rooms();
+    }
+
+    // Abort any inflight channel-list fetch
+    if (this.controller) {
+      this.controller.abort();
+      this.controller = null;
+    }
+
+    // Hit your search endpoint
+    const results = await search_in_rooms(this.user_email, q);
+
+    // Swap in the new “search hits” set
+    this.room_groups    = results;
+    this.num_of_results = results.length;
+    this.offset         = results.length;
+    this.rest_of_results= 0;
+
+    // Tear down any old container and render the new rooms
+    await this.setup_rooms(/* no abort signal */);
+    await this.render_messages(/* no abort signal */);
+  }
+
   setup_header() {    
     let chat_list_header_html = ``;
     if(this.user_type == "system_user"){
@@ -166,7 +195,7 @@ export default class ChatList {
 
 
   async setup_rooms(signal) {
-    if (signal.aborted) {
+    if (signal && signal.aborted) {
       return;
     }
     if (
@@ -206,7 +235,6 @@ export default class ChatList {
         platform: element.platform
       };
 
-
       this.chat_room_groups.push([
         profile.room,
         new ChatRoom({
@@ -223,7 +251,7 @@ export default class ChatList {
   }
 
   async render_messages(signal = null) {
-    if (signal.aborted || this.num_of_results == 0) return;
+    if (signal?.aborted || this.num_of_results == 0) return;
 
     this.$chat_rooms_group_container.empty();
     for (const element of this.chat_room_groups) {
@@ -257,13 +285,13 @@ export default class ChatList {
 
   setup_events() {
     const me = this;
-    $(".chat-list .chat-search-box").on("input", function (e) {
-      if (me.search_timeout != undefined) {
+    $(".chat-list .chat-search-box").on("input", function () {
+      if (me.search_timeout) {
         clearTimeout(me.search_timeout);
-        me.search_timeout = undefined;
       }
+      // Debounce 300ms
       me.search_timeout = setTimeout(() => {
-        me.fitler_rooms($(this).val().toLowerCase());
+        me.handleSearch($(this).val());
       }, 300);
     });
 
@@ -425,12 +453,12 @@ export default class ChatList {
         };
 
         if (me.is_open === 1) {
-          if (
-            res.room_type === "Direct" &&
-            me.user_email === res.sender_email
-          ) {
-            res.room_name = res.contact_name;
-          }
+          // if (
+          //   res.room_type === "Direct" &&
+          //   me.user_email === res.sender_email
+          // ) {
+          //   res.room_name = res.contact_name;
+          // }
 
           if (!me.chat_room_groups) {
             setCommonFields();
@@ -558,7 +586,7 @@ export default class ChatList {
   }
 
   async get_and_loading_more_contents() {
-    if (this._loading) return;      // <— guard
+    if (this._loading) return;      
     this._loading = true;
   // 1) fetch next page
   const { results, num_of_results } = await get_channels_list(
@@ -606,7 +634,6 @@ export default class ChatList {
       last_message_number: element.last_message_number,
       user_unread_messages: element.user_unread_messages
     };
-
 
     // instantiate & render
     const chatRoom = new ChatRoom({
@@ -715,7 +742,7 @@ async function get_last_message_type(
 async function check_if_website_user_has_support_channel(website_user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.chat_portal.check_if_website_user_has_support_channel",
+    method: "clefincode_chat.api.api_1_0_1.chat_portal.check_if_website_user_has_support_channel",
     args: {
       website_user_email: website_user_email
     },
@@ -726,13 +753,13 @@ async function check_if_website_user_has_support_channel(website_user_email) {
 async function search_in_rooms(email, query) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.search_in_rooms",
+    method: "clefincode_chat.api.api_1_2_1.api.get_channels_list",
     args: {
-      user: email,
+      user_email: email,
       query: query,
     },
   });
-  return await res.message;
+  return  res.message.results;
 }
 
 async function search_in_message_content(email, query) {

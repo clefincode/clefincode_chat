@@ -658,7 +658,7 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
         return {"results" : [{"channel" : sub_channel_doc.name}]}
 # ==========================================================================================
 @frappe.whitelist()
-def get_channels_list(user_email, limit=10, offset=0):
+def get_channels_list(user_email, limit=10, offset=0, query=None):
     # sanitize inputs
     user_email_esc = frappe.db.escape(user_email)
     limit = int(limit)
@@ -765,20 +765,33 @@ def get_channels_list(user_email, limit=10, offset=0):
         GROUP BY ChatChannelContributor.user, ChatChannel.name
     """
 
+    # If a search query was passed, only keep rows whose channel_name matches
+    filter_clause = ""
+    if query:
+        # escape and lowercase for a case-insensitive LIKE
+        like_q = f"'%{ query.strip().lower() }%'"
+        
+        filter_clause = f"""
+            WHERE LOWER(COALESCE(channel_name, '')) LIKE {like_q}
+        """
+
+    
+    # Paginated, ordered, and (optionally) filtered
     paged_sql = f"""
         SELECT * 
         FROM ({union_sql}) AS all_channels
+        {filter_clause}
         ORDER BY send_date DESC
         LIMIT {limit} OFFSET {offset}
     """
-
-    # Fetch the paginated channels
     paged = frappe.db.sql(paged_sql, as_dict=True)
+    
 
-    # Count total rows (for pagination)
+    # Total count of matching rows (for pagination or UI feedback)
     total_count_sql = f"""
         SELECT COUNT(*) 
         FROM ({union_sql}) AS all_channels
+        {filter_clause}
     """
     total_count = frappe.db.sql(total_count_sql, as_list=True)[0][0]
 
@@ -1147,7 +1160,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     results["room"] = room
                     results["send_date"] = convert_utc_to_user_timezone(send_date, get_user_timezone(member.user)["results"][0]["time_zone"])
                     results["time_zone"] = frappe.db.get_value("User" , member.user , "time_zone")
-                    results["target_user"] = member.user            
+                    results["target_user"] = member.user
                     frappe.publish_realtime(event=room, message=results, user=member.user)  # listner in chat space      
                     frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user) # listner when initilizing app 
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
@@ -2751,7 +2764,6 @@ def get_support_profile_id(user_email):
 def get_last_active(contact_email=None, user_email=None):
     last_active = ""
     last_active_utc = frappe.db.get_value('ClefinCode Chat Profile' , get_profile_id(contact_email), "last_active")
-    frappe.log_error("last_active_utc", last_active_utc)
 
     if last_active_utc:
         last_active = convert_utc_to_user_timezone(last_active_utc, get_user_timezone(user_email)["results"][0]["time_zone"])
@@ -2855,7 +2867,7 @@ def search_in_rooms(user , query):
                     room_list.append(room)
                 
 
-    return room_list 
+    return {"results":room_list} 
 # ==========================================================================================
 @frappe.whitelist()
 def search_in_message_content(user , query):    

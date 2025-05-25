@@ -501,7 +501,23 @@ export default class ChatInfo {
         });
         this.$chat_info.append(contributors_section);
       }
-    }
+    } else if (this.roomtype == "Guest") {
+        let guest_sections = ``;
+
+        const isClosed = (this.chat_status || this.chat_space.chat_status) === "Closed";
+
+          guest_sections += `
+            <div class="p-4 chat-info-section openMedia" style="cursor: pointer;">Media, links and docs</div>
+            <div class="p-4 chat-info-section" style="display:flex; justify-content:center;">
+              <button class="btn btn-sm btn-danger close-channel" ${isClosed ? "disabled" : ""}>
+                ${isClosed ? "Closed" : "Close Channel"}
+              </button>
+            </div>
+          `;
+        
+
+        this.$chat_info.append(guest_sections);
+      }
   }
 
   setup_events() {

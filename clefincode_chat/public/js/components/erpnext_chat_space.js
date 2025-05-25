@@ -2082,8 +2082,6 @@ export default class ChatSpace {
         break;
     }
 
-
-
     this.chat_members.push({
       email: this.profile.user_email,
       name: this.profile.user_email,
@@ -2101,7 +2099,7 @@ export default class ChatSpace {
     let res = await frappe.call({
       method: "clefincode_chat.api.api_1_2_1.api.create_channel",
       args: {
-        channel_name: "",
+        channel_name: this.profile.room_name,
         users: this.chat_members,
         type: "Direct",
         last_message: content,
@@ -3495,7 +3493,7 @@ async function send_topic_access_request(
 async function create_website_support_group(website_user_email, content) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_2_1.chat_portal.create_website_support_group",
+      "clefincode_chat.api.api_1_0_1.chat_portal.create_website_support_group",
     args: {
       website_user_email: website_user_email,
       content: content
