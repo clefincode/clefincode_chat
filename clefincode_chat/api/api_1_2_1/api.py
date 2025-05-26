@@ -703,14 +703,11 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
             ChatChannelUser.remove_date    AS remove_date,
             is_website_support_group,
             ChatChannel.chat_status        AS chat_status,
-            OtherUser.platform             AS other_user_platform
+            NULL                           AS other_user_platform
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  
             ON ChatChannelUser.parent = ChatChannel.name
             AND ChatChannelUser.user = {user_email_esc}
-        INNER JOIN `tabClefinCode Chat Channel User` AS OtherUser
-            ON OtherUser.parent = ChatChannel.name
-            AND OtherUser.user != {user_email_esc}
         WHERE type = 'Group'
           AND ChatChannelUser.platform = 'Chat'
 
