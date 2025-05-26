@@ -18,5 +18,4 @@ export default class ChatWindow {
         this.$wrapper.css('display' , '');
         this.$wrapper.append(this.$chat_window);
     }
-    
 }

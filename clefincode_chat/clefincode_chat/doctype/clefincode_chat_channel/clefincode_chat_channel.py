@@ -3,7 +3,7 @@
 
 import frappe
 from frappe.model.document import Document
-from clefincode_chat.api.api_1_0_1.api import get_contact_first_name
+from clefincode_chat.api.api_1_2_1.api import get_contact_first_name
 
 class ClefinCodeChatChannel(Document):
 	def get_group_name(self):

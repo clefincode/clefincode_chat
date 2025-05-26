@@ -115,7 +115,7 @@ frappe.ErpnextChat = class {
                 if(room_type == 'Contributor'){
                     frappe.call({
                         method:
-                          "clefincode_chat.api.api_1_0_1.api.mark_messsages_as_read",
+                          "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read",
                         args: {
                           user: me.frappe.session.user ,
                           channel: null,
@@ -128,7 +128,7 @@ frappe.ErpnextChat = class {
                   } else{
                     frappe.call({
                         method:
-                          "clefincode_chat.api.api_1_0_1.api.mark_messsages_as_read",
+                          "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read",
                         args: {
                           user: me.frappe.session.user ,
                           channel: room,
@@ -348,7 +348,7 @@ frappe.ErpnextChat = class {
       // frappe.utils.play_sound("chat-notification");
 
       // Alternative way for playing the notification sound.
-      const audio = new Audio('/assets/clefincode_chat/sounds/chat-notification.mp3');
+      const audio = new Audio('/assets/clefincode_chat/sounds/new-chat-notification.mp3');
       audio.play().catch(error => {
           console.error('Error playing sound:', error);
       });
@@ -391,7 +391,7 @@ frappe.ErpnextChat = class {
 async function get_settings(token) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_settings",
+    method: "clefincode_chat.api.api_1_2_1.api.get_settings",
     args: {
       token: token,
     },
@@ -402,7 +402,7 @@ async function get_settings(token) {
 async function calculate_unread_messages(user) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.calculate_unread_messages",
+    method: "clefincode_chat.api.api_1_2_1.api.calculate_unread_messages",
     args: {
       user: user,
     },

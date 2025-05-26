@@ -160,6 +160,5 @@ frappe.ui.set_theme = (theme) => {
 		}
 	}
 	var obj = [{key: "theme", data: theme || theme_mode}];
-	console.log(JSON.stringify(obj));
 	root.setAttribute("data-theme", theme || theme_mode);
 };

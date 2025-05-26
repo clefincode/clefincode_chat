@@ -15,7 +15,7 @@ from frappe.model.utils import is_virtual_doctype
 from frappe.model.utils.user_settings import get_user_settings
 from frappe.permissions import get_doc_permissions
 from frappe.utils.data import cstr
-from clefincode_chat.api.api_1_0_1.api import get_contact_full_name, check_if_user_has_permission_to_file
+from clefincode_chat.api.api_1_2_1.api import get_contact_full_name, check_if_user_has_permission_to_file
 from frappe.desk.form.load import run_onload ,set_link_titles, _get_communications, add_comments, update_user_info, get_attachments, get_versions, get_assignments, get_doc_permissions, get_point_logs, get_additional_timeline_content, get_milestones,is_document_followed, get_tags, get_document_email
 
 

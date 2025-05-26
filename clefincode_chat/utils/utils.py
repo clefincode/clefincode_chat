@@ -14,7 +14,22 @@ def choose_user_to_respond(doctype, docname = None):
         rule  = frappe.db.get_value(doctype, docname, "rule")   
         role  = frappe.db.get_value(doctype, docname, "role")  
         last_user = frappe.db.get_value(doctype, docname, "last_user")
+        
+    elif doctype == "ClefinCode Telegram Profile":
+        rule  = frappe.db.get_value(doctype, docname, "rule")   
+        role  = frappe.db.get_value(doctype, docname, "role")  
+        last_user = frappe.db.get_value(doctype, docname, "last_user")    
     
+    elif doctype == "ClefinCode Instagram Profile":
+        rule  = frappe.db.get_value(doctype, docname, "rule")   
+        role  = frappe.db.get_value(doctype, docname, "role")  
+        last_user = frappe.db.get_value(doctype, docname, "last_user")
+        
+    elif doctype == "ClefinCode Facebook Messenger Profile":
+        rule  = frappe.db.get_value(doctype, docname, "rule")   
+        role  = frappe.db.get_value(doctype, docname, "role")  
+        last_user = frappe.db.get_value(doctype, docname, "last_user")    
+        
     if rule == "Round Robin":
         user = get_user_round_robin(last_user, doctype, role)        
     elif rule == "Load Balancing":
@@ -139,3 +154,17 @@ def check_template_status(message_template):
         return False
     
     return True
+# ============================================================================================================
+def get_access_token_instagram():
+    doc = frappe.get_doc("ClefinCode Instagram Integration")
+    access_token = doc.get_password("access_token")
+    if not access_token:
+        frappe.throw("Access Token doesn't exist")
+    return access_token
+# ============================================================================================================
+def get_access_token_messenger():
+    doc = frappe.get_doc("ClefinCode Facebook Messenger Integration")
+    access_token = doc.get_password("access_token")
+    if not access_token:
+        frappe.throw("Access Token doesn't exist")
+    return access_token

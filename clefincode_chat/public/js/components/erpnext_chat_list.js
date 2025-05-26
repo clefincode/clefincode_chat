@@ -31,6 +31,35 @@ export default class ChatList {
     this.setup_socketio();
   }
 
+
+  async handleSearch(q) {
+    q = q.trim().toLowerCase();
+    if (!q) {
+      // Reset pagination & reload first page
+      this.offset = 0;
+      return this.fetch_and_setup_rooms();
+    }
+
+    // Abort any inflight channel-list fetch
+    if (this.controller) {
+      this.controller.abort();
+      this.controller = null;
+    }
+
+    // Hit your search endpoint
+    const results = await search_in_rooms(this.user_email, q);
+
+    // Swap in the new “search hits” set
+    this.room_groups    = results;
+    this.num_of_results = results.length;
+    this.offset         = results.length;
+    this.rest_of_results= 0;
+
+    // Tear down any old container and render the new rooms
+    await this.setup_rooms(/* no abort signal */);
+    await this.render_messages(/* no abort signal */);
+  }
+
   setup_header() {    
     let chat_list_header_html = ``;
     if(this.user_type == "system_user"){
@@ -54,7 +83,7 @@ export default class ChatList {
       <div class='chat-list-icons'> 
         <div class='support-icon' 
             title='Request Support' style="margin-right:6px">
-            <svg height="18px" width="18px" version="1.1" id="_x32_" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" xml:space="preserve" fill="#2490ef"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <style type="text/css"> .st0{fill:#2490ef;} </style> <g> <path class="st0" d="M256,0C114.616,0,0,114.612,0,256s114.616,256,256,256s256-114.612,256-256S397.385,0,256,0z M207.678,378.794 c0-17.612,14.281-31.893,31.893-31.893c17.599,0,31.88,14.281,31.88,31.893c0,17.595-14.281,31.884-31.88,31.884 C221.959,410.678,207.678,396.389,207.678,378.794z M343.625,218.852c-3.596,9.793-8.802,18.289-14.695,25.356 c-11.847,14.148-25.888,22.718-37.442,29.041c-7.719,4.174-14.533,7.389-18.769,9.769c-2.905,1.604-4.479,2.95-5.256,3.826 c-0.768,0.926-1.029,1.306-1.496,2.826c-0.273,1.009-0.558,2.612-0.558,5.091c0,6.868,0,12.512,0,12.512 c0,6.472-5.248,11.728-11.723,11.728h-28.252c-6.475,0-11.732-5.256-11.732-11.728c0,0,0-5.645,0-12.512 c0-6.438,0.752-12.744,2.405-18.777c1.636-6.008,4.215-11.718,7.508-16.694c6.599-10.083,15.542-16.802,23.984-21.48 c7.401-4.074,14.723-7.455,21.516-11.281c6.789-3.793,12.843-7.91,17.302-12.372c2.988-2.975,5.31-6.05,7.087-9.52 c2.335-4.628,3.955-10.067,3.992-18.389c0.012-2.463-0.698-5.702-2.632-9.405c-1.926-3.686-5.066-7.694-9.264-11.29 c-8.45-7.248-20.843-12.545-35.054-12.521c-16.285,0.058-27.186,3.876-35.587,8.62c-8.36,4.776-11.029,9.595-11.029,9.595 c-4.268,3.718-10.603,3.85-15.025,0.314l-21.71-17.397c-2.719-2.173-4.322-5.438-4.396-8.926c-0.063-3.479,1.425-6.81,4.061-9.099 c0,0,6.765-10.43,22.451-19.38c15.62-8.992,36.322-15.488,61.236-15.429c20.215,0,38.839,5.562,54.268,14.661 c15.434,9.148,27.897,21.744,35.851,36.876c5.281,10.074,8.525,21.43,8.533,33.38C349.211,198.042,347.248,209.058,343.625,218.852 z"></path> </g> </g></svg>
+            <svg height="15px" width="15px" version="1.1" id="_x32_" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" xml:space="preserve" fill="#2490ef"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <style type="text/css"> .st0{fill:#2490ef;} </style> <g> <path class="st0" d="M256,0C114.616,0,0,114.612,0,256s114.616,256,256,256s256-114.612,256-256S397.385,0,256,0z M207.678,378.794 c0-17.612,14.281-31.893,31.893-31.893c17.599,0,31.88,14.281,31.88,31.893c0,17.595-14.281,31.884-31.88,31.884 C221.959,410.678,207.678,396.389,207.678,378.794z M343.625,218.852c-3.596,9.793-8.802,18.289-14.695,25.356 c-11.847,14.148-25.888,22.718-37.442,29.041c-7.719,4.174-14.533,7.389-18.769,9.769c-2.905,1.604-4.479,2.95-5.256,3.826 c-0.768,0.926-1.029,1.306-1.496,2.826c-0.273,1.009-0.558,2.612-0.558,5.091c0,6.868,0,12.512,0,12.512 c0,6.472-5.248,11.728-11.723,11.728h-28.252c-6.475,0-11.732-5.256-11.732-11.728c0,0,0-5.645,0-12.512 c0-6.438,0.752-12.744,2.405-18.777c1.636-6.008,4.215-11.718,7.508-16.694c6.599-10.083,15.542-16.802,23.984-21.48 c7.401-4.074,14.723-7.455,21.516-11.281c6.789-3.793,12.843-7.91,17.302-12.372c2.988-2.975,5.31-6.05,7.087-9.52 c2.335-4.628,3.955-10.067,3.992-18.389c0.012-2.463-0.698-5.702-2.632-9.405c-1.926-3.686-5.066-7.694-9.264-11.29 c-8.45-7.248-20.843-12.545-35.054-12.521c-16.285,0.058-27.186,3.876-35.587,8.62c-8.36,4.776-11.029,9.595-11.029,9.595 c-4.268,3.718-10.603,3.85-15.025,0.314l-21.71-17.397c-2.719-2.173-4.322-5.438-4.396-8.926c-0.063-3.479,1.425-6.81,4.061-9.099 c0,0,6.765-10.43,22.451-19.38c15.62-8.992,36.322-15.488,61.236-15.429c20.215,0,38.839,5.562,54.268,14.661 c15.434,9.148,27.897,21.744,35.851,36.876c5.281,10.074,8.525,21.43,8.533,33.38C349.211,198.042,347.248,209.058,343.625,218.852 z"></path> </g> </g></svg>
         </div>          
         <div class='close-chat-list' 
         title='Close'>
@@ -91,22 +120,30 @@ export default class ChatList {
   }
 
   async fetch_and_setup_rooms() {
-    try {
-      if (this.controller) {
-        this.controller.abort();
-      }
-      this.controller = new AbortController();
-      const { signal } = this.controller;
+  try {
+    // Abort any in-flight request
+    if (this.controller) this.controller.abort();
+    this.controller = new AbortController();
+    const { signal } = this.controller;
 
-      let results_info = await get_channels_list(
-        this.user_email,
-        this.limit,
-        this.offset,
-        { signal }
-      );
-      this.room_groups = results_info.results;
-      this.num_of_results = results_info.num_of_results;
-      if (this.num_of_results == 0) {
+    // 1) Fetch page 1
+    const results_info = await get_channels_list(
+      this.user_email,
+      this.limit,
+      this.offset,
+      { signal }
+    );
+
+    // 2) Store data + total count
+    this.room_groups    = results_info.results;
+    this.num_of_results = results_info.num_of_results;
+
+    // 3) Advance offset & compute “remaining”
+    this.offset += this.limit;
+    this.rest_of_results = this.num_of_results - this.offset;
+
+    // 4) If no channels, show empty state and bind events once
+    if (this.num_of_results == 0) {
         let empty_chat_list_container = ``;
         if(this.user_type == "system_user"){
           empty_chat_list_container = `
@@ -127,7 +164,7 @@ export default class ChatList {
             <div class="my-2">You don't have any conversation yet</div>
           </div>
           `;
-        }        
+        }
         this.$chat_rooms_group_container = $(document.createElement("div"));
         this.$chat_rooms_group_container.addClass("chat-rooms-group-container");
         this.$chat_rooms_group_container.addClass("empty-container");
@@ -136,18 +173,29 @@ export default class ChatList {
         this.setup_events();
         return;
       }
-      await this.setup_rooms(signal);
-      await this.render_messages(signal);
-      this.setup_events();
-    } catch (error) {
-      console.log(error);
-    } finally {
-      this.controller = null;
-    }
+
+    // 5) Render what we got
+    await this.setup_rooms(signal);
+    await this.render_messages(signal);
+
+    // 6) Insert the first loader if needed
+    this.check_if_more_results();
+
+    // 7) Wire up scroll + other handlers exactly once
+    this.setup_events();
+
+  } catch (error) {
+    console.error(error);
+  } finally {
+    this.controller = null;
   }
+}
+
+
+
 
   async setup_rooms(signal) {
-    if (signal.aborted) {
+    if (signal && signal.aborted) {
       return;
     }
     if (
@@ -162,6 +210,7 @@ export default class ChatList {
     await this.setup_search();
     this.chat_room_groups = [];
     this.room_groups.forEach((element) => {
+     
       let profile = {
         user: this.user,
         user_email: this.user_email,
@@ -182,7 +231,8 @@ export default class ChatList {
         remove_date: element.remove_date,
         last_message_media_type: element.last_message_media_type,
         last_message_voice_duration: element.last_message_voice_duration,
-        is_website_support_group: element.is_website_support_group
+        is_website_support_group: element.is_website_support_group,
+        platform: element.platform
       };
 
       this.chat_room_groups.push([
@@ -191,22 +241,27 @@ export default class ChatList {
           $wrapper: this.$wrapper,
           $chat_rooms_container: this.$chat_rooms_group_container,
           element: profile,
+          chat_status : element.chat_status
         }),
       ]);
     });
     this.$chat_list.append(this.$chat_rooms_group_container);
+        this.$chat_rooms_group_container
+      .css({ maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' });
   }
 
   async render_messages(signal = null) {
-    if (signal.aborted || this.num_of_results == 0) {
-      return;
-    }
+    if (signal?.aborted || this.num_of_results == 0) return;
+
     this.$chat_rooms_group_container.empty();
     for (const element of this.chat_room_groups) {
       element[1].render("append");
     }
-    // this.check_if_more_results();
+
+    // repopulate the loader if there's still more to fetch
+    this.check_if_more_results();
   }
+
 
   fitler_rooms(query) {
     this.offset = 0;
@@ -230,13 +285,13 @@ export default class ChatList {
 
   setup_events() {
     const me = this;
-    $(".chat-list .chat-search-box").on("input", function (e) {
-      if (me.search_timeout != undefined) {
+    $(".chat-list .chat-search-box").on("input", function () {
+      if (me.search_timeout) {
         clearTimeout(me.search_timeout);
-        me.search_timeout = undefined;
       }
+      // Debounce 300ms
       me.search_timeout = setTimeout(() => {
-        me.fitler_rooms($(this).val().toLowerCase());
+        me.handleSearch($(this).val());
       }, 300);
     });
 
@@ -296,7 +351,6 @@ export default class ChatList {
           $(".expand-chat-window[data-id|='"+room+"']").click();
           return
           }
-
         chat_window = new ChatWindow({
           profile: {
             room: room,
@@ -307,7 +361,6 @@ export default class ChatList {
           $(".expand-chat-window[data-id|='ClefinCode Support']").click();
           return
           }
-          
         chat_window = new ChatWindow({
           profile: {
             contact:"ClefinCode Support",
@@ -328,10 +381,9 @@ export default class ChatList {
         room_type: "Group",
         // contact: contact,
         is_first_message: 1,
-        // platform: platform,
+        platform: platform,
         is_website_support_group: 1
       };
-
       this.chat_space = new ChatSpace({
         $wrapper: chat_window.$chat_window,
         profile: profile,
@@ -339,30 +391,27 @@ export default class ChatList {
 
     });    
 
-    setTimeout(() => {
-      $(".chat-rooms-group-container").on("scroll", function () {
-        if (me.rest_of_results > 0) {
-          if (me.loading_timout) {
-            clearTimeout(me.loading_timout);
-            me.loading_timout = undefined;
-          }
-          me.loading_timout = setTimeout(() => {
-            let scroll_top = $(this).scrollTop();
-            if (scroll_top > me.last_scroll_top) {
-              if (
-                scroll_top + $(this).innerHeight() >=
-                $(this)[0].scrollHeight - 20
-              ) {
-                me.get_and_loading_more_contents();
-              }
-            }
-            me.last_scroll_top = scroll_top;
-          }, 300);
-        } else {
-          $(".loading-more").remove();
+    // ─────── infinite‐scroll for channels ───────
+    this.$chat_rooms_group_container.on("scroll", () => {
+      if (this.rest_of_results <= 0) {
+        // no more pages
+        this.$chat_rooms_group_container.off("scroll");
+        return;
+      }
+      // debounce
+      if (this._load_more_timeout) clearTimeout(this._load_more_timeout);
+      this._load_more_timeout = setTimeout(() => {
+        const st  = this.$chat_rooms_group_container.scrollTop();
+        const ih  = this.$chat_rooms_group_container.innerHeight();
+        const sh  = this.$chat_rooms_group_container[0].scrollHeight;
+        // if within 20px of bottom
+        if (st + ih >= sh - 20) {
+          this.get_and_loading_more_contents();
         }
-      });
-    }, 1000);
+      }, 200);
+    });
+    // ─────────────────────────────────────────────
+
 
     $(".close-chat-list").on("click", function () {
       erpnext_chat_app.hide_chat_widget();
@@ -374,6 +423,18 @@ export default class ChatList {
 
   setup_socketio() {
     const me = this;
+    
+    frappe.realtime.on("trigger_channel_status", function (res) {
+        var findChatRoomItem = () => {
+          return me.chat_room_groups.find((element) => {
+            if (res.room == element[0])
+              return element
+          });
+        };
+        let chat_room = findChatRoomItem();
+        chat_room[1].chat_status = res.status;
+    });
+
     frappe.realtime.on("update_room", async function (res) {
       if (res.realtime_type == "send_message") {
         const setCommonFields = () => {
@@ -392,12 +453,12 @@ export default class ChatList {
         };
 
         if (me.is_open === 1) {
-          if (
-            res.room_type === "Direct" &&
-            me.user_email === res.sender_email
-          ) {
-            res.room_name = res.contact_name;
-          }
+          // if (
+          //   res.room_type === "Direct" &&
+          //   me.user_email === res.sender_email
+          // ) {
+          //   res.room_name = res.contact_name;
+          // }
 
           if (!me.chat_room_groups) {
             setCommonFields();
@@ -515,64 +576,92 @@ export default class ChatList {
 
     await this.setup_search();
     this.$chat_list.append(this.$chat_rooms_group_container);
+    this.$chat_rooms_group_container.css({
+    'max-height': 'calc(100vh - 140px)',    // adjust to taste
+    'overflow-y': 'auto'
+  });
 
     this.chat_room_groups = [];
     this.create_new_room(res);
   }
 
   async get_and_loading_more_contents() {
-    let results = await get_room_groups(
-      this.user_email,
-      this.limit,
-      this.offset
+    if (this._loading) return;      
+    this._loading = true;
+  // 1) fetch next page
+  const { results, num_of_results } = await get_channels_list(
+    this.user_email,
+    this.limit,
+    this.offset
+  );
+
+  // 2) remove the old “loading-more” indicator
+  this.$chat_rooms_group_container.find(".loading-more").remove();
+
+  // 3) append the new rooms
+  await this.render_new_content(results);
+
+  // 4) bump offset & update total
+  this.offset  += this.limit;
+  this.num_of_results  = num_of_results;
+  this.rest_of_results = this.num_of_results - this.offset;
+
+  // 5) re-insert loader if there’s still more
+  if (this.rest_of_results > 0) {
+    this.$chat_rooms_group_container.append(
+      `<div class="loading-more">Loading Chats...</div>`
     );
-    this.more_contents = results.results;
-    $(".loading-more").remove();
-    await this.render_new_content(this.more_contents);
   }
+  this._loading = false;
+}
 
-  async render_new_content() {
-    this.new_chat_room_groups = [];
-    this.more_contents.forEach((element) => {
-      let profile = {
-        user: this.user,
-        user_email: this.user_email,
-        is_admin: this.is_admin,
-        room: element.room,
-        room_type: element.type,
-        last_message: element.last_message,
-        send_date: element.send_date,
-      };
 
-      profile.room_name = element.room_name;
-      profile.last_message_number = element.last_message_number;
-      profile.user_unread_messages = element.user_unread_messages;
 
-      this.new_chat_room_groups.push([
-        profile.room,
-        new ChatRoom({
-          $wrapper: this.$wrapper,
-          $chat_rooms_container: this.$chat_rooms_group_container,
-          element: profile,
-        }),
-      ]);
+  async render_new_content(rooms) {
+  for (const element of rooms) {
+    // build the same profile object you do in setup_rooms…
+    let profile = {
+      contact: element.contact,
+      user: this.user,
+      user_email: this.user_email,
+      is_admin: this.is_admin,
+      room: element.room,
+      room_type: element.type,
+      last_message: element.last_message,
+      send_date: element.send_date,
+      platform: element.platform,
+      room_name: element.room_name,
+      last_message_number: element.last_message_number,
+      user_unread_messages: element.user_unread_messages
+    };
+
+    // instantiate & render
+    const chatRoom = new ChatRoom({
+      $wrapper: this.$wrapper,
+      $chat_rooms_container: this.$chat_rooms_group_container,
+      element: profile,
     });
-
-    for (const element of this.new_chat_room_groups) {
-      element[1].render("append");
-    }
-    this.check_if_more_results();
+    chatRoom.render("append");
+    this.chat_room_groups.push([profile.room, chatRoom]);
   }
+}
+
 
   check_if_more_results() {
-    this.rest_of_results = this.num_of_results - (this.offset + this.limit);
-    if (this.rest_of_results > this.limit) {
-      this.$chat_rooms_group_container.append(
-        `<div class="loading-more">Loading more...</div>`
-      );
-    }
-    this.offset += this.limit;
+  // recalc how many remain
+  this.rest_of_results = this.num_of_results - this.offset;
+
+  // remove any old loader
+  this.$chat_rooms_group_container.find(".loading-more").remove();
+
+  // if still more, append a loader div
+  if (this.rest_of_results > 0) {
+    this.$chat_rooms_group_container.append(
+      `<div class="loading-more">Loading Chats...</div>`
+    );
   }
+}
+
 
   get_pin_cookie() {
     let s = "is_pined=";
@@ -621,7 +710,7 @@ export default class ChatList {
 async function get_channels_list(email, limit, offset) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_channels_list",
+    method: "clefincode_chat.api.api_1_2_1.api.get_channels_list",
     args: {
       user_email: email,
       limit: limit,
@@ -639,7 +728,7 @@ async function get_last_message_type(
 ) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_last_message_type",
+    method: "clefincode_chat.api.api_1_2_1.api.get_last_message_type",
     args: {
       room_type: room_type,
       user_email: user_email,
@@ -664,7 +753,19 @@ async function check_if_website_user_has_support_channel(website_user_email) {
 async function search_in_rooms(email, query) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.search_in_rooms",
+    method: "clefincode_chat.api.api_1_2_1.api.get_channels_list",
+    args: {
+      user_email: email,
+      query: query,
+    },
+  });
+  return  res.message.results;
+}
+
+async function search_in_message_content(email, query) {
+  const res = await frappe.call({
+    type: "GET",
+    method: "clefincode_chat.api.api_1_2_1.api.search_in_message_content",
     args: {
       user: email,
       query: query,
@@ -673,14 +774,10 @@ async function search_in_rooms(email, query) {
   return await res.message;
 }
 
-async function search_in_message_content(email, query) {
-  const res = await frappe.call({
-    type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.search_in_message_content",
-    args: {
-      user: email,
-      query: query,
-    },
-  });
-  return await res.message;
+
+// ────────────────────────────────────────────────────────────
+// Helper for paging through channels, reuses the same API:
+async function get_room_groups(email, limit, offset) {
+  return await get_channels_list(email, limit, offset);
 }
+// ────────────────────────────────────────────────────────────

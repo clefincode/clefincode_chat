@@ -19,9 +19,8 @@ def initialize_firebase():
             firebase_admin.initialize_app(cred)
 
 
-
 @frappe.whitelist(allow_guest = True)
-def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None):
+def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None , is_call=None, message_type = None):
     initialize_firebase()    
     message=None
 
@@ -47,25 +46,31 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
                         child.decompose()
                 info["content"] = str(soup)
 
-            try:
+            try:    
+                # Construct the FCM message
                 message = messaging.Message(
-                notification = messaging.Notification(title= None, body= None),
-                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title or '' ,"notification_body": body or '', "content_available": "true", "same_user" : str(same_user),"content_available": "true"},
-                token = registration_token,   
-                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True)))
-                )        
-                
+                    notification=messaging.Notification(title=None, body=None),
+                    data={
+                        "route": str(info),
+                        "realtime_type": realtime_type,
+                        "notification_title": title or '',
+                        "notification_body": body or '',
+                        "content_available": "true",
+                        "same_user": str(same_user),
+                        "msg_type": message_type or '',
+                    },
+                    token=registration_token,
+                    apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True))),
+                )
+                # Send the FCM message
                 messaging.send(message)
-
                 message1 = messaging.Message(
                 notification =messaging.Notification(title=title,body=body),
-                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title or '' ,"notification_body": body or '',"no_duplicate" : "true", "same_user" : str(same_user),"content_available": "true"},
+                data = {"route" : str(info) , "realtime_type" : realtime_type, "notification_title" : title or '' ,"notification_body": body or '', "same_user" : str(same_user),"content_available": "true", "no_duplicate" : "true"},
                 token = registration_token, 
-                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default")))
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default",mutable_content="true",category="REPLY_ACTIONS")))
                 )
-                
                 messaging.send(message1)   
-
                 
             except Exception as e:
                 frappe.log_error(f"IOS Error in sending notifications: {str(e)}")
@@ -73,12 +78,12 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
             try:                
                 message = messaging.Message(
                 notification =messaging.Notification(),   
-                data = {"route" : str(info) , "realtime_type" : realtime_type , "notification_title" : title ,"notification_body": body},
-                token = registration_token,       
+                data = {"msg_type": message_type or '',"route" : str(info) , "realtime_type" : realtime_type , "notification_title" : title ,"notification_body": body},
+                token = registration_token,   
+                apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default"))),
                 )
                 messaging.send(message)
 
             except Exception as e:
                 frappe.log_error(f"Android Error in sending notifications: {str(e)}")
-# # ============================================================================
-
+# ==================================================================================

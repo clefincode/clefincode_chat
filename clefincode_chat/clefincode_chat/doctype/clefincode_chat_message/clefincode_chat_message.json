@@ -27,9 +27,14 @@
   "is_document",
   "is_link",
   "is_voice_clip",
+  "is_call",
+  "duration",
+  "call_states",
   "is_mention",
   "is_screenshot",
-  "whatsapp_message_id"
+  "whatsapp_message_id",
+  "instagram_message_id",
+  "messenger_message_id"
  ],
  "fields": [
   {
@@ -83,7 +88,7 @@
    "fieldname": "message_template_type",
    "fieldtype": "Select",
    "label": "Message Template type",
-   "options": "\nCreate Group\nRename Group\nAdd User\nRemove User\nUser Left\nSet Admin\nSet Avatar\nSet Topic\nRename Topic\nRemove Topic\nAdd Doctype\nRemove Doctype\nSet Topic Status\nRemove Contributors\nSend Confirmation"
+   "options": "Create Group\nRename Group\nAdd User\nRemove User\nUser Left\nSet Admin\nSet Avatar\nSet Topic\nRename Topic\nRemove Topic\nAdd Doctype\nRemove Doctype\nSet Topic Status\nRemove Contributor\nVoice Call\nVideo Call\nApprove Button WhatsApp\nHandle Error Whatsapp\nSend Confirmation"
   },
   {
    "fieldname": "only_receive_by",
@@ -162,12 +167,38 @@
    "fieldname": "is_screenshot",
    "fieldtype": "Check",
    "label": "Is Screenshot"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_call",
+   "fieldtype": "Check",
+   "label": "Is Call"
+  },
+  {
+   "fieldname": "duration",
+   "fieldtype": "Data",
+   "label": "Duration"
+  },
+  {
+   "fieldname": "call_states",
+   "fieldtype": "Data",
+   "label": "Call States"
+  },
+  {
+   "fieldname": "instagram_message_id",
+   "fieldtype": "Data",
+   "label": "Instagram Message Id"
+  },
+  {
+   "fieldname": "messenger_message_id",
+   "fieldtype": "Data",
+   "label": "Messenger Message Id"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-10-04 23:29:25.649943",
+ "modified": "2025-05-13 13:26:27.013053",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Message",

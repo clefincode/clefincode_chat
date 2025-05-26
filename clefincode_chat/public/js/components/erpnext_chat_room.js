@@ -15,22 +15,51 @@ export default class ChatRoom {
     this.$wrapper = opts.$wrapper;
     this.$chat_rooms_container = opts.$chat_rooms_container;
     this.profile = opts.element;
+    this.chat_status = opts.chat_status;
     this.setup();
   }
+  
+
+  async get_platform_icon() {
+    const platform = this.profile.platform;
+    let platform_icon = "";
+  
+    if (platform === "WhatsApp" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="${this.default_whatsapp_number}" src="/assets/clefincode_chat/icons/whatsapp.svg" style="margin-right:8px; margin-left:8px;">`;
+    } else if (platform === "Instagram" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="Instagram" src="/assets/clefincode_chat/icons/instagram.svg" style="margin-right:8px; width:20px; height:20px; margin-left:8px;">`;
+    } else if (platform === "Messenger" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="Messenger" src="/assets/clefincode_chat/icons/messenger.svg" style="margin-right:8px; width:20px; height:20px; margin-left:8px;">`;
+    } else if (platform === "Chat" && this.profile.room_type === "Direct") {
+      platform_icon = `<svg class="icon icon-lg" style="margin-right:8px; width:20px; height:20px; margin-left:8px;"><use href="#icon-small-message"></use></svg>`;
+    } else if (platform === "Telegram" && this.profile.room_type === "Direct") {
+      platform_icon = `<img title="Telegram" src="/assets/clefincode_chat/icons/telegram.svg" style="margin-right:6px; width:25px; margin-left:8px;">`;
+    }
+    return platform_icon;
+  }
+  
+  
 
   async setup() {
     const chat_channel =
       this.profile.room_type == "Contributor"
         ? this.profile.parent_channel
         : this.profile.room;
+  
     this.$chat_room = $(document.createElement("div"));
-    this.$chat_room.addClass("chat-room");
+    this.$chat_room.addClass("chat-room").css({
+      display: "flex",
+      alignItems: "center"
+    });
+    
     this.$chat_room.attr("data-room", chat_channel);
     this.$chat_room.attr("data-room-name", this.profile.room_name);
+  
     this.avatar_html = get_avatar_html(
       this.profile.room_name,
       this.profile.room_type
     );
+  
     let last_message = chat_channel
       ? await this.get_last_message_html(
           this.profile.last_message_media_type,
@@ -38,38 +67,38 @@ export default class ChatRoom {
           this.profile.last_message_voice_duration
         )
       : "";
+  
+    const icon_html = await this.get_platform_icon(); 
+  
     const info_html = `
-			<div class='chat-profile-info'>
-          <div class='chat-name' title = "${this.profile.room_name}">
-          ${
-            this.profile.room_name.length > 20
-              ? this.profile.room_name.substring(0, 20) + "..."
-              : this.profile.room_name
-          }
-					<div class='chat-latest' style='display: ${
+      <div class='chat-profile-info'>
+        <div class='chat-name' title = "${this.profile.room_name}">
+        ${this.profile.room_name.length > 20
+          ? this.profile.room_name.substring(0, 20) + "..."
+          : this.profile.room_name}
+          <div class='chat-latest' style='display: ${
             this.profile.user_unread_messages > 0 ? "flex" : "none"
           }'>
-            ${
-              this.profile.user_unread_messages > 0
-                ? this.profile.user_unread_messages
-                : ""
-            }
+            ${this.profile.user_unread_messages > 0
+              ? this.profile.user_unread_messages
+              : ""}
           </div>
-				</div>
-				<div class='message-container'>${last_message}</div>
-			</div>
-		`;
+        </div>
+        <div class='message-container'>${last_message}</div>
+      </div>
+    `;
+  
     const date_html = `
-			<div class='chat-date'>
-				${get_date_from_now(this.profile.send_date, "room", this.profile.time_zone)}
-			</div>
-		`;
-    let inner_html = "";
-
-    inner_html += this.avatar_html + info_html + date_html;
-
+      <div class='chat-date'>
+        ${get_date_from_now(this.profile.send_date, "room", this.profile.time_zone)}
+      </div>
+    `;
+  
+    const inner_html = this.avatar_html + info_html + date_html + icon_html;
+  
     this.$chat_room.html(inner_html);
   }
+  
 
   async get_last_message_html(
     message_type,
@@ -228,17 +257,16 @@ export default class ChatRoom {
         $(".expand-chat-window[data-id|='" + me.profile.room + "']").click();
         return;
       }
-
       this.chat_window = new ChatWindow({
         profile: {
           room: me.profile.room,
         },
       });
-
       this.chat_space = new ChatSpace({
         $wrapper: this.chat_window.$chat_window,
         profile: this.profile,
         $chat_room: me.$chat_room,
+        chat_status: this.chat_status
       });
     });
   }
@@ -554,7 +582,7 @@ async function get_last_message_type(
   remove_date
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.get_last_message_type",
+    method: "clefincode_chat.api.api_1_2_1.api.get_last_message_type",
     args: {
       room_type: room_type,
       user_email: user_email,

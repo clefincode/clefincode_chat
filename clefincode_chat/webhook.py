@@ -13,8 +13,11 @@ import requests
 import mimetypes
 from mimetypes import guess_type
 from frappe.utils import random_string
-from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status
-from clefincode_chat.api.api_1_0_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel, send_message_confirm_template, process_whatsapp_message, remove_group_member, get_last_active_sub_channel
+from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status, get_access_token_instagram, get_access_token_messenger
+from clefincode_chat.api.api_1_2_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template,send_instagram_message_confirm_template,send_messenger_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
+import urllib.parse
+from frappe.utils.password import get_decrypted_password
+
 
 @frappe.whitelist(allow_guest=True)
 def handle():
@@ -23,7 +26,7 @@ def handle():
 
     try:
         form_dict = frappe.local.form_dict
-        log_webhook(form_dict)
+        log_webhook(form_dict)        
 
         messages = extract_messages(form_dict)
         if not messages:
@@ -271,18 +274,37 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
 
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
     channel_name = get_profile_full_name(receiver_user_email)   
+    message_type = messages[0]["type"] if "type" in messages[0] else None
+    
     recipients_list = [
         build_chat_recipients(get_profile_id(receiver_user_email)),
         build_whatsapp_recipient_gateway(chat_profile, whatsapp_profile_doc, sender_number)
     ]
-    return create_channel(
-        get_profile_full_name(sender_number) ,
-        json.dumps(recipients_list),
-        "Direct",
-        format_html_string(messages[0]["text"]["body"]),
-        receiver_user_email,
-        channel_name
-    )["results"][0]["room"]
+    
+    if message_type == "text":
+        return create_channel(
+            get_profile_full_name(sender_number) ,
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(messages[0]["text"]["body"]),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]
+        
+    else:
+        media_id =  messages[0][message_type]["id"] 
+        media_url , mime_type = retrieve_media_url(media_id)
+        file_url = download_media(media_url , mime_type , message_type)
+        content = handle_attachment(file_url[0], messages[0][message_type].get("filename", ""), message_type) 
+        
+        return create_channel(
+            get_profile_full_name(sender_number) ,
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(content),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]   
 
 def verify_token_and_fulfill_challenge():
     meta_challenge = frappe.form_dict.get("hub.challenge")
@@ -304,6 +326,7 @@ def create_contact(sender_number, sender_profile_name):
         contact = frappe.get_doc({
             "doctype": "Contact",
             "first_name": sender_profile_name,
+            "platform": "WhatsApp",
             "phone_nos": [{
                 "phone": sender_number,
                 "is_primary_phone": 1,
@@ -454,4 +477,1149 @@ def convert_opus_to_aac(ogg_binary_data):
 
     return aac_output
 
+# ==========================================================================================
+# ==========================================================================================
+# ===================================== Instagram Functions ================================
+# ==========================================================================================
+# ==========================================================================================
+@frappe.whitelist(allow_guest=True)
+def instagram_handle():
+    """Handles Instagram webhook data."""
+    if frappe.request.method == "GET":
+        return instagram_webhook_handle()
+        
 
+    try:
+        form_dict = frappe.local.form_dict
+        log_webhook(form_dict)
+        
+        # Extract messages from form_dict
+        messages = extract_social_messages(form_dict)
+        
+        if not messages:
+            return
+        message = messages[0]
+        
+        if "delivery" in message or "read" in message:
+            return
+        
+        
+        if message.get("errors"):
+            receiver_id = get_receiver_id(form_dict)
+            if not validate_instagram_receiver_profile(receiver_id):
+                return
+            sender_id = message.get("recipient", {}).get("id")
+            
+            message_template = frappe.db.get_value("ClefinCode Instagram Profile", receiver_id, "message_template")
+            template_status = check_template_status(message_template)
+            
+
+            # Check if channel exists and member isn't pending
+            channel = get_instagram_channel(receiver_id, sender_id)
+            if not channel:
+                return
+            
+            last_sub_channel = get_last_active_sub_channel(channel)["results"][0]["last_active_sub_channel"]
+            last_message_info = get_last_message_sent(channel)
+            if not last_message_info:
+                return
+
+            if not message_template or not template_status:
+                content = "<p style='color:#0089FF'> No confirmation sent in over 24 hours. Please check the template in your Instagram profile.</p>"
+                send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")       
+                return
+            
+            content = "<p style='color:#FF0000'> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p>"
+            send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")
+            send_instagram_message_confirm_template(receiver_id, sender_id, channel, message_template)
+            return
+
+        # Determine message type and content
+        message_content = message.get("message", {}).get("text", None)
+
+        media_url, mime_type, file_url = None, None, None
+
+        sender_id, sender_profile_name = get_instagram_sender_info(message)
+        
+        receiver_id = get_receiver_id(form_dict)
+
+
+        if not validate_instagram_receiver_profile(receiver_id):
+            frappe.log_error("Invalid Receiver Profile", f"Receiver ID: {receiver_id}")
+        
+        instagram_profile_doc = None
+        
+        if not frappe.db.exists("ClefinCode Instagram Profile", receiver_id):
+            instagram_profile_doc = frappe.db.get_value(
+            "ClefinCode Chat Profile Contact Details",
+            {"contact_info": receiver_id},
+            "parent" 
+            )
+        else:
+            instagram_profile_doc = frappe.get_doc("ClefinCode Instagram Profile", receiver_id)
+            
+
+        chat_profile = get_or_create_instagram_chat_profile(sender_id, sender_profile_name)
+    
+        
+        
+        chat_channel_info = handle_instagram_chat_channel(sender_id, receiver_id, chat_profile, instagram_profile_doc, messages)
+        chat_channel, pending_messages = chat_channel_info
+        last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
+        
+        response = None
+        if pending_messages and pending_messages > 0:
+            if message_content and message_content.lower() == "no":
+                response = "remove"
+            else:
+                pending_messages_list = get_pending_messages(chat_channel, pending_messages, sender_id)
+                response = "resend"
+
+        # Process the message content
+        if message_content:
+            send(
+                content=format_html_string(message_content),
+                user=sender_profile_name,
+                room=chat_channel,
+                email=sender_id,
+                sub_channel=last_sub_channel
+            )
+            
+        elif "attachments" in message.get("message", {}):
+            # Extract attachment details
+            attachments = message["message"]["attachments"]
+
+            # Extract attachment type and media URL and mime type
+            attachment_type = attachments[0].get("type", "")
+            media_url = attachments[0]["payload"]["url"]
+            if not media_url:
+                return
+            
+            mime_type = get_mime_type_from_url(media_url)
+            file_name = form_dict['entry'][0]['messaging'][0]['message']['attachments'][0]['payload']['url'].split('/')[-1].split('?')[0]
+
+            
+            if attachment_type == "file":
+                attachment_type = "document"
+
+            file_url = download_media(media_url,mime_type,attachment_type)
+            content = handle_attachment(file_url[0], file_name, attachment_type)
+            
+            send(
+                content=content,
+                user=sender_profile_name,
+                room=chat_channel,
+                email=sender_id,
+                sub_channel=last_sub_channel,
+                attachment=file_url[0],
+                is_media= 1 if attachment_type in ['image', 'video', 'sticker'] else 0,
+                is_document=attachment_type == "document",
+                is_voice_clip=attachment_type == "audio",
+                file_id=file_url[2]
+            )
+
+        if response == "resend":
+            frappe.db.set_value(
+                'ClefinCode Chat Channel User',
+                {"parent": chat_channel, "user": sender_id, "platform_gateway": receiver_id},
+                'pending_messages', 0
+            )
+            resend_instagram_pending_messages(chat_channel, pending_messages_list, receiver_id, sender_id)
+        elif response == "remove":
+            remove_group_member(sender_id, chat_channel)
+
+    except Exception as e:
+        frappe.log_error(title="Instagram Webhook Error", message=str(e))
+# ==========================================================================================
+def fetch_instagram_username(sender_id):
+    """Fetch the Instagram username using the Graph API."""
+    try:
+        access_token = get_access_token_instagram() 
+        api_base = "https://graph.instagram.com/v21.0"
+        endpoint = f"{api_base}/{sender_id}"
+        
+        params = {
+            "fields": "username", 
+            "access_token": access_token
+        }
+        
+        response = requests.get(endpoint, params=params)
+        
+        if response.ok:
+            return response.json().get("username", sender_id)  
+        else:
+            frappe.log_error("Failed to fetch Instagram username", response.text)
+            return sender_id 
+    except Exception as e:
+        frappe.log_error("Instagram Username Fetch Error", str(e))
+        return sender_id
+# ==========================================================================================
+def get_instagram_sender_info(message):
+    try:
+        sender_id = message["sender"]["id"]
+        sender_profile_name = fetch_instagram_username(sender_id)
+        return sender_id, sender_profile_name
+
+    except KeyError as e:
+        frappe.log_error("Failed to extract sender info", str(e))
+        return None, "Unknown"
+# ==========================================================================================
+def get_or_create_instagram_chat_profile(sender_id, sender_profile_name):
+    chat_profile = check_if_chat_profile_exists(sender_id)
+
+    if not chat_profile:
+        contact = create_instagram_contact(sender_id, sender_profile_name)
+        chat_profile = frappe.db.get_value("ClefinCode Chat Profile", {"contact": contact}, "name")
+    return chat_profile
+# ==========================================================================================
+def get_receiver_id(form_dict):
+    """Extracts receiver ID from webhook data."""
+    entry = form_dict['entry'][0]['messaging'][0]
+    return entry['recipient']['id']
+# ==========================================================================================
+def validate_instagram_receiver_profile(receiver_id):
+    """Validates if a ClefinCode Chat Profile exists based on receiver_id matching contact_info or name."""
+    try:
+        # First, try to find in Contact Details
+        contact_details = frappe.db.get_value(
+            "ClefinCode Chat Profile Contact Details",
+            {"contact_info": receiver_id},
+            "parent" 
+        )
+        
+        if contact_details:
+            return True
+
+        # If not found, try in Instagram Profile
+        profile = frappe.db.get_value(
+            "ClefinCode Instagram Profile",
+            {"name": receiver_id},
+            "name" 
+        )
+
+        if profile:
+            return True
+
+        # If neither found, log error
+        frappe.log_error(
+            title="ClefinCode Instagram Receiver Not Found",
+            message=f"Receiver ID not found: {receiver_id}"
+        )
+        return False
+
+    except Exception as e:
+        frappe.log_error(
+            title="Error Validating Instagram Receiver Profile",
+            message=str(e)
+        )
+        return False
+# ==========================================================================================
+def handle_instagram_chat_channel(sender_id, receiver_id, chat_profile, instagram_profile_doc, messages):
+        chat_channel = None
+        if instagram_profile_doc.type == "Support":
+            chat_channel = manage_instagram_support_channel(sender_id, receiver_id, chat_profile, instagram_profile_doc)
+        else:
+            chat_channel = manage_instagram_personal_channel(sender_id, receiver_id, chat_profile, instagram_profile_doc, messages)
+        return chat_channel   
+# ==========================================================================================
+def manage_instagram_support_channel(sender_id, receiver_id, chat_profile, instagram_profile_doc):
+    channel_info = check_if_channel_exists(sender_id, receiver_id, "Support")
+    if not channel_info:
+        recipients_list, responder_user = build_instagram_recipients_list(chat_profile, instagram_profile_doc, sender_id)
+        chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
+        return [chat_channel , None]
+    else:    
+        chat_channel , pending_messages = channel_info 
+        return [chat_channel , pending_messages]
+# ==========================================================================================
+def build_instagram_recipients_list(chat_profile, instagram_profile_doc, sender_id):
+    recipients_list = []
+
+    responder_user = choose_user_to_respond("ClefinCode Instagram Profile", instagram_profile_doc.name)
+    if not responder_user:
+        return
+    
+    recipients_list.append(build_instagram_recipient_gateway(chat_profile, instagram_profile_doc, sender_id))        
+
+    if instagram_profile_doc.receive_by_profile == 1:
+        for profile in instagram_profile_doc.chat_profiles:
+            user_email = get_email_from_chat_profile(profile.chat_profile)
+            if user_email and user_email != responder_user:
+                recipients_list.append(build_chat_recipients(profile.chat_profile))
+                
+    return recipients_list, responder_user
+# ==========================================================================================
+def build_instagram_recipient_gateway(profile_id, instagram_profile_doc, sender_id):   
+    return {
+        "profile_id": profile_id,
+        "email": sender_id,
+        "platform": "Instagram",
+        "platform_profile": "ClefinCode Instagram Profile",
+        "platform_gateway": instagram_profile_doc.name
+    }    
+# ==========================================================================================
+def manage_instagram_personal_channel(sender_id, receiver_id, chat_profile, instagram_profile_doc, messages):
+    receiver_user_email = instagram_profile_doc.user
+    channel_info = check_if_channel_exists(sender_id, receiver_id, "Personal")
+    
+    if not channel_info:
+        chat_channel = create_instagram_direct_channel(chat_profile, receiver_user_email, instagram_profile_doc, messages, sender_id)
+        return [chat_channel , None]
+    else:    
+        chat_channel , pending_messages = channel_info 
+        return [chat_channel , pending_messages] 
+# ==========================================================================================
+def create_instagram_direct_channel(chat_profile, receiver_user_email, instagram_profile_doc, messages, sender_id):
+    channel_name = get_profile_full_name(receiver_user_email) 
+
+    recipients_list = [
+        build_chat_recipients(get_profile_id(receiver_user_email)),
+        build_instagram_recipient_gateway(chat_profile, instagram_profile_doc, sender_id)
+    ]
+    
+    message_content = messages[0].get("message", {}).get("text", None)
+    
+    if message_content:
+        return create_channel(
+            get_profile_full_name(sender_id),
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(messages[0]["message"]["text"]),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]
+        
+    else :
+        attachments = messages[0]["message"]["attachments"]
+
+        # Extract attachment type and media URL and mime type
+        attachment_type = attachments[0].get("type", "")
+        media_url = attachments[0]["payload"]["url"]
+        if not media_url:
+            return
+        
+        mime_type = get_mime_type_from_url(media_url)
+        file_name = messages[0]['message']['attachments'][0]['payload']['url'].split('/')[-1].split('?')[0]
+
+        
+        if attachment_type == "file":
+            attachment_type = "document"
+
+        file_url = download_media(media_url,mime_type,attachment_type)
+        content = handle_attachment(file_url[0], file_name, attachment_type)
+        
+        return create_channel(
+            get_profile_full_name(sender_id),
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(content),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]        
+# ==========================================================================================
+def instagram_webhook_handle():
+    """Handles the initial webhook verification."""
+    meta_challenge = frappe.form_dict.get("hub.challenge")
+    expected_token = frappe.db.get_single_value("ClefinCode Instagram Integration", "webhook_verify_token")
+
+    if frappe.form_dict.get("hub.verify_token") != expected_token:
+        frappe.throw("Verify token does not match")
+
+    return Response(meta_challenge, status=200)      
+# ==========================================================================================
+def create_instagram_contact(sender_id, sender_profile_name):
+    try:
+        contact = frappe.get_doc({
+            "doctype": "Contact",
+            "first_name": sender_profile_name,
+            "platform": "Instagram",
+            "social_contact": [
+                {
+                    "social_id": sender_id,
+                    "platform": "Instagram"
+                }
+            ]
+        })
+        contact.insert(ignore_permissions=True)
+        return contact.name
+    except Exception as e:
+        frappe.log_error(title="Instagram Contact Creation Failed", message=str(e))
+# ==========================================================================================
+def resend_instagram_pending_messages(chat_channel, pending_messages_list, platform_gateway, sender_id):
+    attachment = None
+    channel_doc = frappe.get_doc("ClefinCode Chat Channel" , chat_channel)
+    for messsage in pending_messages_list:
+        message_doc = frappe.get_doc("ClefinCode Chat Message" , messsage.name)
+        if message_doc.file_id:
+            attachment = frappe.db.get_value("File" , message_doc.file_id, "file_url")
+
+        process_instagram_message(platform_gateway, sender_id, message_doc.sender_email, channel_doc, channel_doc.last_responder_user, message_doc, message_doc.file_type, attachment, message_doc.content, message_doc.is_voice_clip, message_doc.is_screenshot)
+
+
+# ==========================================================================================
+# ==========================================================================================
+# ===================================== Messenger Functions ================================
+# ==========================================================================================
+# ==========================================================================================
+@frappe.whitelist(allow_guest=True)
+def messenger_handle():
+    """Handles Messenger webhook data."""
+    if frappe.request.method == "GET":
+        return messenger_webhook_handle()
+
+    try:
+        form_dict = frappe.local.form_dict
+        log_webhook(form_dict)
+        # Extract messages from form_dict
+        messages = extract_social_messages(form_dict)
+        if not messages:
+            return
+        message = messages[0]
+        
+        if "delivery" in message or "read" in message:
+            return
+        
+        if message.get("errors"):
+            receiver_id = get_receiver_id(form_dict)
+            if not validate_messenger_receiver_profile(receiver_id):
+                return
+            sender_id = message.get("recipient", {}).get("id")
+            
+            message_template = frappe.db.get_value("ClefinCode Facebook Messenger Profile", receiver_id, "message_template")
+            template_status = check_template_status(message_template)
+
+            # Check if channel exists and member isn't pending
+            channel = get_messenger_channel(receiver_id, sender_id)
+            if not channel:
+                return
+            
+            last_sub_channel = get_last_active_sub_channel(channel)["results"][0]["last_active_sub_channel"]
+            last_message_info = get_last_message_sent(channel)
+            if not last_message_info:
+                return
+
+            sender, sender_email = last_message_info
+
+            if not message_template or not template_status:
+                content = "<p style='color:#0089FF'> No confirmation sent in over 24 hours. Please check the template in your Messenger profile.</p>"
+                send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")       
+                return
+            
+            content = "<p style='color:#FF0000'> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p>"
+            send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")
+            send_messenger_message_confirm_template(receiver_id, sender_id, channel, message_template)
+            return
+
+        # Determine message type and content
+        message_content = message.get("message", {}).get("text", None)
+
+
+        media_url, mime_type, file_url = None, None, None
+
+        sender_id, sender_profile_name = get_messenger_sender_info(message)
+        receiver_id = get_receiver_id(form_dict)
+
+        if not validate_messenger_receiver_profile(receiver_id):
+            frappe.log_error("Invalid Receiver Profile", f"Receiver ID: {receiver_id}")
+
+        messenger_profile_doc = None
+                
+        if not frappe.db.exists("ClefinCode Facebook Messenger Profile", receiver_id):
+            messenger_profile_doc = frappe.db.get_value(
+            "ClefinCode Chat Profile Contact Details",
+            {"contact_info": receiver_id},
+            "parent" 
+            )
+        else:
+            messenger_profile_doc = frappe.get_doc("ClefinCode Facebook Messenger Profile", receiver_id)
+            
+            
+        chat_profile = get_or_create_messenger_chat_profile(sender_id, sender_profile_name)
+        chat_channel_info = handle_messenger_chat_channel(sender_id, receiver_id, chat_profile, messenger_profile_doc, messages)
+        chat_channel, pending_messages = chat_channel_info
+        last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
+        
+        response = None
+        if pending_messages and pending_messages > 0:
+            if message_content and message_content.lower() == "no":
+                response = "remove"
+            else:
+                pending_messages_list = get_pending_messages(chat_channel, pending_messages, sender_id)
+                response = "resend"
+
+        # Process the message content
+        if message_content:
+            send(
+                content=format_html_string(message_content),
+                user=sender_profile_name,
+                room=chat_channel,
+                email=sender_id,
+                sub_channel=last_sub_channel
+            )
+            
+        elif "attachments" in message.get("message", {}):
+            # Extract attachment details
+            attachments = message["message"]["attachments"]
+
+            # Extract attachment type and media URL and mime type
+            attachment_type = attachments[0].get("type", "")
+            media_url = attachments[0]["payload"]["url"]
+            if not media_url:
+                return
+            
+            mime_type = get_mime_type_from_url(media_url)
+            file_name = form_dict['entry'][0]['messaging'][0]['message']['attachments'][0]['payload']['url'].split('/')[-1].split('?')[0]
+
+            
+            if attachment_type == "file":
+                attachment_type = "document"
+
+            file_url = download_media(media_url,mime_type,attachment_type)
+            content = handle_attachment(file_url[0], file_name, attachment_type)
+
+
+            send(
+                content=content,
+                user=sender_profile_name,
+                room=chat_channel,
+                email=sender_id,
+                sub_channel=last_sub_channel,
+                attachment=file_url[0],
+                is_media= 1 if attachment_type in ['image', 'video', 'sticker'] else 0,
+                is_document=attachment_type == "document",
+                is_voice_clip=attachment_type == "audio",
+                file_id=file_url[2]
+            )
+
+        if response == "resend":
+            frappe.db.set_value(
+                'ClefinCode Chat Channel User',
+                {"parent": chat_channel, "user": sender_id, "platform_gateway": receiver_id},
+                'pending_messages', 0
+            )
+            resend_messenger_pending_messages(chat_channel, pending_messages_list, receiver_id, sender_id)
+        elif response == "remove":
+            remove_group_member(sender_id, chat_channel)
+
+    except Exception as e:
+        frappe.log_error(title="Messenger Webhook Error", message=str(e))
+# ==========================================================================================
+def extract_social_messages(form_dict):
+    """Extracts messages from the form_dict."""
+    try:
+        result = form_dict["entry"][0]
+
+        messages = result.get("messaging")
+        if messages:
+            return messages
+
+        statuses = result.get("statuses")
+        if statuses:
+            return statuses
+
+        return []
+    except (KeyError, IndexError) as e:
+        frappe.log_error(title="Error extracting messages", message=str(e))
+        return []
+# ==========================================================================================
+def fetch_messenger_username(sender_id):
+    """Fetch the Messenger username using the Graph API."""
+    try:
+        access_token = get_access_token_messenger() 
+        api_base = "https://graph.facebook.com/v17.0"
+        endpoint = f"{api_base}/{sender_id}"
+        
+        params = {
+            "fields": "username", 
+            "access_token": access_token
+        }
+        
+        response = requests.get(endpoint, params=params)
+        
+        if response.ok:
+            return response.json().get("username", sender_id)  
+        else:
+            return sender_id 
+        
+    except Exception as e:
+        return sender_id
+# ==========================================================================================
+def get_messenger_sender_info(message):
+    try:
+        sender_id = message["sender"]["id"]
+        sender_profile_name = fetch_messenger_username(sender_id)
+        return sender_id, sender_profile_name
+
+    except KeyError as e:
+        frappe.log_error("Failed to extract sender info", str(e))
+        return None, "Unknown"
+# ==========================================================================================
+def get_or_create_messenger_chat_profile(sender_id, sender_profile_name):
+    chat_profile = check_if_chat_profile_exists(sender_id)
+
+    if not chat_profile:
+        contact = create_messenger_contact(sender_id, sender_profile_name)
+        chat_profile = frappe.db.get_value("ClefinCode Chat Profile", {"contact": contact}, "name")
+    return chat_profile
+# ==========================================================================================
+def validate_messenger_receiver_profile(receiver_id):
+    """Validates if a ClefinCode Chat Profile exists based on receiver_id matching contact_info or name."""
+    try:
+        # First, try to find in Contact Details
+        contact_details = frappe.db.get_value(
+            "ClefinCode Chat Profile Contact Details",
+            {"contact_info": receiver_id},
+            "parent"  # always specify the field!
+        )
+        
+        if contact_details:
+            return True
+
+        # If not found, try in Messenger Profile
+        profile = frappe.db.get_value(
+            "ClefinCode Facebook Messenger Profile",
+            {"name": receiver_id},
+            "name"  # again, explicitly ask for the field
+        )
+
+        if profile:
+            return True
+
+        # If neither found, log error
+        frappe.log_error(
+            title="ClefinCode Messenger Receiver Not Found",
+            message=f"Receiver ID not found: {receiver_id}"
+        )
+        return False
+
+    except Exception as e:
+        frappe.log_error(
+            title="Error Validating Messenger Receiver Profile",
+            message=str(e)
+        )
+        return False
+# ==========================================================================================
+def handle_messenger_chat_channel(sender_id, receiver_id, chat_profile, messenger_profile_doc, messages):
+    if sender_id != receiver_id:
+        chat_channel = None
+        if messenger_profile_doc.type == "Support":
+            chat_channel = manage_messenger_support_channel(sender_id, receiver_id, chat_profile, messenger_profile_doc)
+        else:
+            chat_channel = manage_messenger_personal_channel(sender_id, receiver_id, chat_profile, messenger_profile_doc, messages)
+        return chat_channel   
+# ==========================================================================================
+def manage_messenger_support_channel(sender_id, receiver_id, chat_profile, messenger_profile_doc):
+    channel_info = check_if_channel_exists(sender_id, receiver_id, "Support")
+    if not channel_info:
+        recipients_list, responder_user = build_messenger_recipients_list(chat_profile, messenger_profile_doc, sender_id)
+        chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
+        return [chat_channel , None]
+    else:    
+        chat_channel , pending_messages = channel_info 
+        return [chat_channel , pending_messages]
+# ==========================================================================================
+def build_messenger_recipients_list(chat_profile, messenger_profile_doc, sender_id):
+    recipients_list = []
+
+    responder_user = choose_user_to_respond("ClefinCode Facebook Messenger Profile", messenger_profile_doc.name)
+    if not responder_user:
+        return
+    
+    recipients_list.append(build_messenger_recipient_gateway(chat_profile, messenger_profile_doc, sender_id))        
+
+    if messenger_profile_doc.receive_by_profile == 1:
+        for profile in messenger_profile_doc.chat_profiles:
+            user_email = get_email_from_chat_profile(profile.chat_profile)
+            if user_email and user_email != responder_user:
+                recipients_list.append(build_chat_recipients(profile.chat_profile))
+                
+    return recipients_list, responder_user
+# ==========================================================================================
+def build_messenger_recipient_gateway(profile_id, messenger_profile_doc, sender_id):  
+    return {
+        "profile_id": profile_id,
+        "email": sender_id,
+        "platform": "Messenger",
+        "platform_profile": "ClefinCode Facebook Messenger Profile",
+        "platform_gateway": messenger_profile_doc.name
+    }    
+# ==========================================================================================
+def manage_messenger_personal_channel(sender_id, receiver_id, chat_profile, messenger_profile_doc, messages):
+    receiver_user_email = messenger_profile_doc.user
+    channel_info = check_if_channel_exists(sender_id, receiver_id, "Personal")
+    
+    if not channel_info:
+        chat_channel = create_messenger_direct_channel(chat_profile, receiver_user_email, messenger_profile_doc, messages, sender_id)
+        return [chat_channel , None]
+    else:    
+        chat_channel , pending_messages = channel_info 
+        return [chat_channel , pending_messages] 
+# ==========================================================================================
+def create_messenger_direct_channel(chat_profile, receiver_user_email, messenger_profile_doc, messages, sender_id):
+    channel_name = get_profile_full_name(receiver_user_email) 
+
+
+    recipients_list = [
+        build_chat_recipients(get_profile_id(receiver_user_email)),
+        build_messenger_recipient_gateway(chat_profile, messenger_profile_doc, sender_id)
+    ]
+    message_content = messages[0].get("message", {}).get("text", None)
+    
+    if message_content:
+        return create_channel(
+            get_profile_full_name(sender_id),
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(messages[0]["message"]["text"]),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]
+        
+    else :
+        attachments = messages[0]["message"]["attachments"]
+        # Extract attachment type and media URL and mime type
+        attachment_type = attachments[0].get("type", "")
+        media_url = attachments[0]["payload"]["url"]
+        if not media_url:
+            return
+        
+        mime_type = get_mime_type_from_url(media_url)
+        file_name = messages[0]['message']['attachments'][0]['payload']['url'].split('/')[-1].split('?')[0]
+
+        if attachment_type == "file":
+            attachment_type = "document"
+
+        file_url = download_media(media_url,mime_type,attachment_type)
+        content = handle_attachment(file_url[0], file_name, attachment_type)
+        
+        return create_channel(
+            get_profile_full_name(sender_id),
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(content),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]
+# ==========================================================================================
+def messenger_webhook_handle():
+    """Handles the initial webhook verification."""
+    meta_challenge = frappe.form_dict.get("hub.challenge")
+    expected_token = frappe.db.get_single_value("ClefinCode Facebook Messenger Integration", "webhook_verify_token")
+
+    if frappe.form_dict.get("hub.verify_token") != expected_token:
+        frappe.throw("Verify token does not match")
+
+    return Response(meta_challenge, status=200)       
+# ==========================================================================================
+def create_messenger_contact(sender_id, sender_profile_name):
+    try:
+        contact = frappe.get_doc({
+            "doctype": "Contact",
+            "first_name": sender_profile_name,
+            "platform": "Messenger",
+            "social_contact": [
+                {
+                    "social_id": sender_id,
+                    "platform": "Messenger"
+                }
+            ]
+        })
+        contact.insert(ignore_permissions=True)
+        return contact.name
+    except Exception as e:
+        frappe.log_error(title="Messenger Contact Creation Failed", message=str(e))
+# ==========================================================================================
+def resend_messenger_pending_messages(chat_channel, pending_messages_list, platform_gateway, sender_id):
+    attachment = None
+    channel_doc = frappe.get_doc("ClefinCode Chat Channel" , chat_channel)
+    for messsage in pending_messages_list:
+        message_doc = frappe.get_doc("ClefinCode Chat Message" , messsage.name)
+        if message_doc.file_id:
+            attachment = frappe.db.get_value("File" , message_doc.file_id, "file_url")
+
+        process_messenger_message(platform_gateway, sender_id, message_doc.sender_email, channel_doc, channel_doc.last_responder_user, message_doc, message_doc.file_type, attachment, message_doc.content, message_doc.is_voice_clip, message_doc.is_screenshot)   
+# ==========================================================================================
+def get_mime_type_from_url(url):
+    try:
+        response = requests.head(url)
+        
+        if response.status_code == 200:
+            mime_type = response.headers.get('Content-Type')
+            return mime_type
+        else:
+            print(f"Failed to retrieve MIME type, status code: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error retrieving MIME type: {str(e)}")
+        return None 
+    
+             
+# ==========================================================================================    
+# ==========================================================================================
+# ===================================== Telegram Functions =================================
+# ==========================================================================================
+# ==========================================================================================
+@frappe.whitelist(allow_guest=True)
+def telegram_webhook():        
+    try:
+        if frappe.request.method == "POST":
+            data = frappe.request.get_data(as_text=True)
+            update = json.loads(data)
+            telegram_log_webhook(update)             
+
+            # Extract message details
+            if "message" in update:
+                text = None
+                mime_type = None
+                file_id = None
+                message_type = None
+                file_name = None
+
+                # Check if the message has text
+                if "text" in update["message"]:
+                    text = update["message"]["text"]
+                    message_type = "text"
+
+                # Check if the message has a voice attachment
+                elif "voice" in update["message"]:
+                    mime_type = update["message"]["voice"]["mime_type"]
+                    file_id = update["message"]["voice"]["file_id"]
+                    message_type = "audio"
+
+                # Check if the message has a photo attachment
+                elif "photo" in update["message"]:
+                    photo = update["message"]["photo"][-1]
+                    file_id = photo["file_id"]
+                    mime_type = "image/jpeg"  
+                    message_type = "image"
+
+                # Check if the message has a video attachment
+                elif "video" in update["message"]:
+                    video = update["message"]["video"]
+                    file_id = video["file_id"]
+                    mime_type = video["mime_type"]
+                    file_name = video.get("file_name", "Unnamed Video")                    
+                    message_type = "video"
+                
+                # Check if the message has a video note attachment
+                elif "video_note" in update["message"]:
+                    video_note = update["message"]["video_note"]
+                    file_id = video_note["file_id"]
+                    mime_type = "video/mp4" 
+                    file_name = "VideoNote.mp4" 
+                    message_type = "video"    
+                    
+                # Check if the message has a document attachment
+                elif "document" in update["message"]:
+                    document = update["message"]["document"]
+                    file_id = document["file_id"]
+                    mime_type = document["mime_type"]  
+                    file_name = document["file_name"]  
+                    message_type = "document"
+     
+
+                # Handle unknown or unsupported message types
+                else:
+                    message_type = "unknown"
+                    
+                chat_id = update["message"]["chat"]["id"]
+                sender_id = update["message"]["from"]["id"]
+                sender_first_name = update["message"]["from"]["first_name"]
+                sender_last_name = update["message"]["from"]["last_name"]
+                sender_profile_name = update["message"]["from"].get("username", "") or f"{sender_first_name} {sender_last_name}"
+                receiver_id = get_telegram_receiver_id()
+                telegram_profile_doc = frappe.get_doc("ClefinCode Telegram Profile", receiver_id)
+                chat_profile = get_or_create_telegram_chat_profile(sender_id, sender_profile_name)
+                chat_channel_info = handle_telegram_chat_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc, update)
+                chat_channel, pending_messages = chat_channel_info
+                last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
+                channel = get_telegram_channel(receiver_id, sender_id)
+                                
+                if message_type == "text":
+                   send(
+                    content=format_html_string(text),
+                    user=sender_profile_name,
+                    room=chat_channel,
+                    email=sender_id,
+                    sub_channel=last_sub_channel
+                )     
+                
+                elif message_type in ["audio", "image", "video", "document"]:
+                    file_url = download_telegram_media(file_id , mime_type , message_type, file_name)
+                    content = handle_attachment(file_url[0], file_name, message_type)
+                    
+                    send(
+                    content=content,
+                    user=sender_profile_name,
+                    room=chat_channel,
+                    email=sender_id,
+                    sub_channel=last_sub_channel,
+                    attachment=file_url[0],
+                    is_media= 1 if message_type in ['image', 'video', 'sticker'] else 0,
+                    is_document = message_type == "document",
+                    is_voice_clip = message_type == "audio",
+                    file_id = file_url[2]
+                )
+                
+        else:
+            frappe.log_error("Invalid request method.", "Telegram Debugging")
+        
+    except Exception as e:
+        frappe.log_error(title="Telegram Webhook Error", message=str(e))
+        return {"error": "An error occurred while handling the webhook."}
+# ==========================================================================================
+def telegram_log_webhook(data):
+    """
+    Logs the webhook data into the ClefinCode Webhook Log Doctype.
+    """
+    try:
+        frappe.get_doc({
+            "doctype": "ClefinCode Webhook Log",
+            "response": json.dumps(data, indent=2) 
+        }).insert(ignore_permissions=True)
+        frappe.db.commit()
+    except Exception as e:
+        frappe.log_error("Failed to log webhook data:", str(e))
+# ==========================================================================================
+def get_telegram_receiver_id():
+    try:
+        profiles = frappe.get_all("ClefinCode Telegram Profile", fields=["telegram_profile_id"])
+        receiver_id = profiles[0].get("telegram_profile_id")
+        return receiver_id
+    except Exception as e:
+        frappe.log_error("Failed to fetch Telegram Receiver ID:", str(e))
+        return None
+# ==========================================================================================
+@frappe.whitelist(allow_guest=True)
+def set_telegram_webhook():
+    access_token = frappe.db.get_value("ClefinCode Telegram Integration", None, "access_token")
+    if not access_token:
+        frappe.throw("Access token for Telegram Integration is missing.")
+    
+    base_url = frappe.utils.get_url()
+    webhook_url = f"{base_url}/api/method/clefincode_chat.webhook.telegram_webhook"
+
+
+    response = requests.post(
+        f"https://api.telegram.org/bot{access_token}/setWebhook",
+        json={"url": webhook_url}
+    )
+
+    if response.ok:
+        frappe.log_error("Telegram webhook set successfully!")
+    else:
+        error_description = response.json().get("description", "Unknown error")
+        frappe.throw(f"Failed to set webhook: {error_description}")
+# ==========================================================================================
+def get_or_create_telegram_chat_profile(sender_id, sender_profile_name):
+    chat_profile = check_if_chat_profile_exists(sender_id)
+    
+    if not chat_profile:
+        contact = create_telegram_contact(sender_id, sender_profile_name)
+        chat_profile = frappe.db.get_value("ClefinCode Chat Profile", {"contact": contact}, "name")
+    return chat_profile
+# ==========================================================================================
+def create_telegram_contact(sender_id, sender_profile_name):
+    try:
+        contact = frappe.get_doc({
+            "doctype": "Contact",
+            "first_name": sender_profile_name,
+            "platform": "Telegram",
+            "social_contact": [
+                {
+                    "social_id": sender_id,
+                    "platform": "Telegram"
+                }
+            ]
+        })
+        contact.insert(ignore_permissions=True)
+        return contact.name
+    except Exception as e:
+        frappe.log_error(title="Telegram Contact Creation Failed", message=str(e))
+# ==========================================================================================
+def handle_telegram_chat_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc, update):
+    try:    
+        chat_channel = None
+        if telegram_profile_doc.type == "Support":
+            chat_channel = manage_telegram_support_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc)
+        else:
+            chat_channel = manage_telegram_personal_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc, update)
+        return chat_channel
+    except Exception as e:
+        frappe.log_error(title="Telegram Chat Channel Error", message=str(e))
+        return None, None
+# =============================================================================================
+def manage_telegram_support_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc):
+    channel_info = check_if_channel_exists(sender_id, receiver_id, "Support")
+    if not channel_info:
+        recipients_list, responder_user = build_telegram_recipients_list(chat_profile, telegram_profile_doc, sender_id)
+        chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
+        return [chat_channel , None]
+    else:    
+        chat_channel , pending_messages = channel_info 
+        return [chat_channel , pending_messages]
+# ==========================================================================================
+def build_telegram_recipients_list(chat_profile, telegram_profile_doc, sender_id):
+    recipients_list = []
+
+    responder_user = choose_user_to_respond("ClefinCode Telegram Profile", telegram_profile_doc.name)
+    if not responder_user:
+        return
+    
+    recipients_list.append(build_telegram_recipient_gateway(chat_profile, telegram_profile_doc, sender_id))        
+
+    if telegram_profile_doc.receive_by_profile == 1:
+        for profile in telegram_profile_doc.chat_profiles:
+            user_email = get_email_from_chat_profile(profile.chat_profile)
+            if user_email and user_email != responder_user:
+                recipients_list.append(build_chat_recipients(profile.chat_profile))
+                
+    return recipients_list, responder_user
+# ==========================================================================================
+def build_telegram_recipient_gateway(profile_id, telegram_profile_doc, sender_id):    
+    return {
+        "profile_id": profile_id,
+        "email": sender_id,
+        "platform": "Telegram",
+        "platform_profile": "ClefinCode Telegram Profile",
+        "platform_gateway": telegram_profile_doc.name
+    }    
+# ==========================================================================================
+def manage_telegram_personal_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc, update):
+    receiver_user_email = telegram_profile_doc.user
+    channel_info = check_if_channel_exists(sender_id, receiver_id, "Personal")
+    
+    if not channel_info:
+        chat_channel = create_telegram_direct_channel(chat_profile, receiver_user_email, telegram_profile_doc, update, sender_id)
+        return [chat_channel , None]
+    else:    
+        chat_channel , pending_messages = channel_info 
+        return [chat_channel , pending_messages] 
+# ==========================================================================================
+def create_telegram_direct_channel(chat_profile, receiver_user_email, telegram_profile_doc, update, sender_id):
+    channel_name = get_profile_full_name(receiver_user_email) 
+    recipients_list = [
+        build_chat_recipients(get_profile_id(receiver_user_email)),
+        build_telegram_recipient_gateway(chat_profile, telegram_profile_doc, sender_id)
+    ]
+    
+    if "text" in update["message"]:
+        text = update["message"]["text"]
+                
+        return create_channel(
+            get_profile_full_name(sender_id),
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(text),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]
+
+    # Check if the message has a voice attachment
+    elif "voice" in update["message"]:
+        mime_type = update["message"]["voice"]["mime_type"]
+        file_id = update["message"]["voice"]["file_id"]
+        message_type = "audio"
+        file_name = None
+        
+
+    # Check if the message has a photo attachment
+    elif "photo" in update["message"]:
+        photo = update["message"]["photo"][-1]
+        file_id = photo["file_id"]
+        mime_type = "image/jpeg"  # Telegram doesn't provide mime_type directly for photos
+        message_type = "image"
+        file_name = photo.get("file_name", "Unnamed Image")
+
+    # Check if the message has a video attachment
+    elif "video" in update["message"]:
+        video = update["message"]["video"]
+        file_id = video["file_id"]
+        mime_type = video["mime_type"]
+        file_name = video.get("file_name", "Unnamed Video")                    
+        message_type = "video"
+
+    # Check if the message has a video note attachment
+    elif "video_note" in update["message"]:
+        video_note = update["message"]["video_note"]
+        file_id = video_note["file_id"]
+        mime_type = "video/mp4"  
+        file_name = "VideoNote.mp4"  
+        message_type = "video"    
+        
+    # Check if the message has a document attachment
+    elif "document" in update["message"]:
+        document = update["message"]["document"]
+        file_id = document["file_id"]
+        mime_type = document["mime_type"]  
+        file_name = document["file_name"]  
+        message_type = "document"
+    
+    file_url = download_telegram_media(file_id , mime_type , message_type, file_name) 
+    content = handle_attachment(file_url[0], file_name, message_type)
+    
+    return create_channel(
+            get_profile_full_name(sender_id),
+            json.dumps(recipients_list),
+            "Direct",
+            format_html_string(content),
+            receiver_user_email,
+            channel_name
+        )["results"][0]["room"]
+# ==========================================================================================
+def download_telegram_media(file_id, mime_type, message_type, file_name = None):
+    try:
+        access_token = get_decrypted_password(
+            "ClefinCode Telegram Integration",  
+            "ClefinCode Telegram Integration",                               
+            "access_token"                      
+        )
+        
+        url = f"https://api.telegram.org/bot{access_token}/getFile?file_id={file_id}"
+        file_response = requests.get(url)
+        
+
+        if not file_response.ok:
+            return None, None, None
+
+        file_path = file_response.json().get("result", {}).get("file_path")
+        if not file_path:
+            frappe.log_error("File path is empty in Telegram response", "Telegram Debugging")
+            return None, None, None
+
+        # Download the media file
+        download_url = f"https://api.telegram.org/file/bot{access_token}/{file_path}"
+        media_response = requests.get(download_url)
+
+        if not media_response.ok:
+            frappe.log_error(f"Failed to download media: {media_response.text}", "Telegram Debugging")
+            return None, None, None
+
+        # Handle file content and type
+        mimetypes.add_type('image/webp', '.webp')
+        extension = None
+        file_bytes = media_response.content
+
+        if message_type == 'audio':
+            file_bytes = convert_opus_to_aac(file_bytes)
+            extension = ".aac"
+        else:
+            extension = mimetypes.guess_extension(mime_type, strict=False)
+
+        # Save the file in the Frappe system
+        file_doc = frappe.get_doc({
+            "doctype": "File",
+            "file_name": random_string(8) + extension if not file_name else file_name,
+            "folder": "Home/attachments",
+            "content": file_bytes,
+            "is_private": 1
+        })
+        file_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        return file_doc.file_url, file_doc.file_size, file_doc.name
+
+    except Exception as e:
+        frappe.log_error(title="Telegram Media Download Error", message=str(e))
+        return None, None, None
+# ==========================================================================================
