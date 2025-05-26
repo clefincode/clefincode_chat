@@ -2099,7 +2099,7 @@ export default class ChatSpace {
     let res = await frappe.call({
       method: "clefincode_chat.api.api_1_2_1.api.create_channel",
       args: {
-        channel_name: this.profile.room_name,
+        channel_name: "",
         users: this.chat_members,
         type: "Direct",
         last_message: content,
