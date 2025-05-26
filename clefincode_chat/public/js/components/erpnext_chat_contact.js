@@ -54,14 +54,14 @@ export default class ChatContact {
     // NOW call it after icons are created
     if (has_default) {
         me.get_default_platform_icon(me.profile.default_platform, me.profile.default_contact);
-    } else if (this.profile.contact_details.length == 1) {
+    } else if (this.profile.contact_details.length >= 1) {
         me.profile.default_contact = this.profile.contact_details[0].contact_info;
         me.profile.default_platform = this.profile.contact_details[0].contact_type;
         me.get_default_platform_icon(this.profile.contact_details[0].contact_type, this.profile.contact_details[0].contact_info);
     } else {
-        me.profile.default_contact = me.profile.contact_details[0].contact_info;
-        me.profile.default_platform = me.profile.contact_details[0].contact_type;
-        me.get_default_platform_icon(me.profile.contact_details[0].contact_type, me.profile.contact_details[0].contact_info);
+        me.profile.default_contact = me.profile.contact_details.contact_info;
+        me.profile.default_platform = me.profile.contact_details.contact_type;
+        me.get_default_platform_icon(me.profile.contact_details.contact_type, me.profile.contact_details.contact_info);
     }
 }
 

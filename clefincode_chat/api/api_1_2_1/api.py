@@ -765,10 +765,8 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
         GROUP BY ChatChannelContributor.user, ChatChannel.name
     """
 
-    # If a search query was passed, only keep rows whose channel_name matches
     filter_clause = ""
     if query:
-        # escape and lowercase for a case-insensitive LIKE
         like_q = f"'%{ query.strip().lower() }%'"
         
         filter_clause = f"""
@@ -4300,21 +4298,20 @@ def process_messenger_message(platform_gateway, messenger_customer_id , email, c
             message = BeautifulSoup(content, 'html.parser').get_text()
     send_messenger_message(new_message, platform_gateway, messenger_customer_id , message, file_type if file_type in ["image", "video", "audio", "document"] else "text", is_voice_clip, channel_doc, email)
 # ==========================================================================================
-def auto_fill_contact_platform(doc, method):
-        platform = doc.social_contact[0].platform
+def auto_fill_contact_platform(doc, method):        
+    if doc.social_contact and doc.social_contact[0].platform:
+        doc.platform = doc.social_contact[0].platform
+
         
-        if platform:
-            doc.platform = platform
-            
-        elif doc.phone_nos and len(doc.phone_nos) > 0:
-            doc.platform = "Whatsapp"
-            frappe.logger().info("Platform set to Whatsapp")
-            
-        else:
-            doc.platform = "Chat"
-            frappe.logger().info("Platform set to Chat")
-            
-        doc.save()
+    elif doc.phone_nos and len(doc.phone_nos) > 0:
+        doc.platform = "Whatsapp"
+        frappe.logger().info("Platform set to Whatsapp")
+        
+    else:
+        doc.platform = "Chat"
+        frappe.logger().info("Platform set to Chat")
+        
+    doc.save()
 #############################################################################################
 ######################################## Telegram Functions #################################
 #############################################################################################
