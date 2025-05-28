@@ -34,30 +34,74 @@ export default class ChatList {
 
   async handleSearch(q) {
     q = q.trim().toLowerCase();
+
+    // if they cleared their search, go back to the normal channel list
     if (!q) {
-      // Reset pagination & reload first page
+      this.search_query = null;
       this.offset = 0;
       return this.fetch_and_setup_rooms();
     }
 
-    // Abort any inflight channel-list fetch
+    // remember we’re in search mode
+    this.search_query = q;
+
+    // abort inflight fetch
     if (this.controller) {
       this.controller.abort();
       this.controller = null;
     }
 
-    // Hit your search endpoint
-    const results = await search_in_rooms(this.user_email, q);
+    // 1) fetch first “page” of search hits
+    const message = await search_in_rooms(
+      this.user_email,
+      q,
+      this.limit,
+      0
+    );
 
-    // Swap in the new “search hits” set
-    this.room_groups    = results;
-    this.num_of_results = results.length;
-    this.offset         = results.length;
-    this.rest_of_results= 0;
+    // 2) seed our pagination state
+    this.room_groups    = message.results;
+    this.num_of_results = message.num_of_results;
+    this.offset         = message.results.length;
+    this.rest_of_results = message.num_of_results - this.offset;
 
-    // Tear down any old container and render the new rooms
-    await this.setup_rooms(/* no abort signal */);
-    await this.render_messages(/* no abort signal */);
+    // 3) render just like a normal load
+    await this.setup_rooms();
+    await this.render_messages();
+    this.setup_events();
+  }
+
+  // 4) New helper: load the next page of search results
+  async get_and_loading_more_search_contents() {
+    if (this._loading) return;
+    this._loading = true;
+
+    const message = await search_in_rooms(
+      this.user_email,
+      this.search_query,
+      this.limit,
+      this.offset
+    );
+
+    // remove old loader
+    this.$chat_rooms_group_container.find(".loading-more").remove();
+
+    // append new rooms
+    await this.render_new_content(message.results);
+
+    // bump pagination
+    this.offset += message.results.length;
+    this.num_of_results = message.num_of_results;
+    this.rest_of_results = message.num_of_results - this.offset;
+
+    // maybe add loader again
+    if (this.rest_of_results > 0) {
+      this.$chat_rooms_group_container.append(
+        `<div class="loading-more">Loading Chats...</div>`
+      );
+    }
+
+    this._loading = false;
   }
 
   setup_header() {    
@@ -406,7 +450,11 @@ export default class ChatList {
         const sh  = this.$chat_rooms_group_container[0].scrollHeight;
         // if within 20px of bottom
         if (st + ih >= sh - 20) {
-          this.get_and_loading_more_contents();
+          if (this.search_query) {
+            this.get_and_loading_more_search_contents();
+          } else {
+            this.get_and_loading_more_contents();
+          }
         }
       }, 200);
     });
@@ -433,6 +481,9 @@ export default class ChatList {
         };
         let chat_room = findChatRoomItem();
         chat_room[1].chat_status = res.status;
+        if (chat_room[1].chat_status == undefined) {
+          chat_room[0].chat_status = res.status
+        }
     });
 
     frappe.realtime.on("update_room", async function (res) {
@@ -453,12 +504,12 @@ export default class ChatList {
         };
 
         if (me.is_open === 1) {
-          // if (
-          //   res.room_type === "Direct" &&
-          //   me.user_email === res.sender_email
-          // ) {
-          //   res.room_name = res.contact_name;
-          // }
+          if (
+            res.room_type === "Direct" &&
+            me.user_email === res.sender_email
+          ) {
+            res.room_name = res.contact_name;
+          }
 
           if (!me.chat_room_groups) {
             setCommonFields();
@@ -750,16 +801,18 @@ async function check_if_website_user_has_support_channel(website_user_email) {
   return await res.message;
 }
 
-async function search_in_rooms(email, query) {
+async function search_in_rooms(email, query, limit, offset) {
   const res = await frappe.call({
     type: "GET",
     method: "clefincode_chat.api.api_1_2_1.api.get_channels_list",
     args: {
       user_email: email,
       query: query,
+      limit: limit,
+      offset: offset
     },
   });
-  return  res.message.results;
+  return  res.message;
 }
 
 async function search_in_message_content(email, query) {

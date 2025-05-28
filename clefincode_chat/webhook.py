@@ -14,7 +14,7 @@ import mimetypes
 from mimetypes import guess_type
 from frappe.utils import random_string
 from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status, get_access_token_instagram, get_access_token_messenger
-from clefincode_chat.api.api_1_2_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template,send_instagram_message_confirm_template,send_messenger_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
+from clefincode_chat.api.api_1_2_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
 import urllib.parse
 from frappe.utils.password import get_decrypted_password
 
@@ -498,6 +498,7 @@ def instagram_handle():
         
         if not messages:
             return
+        
         message = messages[0]
         
         if "delivery" in message or "read" in message:
@@ -505,34 +506,7 @@ def instagram_handle():
         
         
         if message.get("errors"):
-            receiver_id = get_receiver_id(form_dict)
-            if not validate_instagram_receiver_profile(receiver_id):
-                return
-            sender_id = message.get("recipient", {}).get("id")
-            
-            message_template = frappe.db.get_value("ClefinCode Instagram Profile", receiver_id, "message_template")
-            template_status = check_template_status(message_template)
-            
-
-            # Check if channel exists and member isn't pending
-            channel = get_instagram_channel(receiver_id, sender_id)
-            if not channel:
-                return
-            
-            last_sub_channel = get_last_active_sub_channel(channel)["results"][0]["last_active_sub_channel"]
-            last_message_info = get_last_message_sent(channel)
-            if not last_message_info:
-                return
-
-            if not message_template or not template_status:
-                content = "<p style='color:#0089FF'> No confirmation sent in over 24 hours. Please check the template in your Instagram profile.</p>"
-                send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")       
-                return
-            
-            content = "<p style='color:#FF0000'> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p>"
-            send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")
-            send_instagram_message_confirm_template(receiver_id, sender_id, channel, message_template)
-            return
+            frappe.log_error("Error Occurred Receiving Instagram Message", message)
 
         # Determine message type and content
         message_content = message.get("message", {}).get("text", None)
@@ -880,35 +854,7 @@ def messenger_handle():
             return
         
         if message.get("errors"):
-            receiver_id = get_receiver_id(form_dict)
-            if not validate_messenger_receiver_profile(receiver_id):
-                return
-            sender_id = message.get("recipient", {}).get("id")
-            
-            message_template = frappe.db.get_value("ClefinCode Facebook Messenger Profile", receiver_id, "message_template")
-            template_status = check_template_status(message_template)
-
-            # Check if channel exists and member isn't pending
-            channel = get_messenger_channel(receiver_id, sender_id)
-            if not channel:
-                return
-            
-            last_sub_channel = get_last_active_sub_channel(channel)["results"][0]["last_active_sub_channel"]
-            last_message_info = get_last_message_sent(channel)
-            if not last_message_info:
-                return
-
-            sender, sender_email = last_message_info
-
-            if not message_template or not template_status:
-                content = "<p style='color:#0089FF'> No confirmation sent in over 24 hours. Please check the template in your Messenger profile.</p>"
-                send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")       
-                return
-            
-            content = "<p style='color:#FF0000'> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p>"
-            send(content=content, user=sender_profile_name, room=channel, email=sender_profile_name, sub_channel=last_sub_channel, message_type="information", message_template_type="Send Confirmation")
-            send_messenger_message_confirm_template(receiver_id, sender_id, channel, message_template)
-            return
+            frappe.log_error("Error Occurred Receiving Messenger Message", message)
 
         # Determine message type and content
         message_content = message.get("message", {}).get("text", None)

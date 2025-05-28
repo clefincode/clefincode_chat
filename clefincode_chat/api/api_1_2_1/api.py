@@ -436,7 +436,7 @@ def create_channel(channel_name , users, type , last_message , creator_email , c
         'type': type,
         'is_parent' : 1,
         'creation_date' : creation_date,
-        'modified_date': creation_date
+        'modified_date': creation_date,
     })
     room_doc.insert(ignore_permissions=True)
     for user in json.loads(users):
@@ -658,7 +658,10 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
         return {"results" : [{"channel" : sub_channel_doc.name}]}
 # ==========================================================================================
 @frappe.whitelist()
-def get_channels_list(user_email, limit=10, offset=0, query=None):
+def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
+    frappe.log_error("user_email", user_email)
+    frappe.log_error("query", query)
+    frappe.log_error("type", type)
     # sanitize inputs
     user_email_esc = frappe.db.escape(user_email)
     limit = int(limit)
@@ -680,6 +683,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
             NULL                           AS remove_date,
             NULL                           AS is_website_support_group,
             ChatChannel.chat_status        AS chat_status,
+            ChatChannel.channel_info        AS channel_info,
             NULL                           AS other_user_platform
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  
@@ -703,6 +707,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
             ChatChannelUser.remove_date    AS remove_date,
             is_website_support_group,
             ChatChannel.chat_status        AS chat_status,
+            ChatChannel.channel_info        AS channel_info,
             NULL                           AS other_user_platform
         FROM `tabClefinCode Chat Channel` AS ChatChannel 
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  
@@ -727,6 +732,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
             NULL                           AS remove_date,
             NULL                           AS is_website_support_group,
             ChatChannel.chat_status        AS chat_status,
+            ChatChannel.channel_info        AS channel_info,
             ChatChannelUser2.platform      AS other_user_platform
         FROM `tabClefinCode Chat Channel` AS ChatChannel
         INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
@@ -753,6 +759,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
             NULL                           AS remove_date,
             is_website_support_group,
             ChatChannel.chat_status        AS chat_status,
+            ChatChannel.channel_info        AS channel_info,
             NULL                           AS other_user_platform
         FROM `tabClefinCode Chat Channel` AS ChatChannel
         INNER JOIN `tabClefinCode Chat Channel Contributor` AS ChatChannelContributor
@@ -767,7 +774,13 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
         like_q = f"'%{ query.strip().lower() }%'"
         
         filter_clause = f"""
-            WHERE LOWER(COALESCE(channel_name, '')) LIKE {like_q}
+            WHERE LOWER(COALESCE(channel_info, '')) LIKE {like_q}
+        """
+        
+        if type:
+            like_t = f"'%{ type.strip().lower() }%'"
+            filter_clause += f"""
+            AND LOWER(COALESCE(other_user_platform, '')) LIKE {like_t}
         """
 
     
@@ -781,14 +794,14 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
     """
     paged = frappe.db.sql(paged_sql, as_dict=True)
     
-
-    # Total count of matching rows (for pagination or UI feedback)
+        # Total count of matching rows (for pagination or UI feedback)
     total_count_sql = f"""
         SELECT COUNT(*) 
         FROM ({union_sql}) AS all_channels
         {filter_clause}
     """
     total_count = frappe.db.sql(total_count_sql, as_list=True)[0][0]
+    
 
     # Post-processing
     if paged:
@@ -872,7 +885,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None):
                 }
             )
             room['chat_topic'] = chat_topic[0].name if chat_topic else None
-
+            
     return {
         "results": paged,
         "num_of_results": total_count
@@ -1158,6 +1171,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     results["target_user"] = member.user
                     frappe.publish_realtime(event=room, message=results, user=member.user)  # listner in chat space      
                     frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user) # listner when initilizing app 
+                    frappe.log_error("resultsssssss", results)
+                    frappe.log_error("memberrrrr.userrrrrrr", member.user)
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
                     # frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
@@ -3919,43 +3934,6 @@ def send_instagram_message(new_message_doc, sender, receiver, message, message_t
     except Exception as e:
         frappe.log_error("Instagram Message Exception", str(e))
 # ==========================================================================================
-def send_instagram_message_confirm_template(platform_gateway, instagram_customer_profile, channel, message_template):
-    try:       
-        access_token = get_access_token_instagram()
-        api_base = "https://graph.instagram.com/v21.0"
-        instagram_id = frappe.db.get_value("ClefinCode Instagram Profile", platform_gateway, "instagram_profile_id")
-        endpoint = f"{api_base}/{instagram_id}/messages"
-
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
-
-        meta_template_name = frappe.db.get_value("ClefinCode WhatsApp Template" , message_template, "meta_template_name")
-
-        data = {
-            "messaging_product": "instagram",
-            "to": instagram_customer_profile,
-            "type": "template",
-             "template": {
-                "name": meta_template_name,
-                "language": {
-                    "code": "en"
-                }
-            }
-        }
-
-        response = requests.post(endpoint, json=data, headers=headers)
-
-        if response.ok:
-            frappe.db.set_value('ClefinCode Chat Channel User', {"parent": channel , "user": instagram_customer_profile, "platform_gateway": platform_gateway}, 'pending_messages', 1)
-            frappe.db.commit()
-        else:
-            frappe.log_error(title="send instagram message template Failed", message=response.text)
-            
-    except Exception as e:
-        frappe.log_error(title="send instagram message template Exception", message=str(e))
-# ==========================================================================================        
 def standardize_audio_to_m4a(file_path):
     """
     Converts an audio file to M4A format with AAC codec for Instagram compatibility.
@@ -4208,43 +4186,6 @@ def send_messenger_message(new_message_doc, sender, receiver, message, message_t
     except Exception as e:
         frappe.log_error("Messenger Message Exception", str(e))
 # ==========================================================================================
-def send_messenger_message_confirm_template(platform_gateway, messenger_customer_profile, channel, message_template):
-    try:       
-        access_token = get_access_token_messenger()
-        api_base = "https://graph.facebook.com/v21.0"
-        messenger_profile = frappe.db.get_value("ClefinCode Facebook Messenger Profile", platform_gateway, "messenger_profile_id")
-        endpoint = f"{api_base}/{messenger_profile}/messages"
-
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json",
-        }
-
-        meta_template_name = frappe.db.get_value("ClefinCode WhatsApp Template" , message_template, "meta_template_name")
-
-        data = {
-            "messaging_product": "messenger",
-            "to": messenger_customer_profile,
-            "type": "template",
-             "template": {
-                "name": meta_template_name,
-                "language": {
-                    "code": "en"
-                }
-            }
-        }
-
-        response = requests.post(endpoint, json=data, headers=headers)
-
-        if response.ok:
-            frappe.db.set_value('ClefinCode Chat Channel User', {"parent": channel , "user": messenger_customer_profile, "platform_gateway": platform_gateway}, 'pending_messages', 1)
-            frappe.db.commit()
-        else:
-            frappe.log_error(title="send whatsapp message template Failed", message=response.text)
-            
-    except Exception as e:
-        frappe.log_error(title="send whatsapp message template Exception", message=str(e))    
-# ==========================================================================================
 @frappe.whitelist()
 def get_messenger_profile_type(messenger_system_id):
     return frappe.db.get_value("ClefinCode Facebook Messenger Profile" , messenger_system_id, "type")
@@ -4301,8 +4242,8 @@ def auto_fill_contact_platform(doc, method):
 
         
     elif doc.phone_nos and len(doc.phone_nos) > 0:
-        doc.platform = "Whatsapp"
-        frappe.logger().info("Platform set to Whatsapp")
+        doc.platform = "WhatsApp"
+        frappe.logger().info("Platform set to WhatsApp")
         
     else:
         doc.platform = "Chat"

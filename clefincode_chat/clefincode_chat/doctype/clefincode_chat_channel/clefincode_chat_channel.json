@@ -15,6 +15,7 @@
   "parent_channel",
   "parent_channel_creator",
   "channel_name",
+  "channel_info",
   "column_break_tbzsr",
   "platform",
   "type",
@@ -169,12 +170,17 @@
    "fieldtype": "Link",
    "label": "Last Responder User",
    "options": "ClefinCode Chat Profile"
+  },
+  {
+   "fieldname": "channel_info",
+   "fieldtype": "Long Text",
+   "label": "Channel Info"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-04-29 17:29:52.899333",
+ "modified": "2025-05-28 11:25:24.367074",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Channel",

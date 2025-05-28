@@ -321,7 +321,7 @@ handle_chat_contact_click() {
   }
 
   add_contact_from_selected_contacts(platform, contact) {
-    if (platform == "Whatsapp") {
+    if (platform == "WhatsApp") {
       this.chat_contact_list.selected_contacts.push({
         profile_id: this.profile.profile_id,
         email: contact,
