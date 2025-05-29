@@ -235,8 +235,3 @@ sounds = [
 webhooks = [
     {"from_route": "/telegram/webhook", "to_method": "clefincode_chat.webhook.telegram_webhook"}
 ]
-
-fixtures = [
-    {"dt": "Custom Field", "filters": [["dt", "in", ["Contact"]]]},
-    {"dt": "Property Setter", "filters": [["doc_type", "in", ["Contact"]]]}
-]
