@@ -174,13 +174,14 @@
   {
    "fieldname": "channel_info",
    "fieldtype": "Long Text",
+   "hidden": 1,
    "label": "Channel Info"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-28 11:25:24.367074",
+ "modified": "2025-05-29 13:30:12.379078",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Channel",
