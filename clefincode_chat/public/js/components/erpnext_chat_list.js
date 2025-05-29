@@ -294,24 +294,18 @@ export default class ChatList {
       .css({ maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' });
   }
 
-  async render_messages(signal = null) {
-  if (signal?.aborted || this.num_of_results == 0) return;
 
-  // ── sort by send_date descending ───────────────────────────
-  this.chat_room_groups.sort(([, roomA], [, roomB]) => {
-    const dateA = new Date(roomA.profile.send_date);
-    const dateB = new Date(roomB.profile.send_date);
-    return dateB - dateA; // newest first
-  });
+async render_messages(signal = null) {
+    if (signal?.aborted || this.num_of_results == 0) return;
 
-  this.$chat_rooms_group_container.empty();
-  for (const [, chatRoom] of this.chat_room_groups) {
-    chatRoom.render("append");
+    this.$chat_rooms_group_container.empty();
+    for (const element of this.chat_room_groups) {
+      element[1].render("append");
+    }
+
+    // repopulate the loader if there's still more to fetch
+    this.check_if_more_results();
   }
-
-  // repopulate the loader if there's still more to fetch
-  this.check_if_more_results();
-}
 
 
 

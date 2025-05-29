@@ -712,6 +712,34 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
             AND ChatChannelUser.user = {user_email_esc}
         WHERE type = 'Group'
           AND ChatChannelUser.platform = 'Chat'
+          AND ChatChannelUser.is_removed = 0
+
+        UNION ALL
+        
+        SELECT DISTINCT
+        ChatChannel.name               AS room,
+        NULL                           AS parent_channel,
+        NULL                           AS contact,
+        ChatChannelUser.remove_date    AS send_date,   
+        ChatChannel.last_message       AS last_message,
+        (ChatChannelUser.channel_last_message_number 
+            - ChatChannelUser.last_message_read)
+                                      AS user_unread_messages,
+        channel_name,
+        type,
+        ChatChannelUser.is_removed     AS is_removed,
+        ChatChannelUser.remove_date    AS remove_date,
+        is_website_support_group,
+        ChatChannel.chat_status        AS chat_status,
+        ChatChannel.channel_info       AS channel_info,
+        NULL                           AS other_user_platform
+        FROM `tabClefinCode Chat Channel` AS ChatChannel 
+        INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  
+            ON ChatChannelUser.parent = ChatChannel.name
+            AND ChatChannelUser.user = {user_email_esc}
+        WHERE type = 'Group'
+        AND ChatChannelUser.platform = 'Chat'
+        AND ChatChannelUser.is_removed = 1     
 
         UNION ALL
 
@@ -844,17 +872,6 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
             else:
                 room["platform"] = get_platform_for_chat(room.get("channel_name"))
 
-            # Handle removed rooms
-            if room.get('is_removed') == 1:
-                last_message_info = get_last_message_info(user_email, room['room'], room['remove_date'])
-                if last_message_info:
-                    room.update({
-                        'last_message': last_message_info['content'],
-                        'sender_email': last_message_info['sender_email'],
-                        'last_message_type': last_message_info['message_type'],
-                        'send_date': room['remove_date']
-                    })
-
             # Convert send_date to user timezone
             room['utc_message_date'] = room['send_date']
             room['send_date'] = convert_utc_to_user_timezone(
@@ -882,7 +899,6 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
                 }
             )
             room['chat_topic'] = chat_topic[0].name if chat_topic else None
-            
     return {
         "results": paged,
         "num_of_results": total_count
