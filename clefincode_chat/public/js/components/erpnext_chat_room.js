@@ -87,7 +87,6 @@ export default class ChatRoom {
         <div class='message-container'>${last_message}</div>
       </div>
     `;
-  
     const date_html = `
       <div class='chat-date'>
         ${get_date_from_now(this.profile.send_date, "room", this.profile.time_zone)}

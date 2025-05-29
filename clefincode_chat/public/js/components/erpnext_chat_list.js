@@ -295,16 +295,24 @@ export default class ChatList {
   }
 
   async render_messages(signal = null) {
-    if (signal?.aborted || this.num_of_results == 0) return;
+  if (signal?.aborted || this.num_of_results == 0) return;
 
-    this.$chat_rooms_group_container.empty();
-    for (const element of this.chat_room_groups) {
-      element[1].render("append");
-    }
+  // ── sort by send_date descending ───────────────────────────
+  this.chat_room_groups.sort(([, roomA], [, roomB]) => {
+    const dateA = new Date(roomA.profile.send_date);
+    const dateB = new Date(roomB.profile.send_date);
+    return dateB - dateA; // newest first
+  });
 
-    // repopulate the loader if there's still more to fetch
-    this.check_if_more_results();
+  this.$chat_rooms_group_container.empty();
+  for (const [, chatRoom] of this.chat_room_groups) {
+    chatRoom.render("append");
   }
+
+  // repopulate the loader if there's still more to fetch
+  this.check_if_more_results();
+}
+
 
 
   fitler_rooms(query) {

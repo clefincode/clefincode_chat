@@ -659,9 +659,6 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
 # ==========================================================================================
 @frappe.whitelist()
 def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
-    frappe.log_error("user_email", user_email)
-    frappe.log_error("query", query)
-    frappe.log_error("type", type)
     # sanitize inputs
     user_email_esc = frappe.db.escape(user_email)
     limit = int(limit)
