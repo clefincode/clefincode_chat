@@ -24,11 +24,7 @@
   "chat_profiles",
   "user",
   "section_break_17",
-  "authorized_users",
-  "confirm_message_template_section",
-  "message_template",
-  "meta_template_name",
-  "template_content"
+  "authorized_users"
  ],
  "fields": [
   {
@@ -138,40 +134,11 @@
    "fieldtype": "Table",
    "label": "Authorized Users",
    "options": "Authorized Users"
-  },
-  {
-   "fieldname": "confirm_message_template_section",
-   "fieldtype": "Section Break",
-   "label": "Confirm Message Template"
-  },
-  {
-   "depends_on": "eval:!doc.__islocal",
-   "description": "WhatsApp message template for continuing communication with the customer outside the 24-hour window.",
-   "fieldname": "message_template",
-   "fieldtype": "Link",
-   "label": "Message Template",
-   "options": "ClefinCode WhatsApp Template"
-  },
-  {
-   "depends_on": "eval: doc.__islocal",
-   "description": "Template names must use only lowercase letters and underscores.",
-   "fieldname": "meta_template_name",
-   "fieldtype": "Data",
-   "label": "Meta Template Name",
-   "mandatory_depends_on": "eval: doc.__islocal"
-  },
-  {
-   "default": "You have a pending message. Would you like to view\u00a0it\u00a0now?",
-   "depends_on": "eval: doc.__islocal",
-   "fieldname": "template_content",
-   "fieldtype": "Text",
-   "label": "Template Content",
-   "mandatory_depends_on": "eval: doc.__islocal"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-22 13:47:24.010800",
+ "modified": "2025-05-28 11:09:42.663165",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Facebook Messenger Profile",
