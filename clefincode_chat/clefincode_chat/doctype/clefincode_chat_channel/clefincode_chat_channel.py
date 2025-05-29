@@ -66,5 +66,6 @@ class ClefinCodeChatChannel(Document):
 			# row.profile_id, row.user and row.platform come from your child-table fields
 			lines.append(f"{row.profile_id} {row.user}")
 
+		lines.append(self.channel_name)
 		# join with newlines (or commas, or however you like)
 		self.channel_info = " ".join(lines)
