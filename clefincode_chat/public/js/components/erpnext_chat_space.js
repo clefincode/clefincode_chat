@@ -510,10 +510,7 @@ export default class ChatSpace {
             marginBottom: "40px",
           });
 
-        // Add info message
-        this.$chat_actions.append(
-          `<div style="margin-bottom: 10px;">This is a closed channel. To start chatting, create a new one or reopen this one.</div>`
-        );
+        
 
         // Add Reopen button
         const $reopenBtn = $(
@@ -525,15 +522,25 @@ export default class ChatSpace {
           `<button class="btn btn-secondary">Create New</button>`
         );
 
+        
         // Append buttons inside a wrapper
         const $btnWrapper = $("<div>")
           .css({ display: "flex", justifyContent: "center", gap: "10px" })
-          .append($reopenBtn, $createNewBtn);
 
-        this.$chat_actions.append($btnWrapper);
-        this.$chat_space.append(this.$chat_actions);
 
-        const room = this.profile.room;
+        if (this.profile.is_removed != 1) {
+          // Add info message
+          this.$chat_actions.append(
+            `<div style="margin-bottom: 10px;">This is a closed channel. To start chatting, create a new one or reopen this one.</div>`
+          );
+          $btnWrapper.append($reopenBtn);
+          if (this.profile.room_type != "Group") {
+            $btnWrapper.append($createNewBtn);
+          }
+          this.$chat_actions.append($btnWrapper);
+          this.$chat_space.append(this.$chat_actions);
+
+                  const room = this.profile.room;
 
         // Set up button events
         $reopenBtn.on("click", () => {
@@ -574,6 +581,10 @@ export default class ChatSpace {
 
         return;
       }
+    }
+        
+
+
 
       if (this.profile.is_removed == 1) {
         this.$chat_actions = $(document.createElement("div")).addClass(

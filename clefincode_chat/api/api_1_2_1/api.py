@@ -1184,8 +1184,6 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     results["target_user"] = member.user
                     frappe.publish_realtime(event=room, message=results, user=member.user)  # listner in chat space      
                     frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user) # listner when initilizing app 
-                    frappe.log_error("resultsssssss", results)
-                    frappe.log_error("memberrrrr.userrrrrrr", member.user)
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
                     # frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat

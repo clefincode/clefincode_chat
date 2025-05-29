@@ -110,9 +110,13 @@ export default class ChatRoom {
     //   room,
     //   this.profile.remove_date
     // );
+
     message_type = message_type ? message_type : "text";
     let last_message = "";
     let last_message_text = "";
+
+
+    if (this.profile.is_removed != 1) {
 
     if (message_type == "text" || message_type == "document") {
       let last_message_after_update = await this.update_information_message(
@@ -174,6 +178,12 @@ export default class ChatRoom {
       }
     }
     return `<span style="display: flex;">${last_message}</span>`;
+    }
+
+    else {
+      last_message += `You Are No Longer In This Channel`
+      return `<span style="display: flex;">${last_message}</span>`
+    }
   }
 
   sanitize_last_message(message) {
