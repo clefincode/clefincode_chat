@@ -148,6 +148,12 @@
    "label": "Is Voice Clip"
   },
   {
+    "default": "0",
+    "fieldname": "is_call",
+    "fieldtype": "Check",
+    "label": "Is Call"
+   },
+  {
    "fieldname": "whatsapp_message_id",
    "fieldtype": "Data",
    "hidden": 1,
