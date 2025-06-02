@@ -20,7 +20,7 @@ def initialize_firebase():
 
 
 @frappe.whitelist(allow_guest = True)
-def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None , is_call=None, message_type = None):
+def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None , is_call=False, message_type = None):
     initialize_firebase()    
     message=None
 

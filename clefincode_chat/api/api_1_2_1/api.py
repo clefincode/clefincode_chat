@@ -3630,15 +3630,15 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                         if results.get("file_type"):
                             message_type = results.get("file_type")
                         if to_user == frappe.session.user:
-                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, is_call)
+                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, is_call=is_call)
                             return                
                         if realtime_type == "send_message": 
                             body = get_body_message(results)
                         else:
                             body = get_body_message_information(realtime_type)
-                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, is_call )                       
+                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, is_call=is_call )                       
                     else:
-                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, is_call)                                              
+                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, is_call=is_call)                                              
     except Exception as e:
         frappe.publish_realtime("console" , message = e)
 #=====================================================================================
@@ -3849,7 +3849,7 @@ def push_notifications(registration_token, information, realtime_type, platform 
                 title = "Chat Notifications"
                 body = "New Message"         
 
-            send_notification_via_firebase(registration_token, info, realtime_type, platform, title, body, same_user, message_type = message_type, is_call)            
+            send_notification_via_firebase(registration_token, info, realtime_type, platform, title, body, same_user, message_type = message_type, is_call=is_call)            
 
     except Exception as e:
         frappe.publish_realtime("console" , message = str(e))
