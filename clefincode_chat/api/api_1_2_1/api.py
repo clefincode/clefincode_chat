@@ -1030,7 +1030,7 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 ######################################## Messages ###########################################
 #############################################################################################
 @frappe.whitelist()
-def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
+def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0, is_call = None):
     try:
         from packaging import version
         # Get current Frappe version
@@ -1063,6 +1063,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                 "is_link" : is_link if is_link else 0,
                 "is_media" : is_media if is_media else 0,            
                 "is_document" : is_document if is_document else 0,
+                "is_call" : is_call if is_call else 0,
                 "is_voice_clip" : is_voice_clip if is_voice_clip else 0,
                 "is_mention": is_mention(content),
                 "file_id" : file_id,            
@@ -1154,6 +1155,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             "room_name" : room_name ,
             "last_message" : content ,
             "room_type" : channel_doc.type,
+            "is_call" : is_call,
             "contact_name" : get_contact_full_name(channel_doc.members[1].user) if channel_doc.type != "Guest" else "Guest" ,        
             "file_id" : file_id,
             "is_media" : is_media ,
@@ -3681,7 +3683,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 frappe.publish_realtime(event= "typing-portal", message=results, user= contributor.user)
                 # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user)
 # ==================================================================================================
-def send_notification(to_user , results, realtime_type, title = None, message_template_type = None):
+def send_notification(to_user , results, realtime_type, title = None, message_template_type = None,is_call=False):
     try: 
         if check_notifications_status():       
             if to_user:
@@ -3694,15 +3696,15 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                         if results.get("file_type"):
                             message_type = results.get("file_type")
                         if to_user == frappe.session.user:
-                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1)
+                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, is_call)
                             return                
                         if realtime_type == "send_message": 
                             body = get_body_message(results)
                         else:
                             body = get_body_message_information(realtime_type)
-                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type)                       
+                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, is_call )                       
                     else:
-                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type)                                              
+                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, is_call)                                              
     except Exception as e:
         frappe.publish_realtime("console" , message = e)
 #=====================================================================================
@@ -3718,6 +3720,8 @@ def get_body_message(results):
             body = u'\U0001F3A4 Audio'
         elif results["file_type"] == 'document':
             body = u'\U0001F4C4 Document'
+        elif results.get("is_call") and results["is_call"]== "1":
+            body = u'\U0001F4DE Voice call'
     else:
         soup = BeautifulSoup(results["content"], 'html.parser')
         body = soup.get_text().lstrip()
@@ -3897,7 +3901,7 @@ def check_notifications_status():
         return 0
     else: return True
 #=======================================================================================================
-def push_notifications(registration_token, information, realtime_type, platform = None ,title = None, body = None, same_user = None, message_type = None):
+def push_notifications(registration_token, information, realtime_type, platform = None ,title = None, body = None, same_user = None, message_type = None, is_call=False):
     try:
         results = get_notifications_settings()[0]
         if not check_notifications_status():
@@ -3911,7 +3915,7 @@ def push_notifications(registration_token, information, realtime_type, platform 
                 title = "Chat Notifications"
                 body = "New Message"         
 
-            send_notification_via_firebase(registration_token, info, realtime_type, platform, title, body, same_user, message_type = message_type)            
+            send_notification_via_firebase(registration_token, info, realtime_type, platform, title, body, same_user, message_type = message_type, is_call)            
 
     except Exception as e:
         frappe.publish_realtime("console" , message = str(e))
@@ -4531,3 +4535,92 @@ def check_if_chat_topic_exist(channel_id):
     
     # Return the result
     return {"results": [{"chat_topic": chat_topic_name if chat_topic_name else ""}]}
+# ==========================================================================================
+@frappe.whitelist()
+def end_meeting(meeting_id,duration,user_end=None):
+    creation_date = datetime.datetime.utcnow()
+    meet_doc = frappe.get_doc("ClefinCode Chat Meet" , meeting_id)
+    results = {
+        "realtime_type" : "end_meet",
+    }
+    if user_end:
+        send_notification(user_end , results, "end_meet")
+    else:
+        for user in meet_doc.get_members():
+            if user != meet_doc.meet_creator:
+                send_notification(user , results, "end_meet")
+    meet_doc.update({
+        "duration" : duration,
+        "ended":1
+        })
+    meet_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"results" : [{"meet" : meet_doc.get_members()}]}
+# ==========================================================================================
+@frappe.whitelist()
+def accept_meeting(meeting_id,user=None):
+    creation_date = datetime.datetime.utcnow()
+    meet_doc = frappe.get_doc("ClefinCode Chat Meet" , meeting_id)
+    results = {
+        "realtime_type" : "accept_meet",
+        "meeting_id":meeting_id
+    }
+    if user:
+        results['user']=user
+    send_notification(meet_doc.meet_creator , results, "accept_meet")
+    frappe.db.commit()
+    return {"results" : [{"meet" : meeting_id}]}
+# ==========================================================================================
+
+
+
+@frappe.whitelist()
+def decline_meet(meeting_id):
+    meet_doc = frappe.get_doc("ClefinCode Chat Meet" , meeting_id)
+    results = {
+        "realtime_type" : "decline_meet",
+    }
+    if meet_doc.group==False:
+        send_notification(meet_doc.meet_creator , results, "decline_meet")
+    return {"results" : [{"meet" : meet_doc.meet_creator}]}
+
+# ==========================================================================================
+@frappe.whitelist()
+def create_meeting(uuid,channel_id,meet_name,moderator_email, moderator_name , users, meeting_id ,caller_id,is_video,group):
+    creation_date = datetime.datetime.utcnow()
+    meet_group=False
+    if group=='true':
+        meet_group=True
+    meet_doc = frappe.get_doc({
+        'doctype': 'ClefinCode Chat Meet',
+        'meet_name' : meet_name,
+        'group':meet_group,
+        'meeting_id':meeting_id,
+        'channel_id':channel_id,
+        'meet_creator' : moderator_email,
+        'creation_date' : creation_date,
+    })
+    meet_doc.insert(ignore_permissions=True)
+    for user in json.loads(users):
+        meet_doc.append("members" , {"profile_id" : get_profile_id(user["email"]) ,"user" : user["email"]})
+        share_doctype("ClefinCode Chat Meet", meet_doc.name, user["email"])
+    meet_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    results = {
+        "realtime_type" : "meet",
+        "meeting_id":meeting_id,
+        "caller_name":moderator_name,
+        "caller_id":caller_id,
+        "is_video":is_video,
+        "moderator_email":moderator_email,
+        'name':meet_doc.name,
+        'isGroup':group,
+        "id": uuid,
+        "nameCaller": moderator_name,
+        "handle": '0123456789',
+        "isVideo": is_video if is_video else 0,
+    }
+    for user in json.loads(users):
+        send_notification(user["email"] , results, "meet",None,None,True)
+    return {"results" : [{"meet" : meet_doc.name}]}        
+# =========================================================================================
