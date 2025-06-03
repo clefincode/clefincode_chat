@@ -1,0 +1,170 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:telegram_profile",
+ "creation": "2024-12-23 17:15:57.574347",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "telegram_profile",
+  "type",
+  "default",
+  "section_break_3",
+  "telegram_profile_id",
+  "column_break_3",
+  "messenger_app_id",
+  "receive_by_role_section",
+  "role",
+  "rule",
+  "last_user",
+  "column_break_12",
+  "section_break_11",
+  "receive_by_profile",
+  "chat_profiles",
+  "user",
+  "section_break_17",
+  "authorized_users"
+ ],
+ "fields": [
+  {
+   "fieldname": "telegram_profile",
+   "fieldtype": "Data",
+   "label": "Telegram Profile",
+   "unique": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "Personal\nSupport",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "depends_on": "eval:doc.type == \"Personal\"",
+   "fieldname": "default",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Default"
+  },
+  {
+   "fieldname": "section_break_3",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "telegram_profile_id",
+   "fieldtype": "Data",
+   "label": "Telegram Profile ID"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "messenger_app_id",
+   "fieldtype": "Data",
+   "label": "Telegram App ID"
+  },
+  {
+   "depends_on": "eval:doc.type == \"Support\"",
+   "fieldname": "receive_by_role_section",
+   "fieldtype": "Section Break",
+   "label": "Receive By Role"
+  },
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "label": "Role",
+   "mandatory_depends_on": "eval:doc.type == \"Support\"",
+   "options": "Role"
+  },
+  {
+   "default": "Round Robin",
+   "depends_on": "eval:doc.receive_by_role == 1",
+   "fieldname": "rule",
+   "fieldtype": "Select",
+   "label": "Rule",
+   "options": "Round Robin\nLoad Balancing",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.receive_by_role == 1",
+   "fieldname": "last_user",
+   "fieldtype": "Data",
+   "label": "Last User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_12",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_11",
+   "fieldtype": "Section Break",
+   "label": "Receive By Profile"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval: doc.type == \"Support\"",
+   "fieldname": "receive_by_profile",
+   "fieldtype": "Check",
+   "label": "Receive By Profile",
+   "mandatory_depends_on": "eval:doc.type == \"Personal\""
+  },
+  {
+   "depends_on": "eval:doc.receive_by_profile == 1 && doc.type == \"Support\"",
+   "fieldname": "chat_profiles",
+   "fieldtype": "Table",
+   "label": "Chat Profiles",
+   "mandatory_depends_on": "eval:doc.receive_by_profile == 1 && doc.type == \"Support\"",
+   "options": "ClefinCode Telegram Profile Detail"
+  },
+  {
+   "depends_on": "eval:doc.type == \"Personal\"",
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "mandatory_depends_on": "eval:doc.type == \"Personal\"",
+   "options": "User"
+  },
+  {
+   "fieldname": "section_break_17",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval: doc.type == \"Support\"",
+   "fieldname": "authorized_users",
+   "fieldtype": "Table",
+   "label": "Authorized Users",
+   "options": "Authorized Users"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-05-22 13:48:08.754542",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode Telegram Profile",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

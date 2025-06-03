@@ -15,6 +15,7 @@
   "parent_channel",
   "parent_channel_creator",
   "channel_name",
+  "channel_info",
   "column_break_tbzsr",
   "platform",
   "type",
@@ -87,7 +88,7 @@
    "fieldname": "platform",
    "fieldtype": "Select",
    "label": "Platform",
-   "options": "ERPNext Chat\nERPNext Chat WhatsApp"
+   "options": "ERPNext Chat\nERPNext Chat WhatsApp\nERPNext Chat Instagram\nERPNext Chat Messenger\nERPNext Chat Telegram"
   },
   {
    "fieldname": "type",
@@ -169,12 +170,18 @@
    "fieldtype": "Link",
    "label": "Last Responder User",
    "options": "ClefinCode Chat Profile"
+  },
+  {
+   "fieldname": "channel_info",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Channel Info"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2024-08-29 11:01:30.876154",
+ "modified": "2025-05-29 13:30:12.379078",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Channel",

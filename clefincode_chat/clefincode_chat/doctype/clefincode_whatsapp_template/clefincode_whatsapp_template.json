@@ -145,7 +145,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Template Status",
-   "options": "\nPENDING\nAPPROVED\nREJECTED"
+   "options": "PENDING\nAPPROVED\nREJECTED"
   },
   {
    "fieldname": "meta_template_name",
@@ -167,7 +167,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2024-09-30 21:17:26.830097",
+ "modified": "2024-11-28 10:29:56.556397",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode WhatsApp Template",

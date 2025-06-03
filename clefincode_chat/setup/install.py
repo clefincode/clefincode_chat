@@ -1,7 +1,20 @@
 import frappe
 import subprocess
 
-def after_install(): 
+def ensure_contact_custom_fields():
+    from frappe.custom.doctype.custom_field.custom_field import create_custom_field
+
+    if not frappe.db.has_column("Contact", "platform"):
+        create_custom_field("Contact", {
+            "fieldname": "platform",
+            "label": "Platform",
+            "fieldtype": "Select",
+            "options": "Chat\nWhatsApp\nInstagram\nMessenger\nTelegram",
+        })
+        
+
+def after_install():
+    ensure_contact_custom_fields()
     create_roles()   
     create_users_profiles()
 # =================================================================================

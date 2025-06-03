@@ -242,7 +242,7 @@ export default class VoiceClip {
           let base64data = reader.result;
           // send base64 data to server
           fetch(
-            "/api/method/clefincode_chat.api.api_1_0_1.api.save_voice_clip",
+            "/api/method/clefincode_chat.api.api_1_2_1.api.save_voice_clip",
             {
               method: "POST",
               headers: {
@@ -265,7 +265,6 @@ export default class VoiceClip {
                 data.message.file_name,
                 data.message.file_id
               );
-              // cur_frm.sidebar.reload_docinfo();
             })
             .catch((error) => {
               console.error("Error:", error);

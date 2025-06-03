@@ -334,6 +334,8 @@ def calculate_unread_messages(user):
 
     return {"unread_messages" : unread_messages , "unread_rooms" : unread_rooms}
 # ==========================================================================================
+
+
 #############################################################################################
 ######################################## Rooms / Channels ###################################
 #############################################################################################
@@ -348,7 +350,7 @@ def create_channel(channel_name , users, type , last_message , creator_email , c
         'type': type,
         'is_parent' : 1,
         'creation_date' : creation_date,
-        'modified_date': creation_date
+        'modified_date': creation_date,
     })
     room_doc.insert(ignore_permissions=True)
     for user in json.loads(users):

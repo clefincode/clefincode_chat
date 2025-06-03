@@ -711,13 +711,14 @@ $height: 582px;
         .chat-icons {
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: center;
           padding: 0px 15px;
           width:100px;
           max-width: 100px;
 
           .icon {
             margin:0;
+            display: flex !important;
           }
 
           .dropdown-toggle{

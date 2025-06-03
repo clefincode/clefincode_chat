@@ -112,6 +112,7 @@ export default class ChatContactList {
     this.$chat_contact_list.append(chat_list_search_html);
   }
 
+  // Error new group
   async fetch_and_setup_contacts() {
     try {
       if (this.add_member == 1) {
@@ -467,7 +468,7 @@ export default class ChatContactList {
 async function get_contacts(user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_contacts",
+    method: "clefincode_chat.api.api_1_2_1.api.get_contacts",
     args: {
       user_email: user_email,
     },
@@ -478,7 +479,7 @@ async function get_contacts(user_email) {
 async function get_contacts_for_new_group(user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_0_1.api.get_contacts_for_new_group",
+    method: "clefincode_chat.api.api_1_2_1.api.get_contacts_for_new_group",
     args: {
       user_email: user_email,
     },
@@ -488,7 +489,7 @@ async function get_contacts_for_new_group(user_email) {
 
 export async function create_group(selected_contacts_list, user, creation_date = null) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.create_group",
+    method: "clefincode_chat.api.api_1_2_1.api.create_group",
     args: {
       selected_contacts_list: selected_contacts_list,
       user: user,
@@ -506,7 +507,7 @@ async function get_contacts_for_adding_to_group(
 ) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_0_1.api.get_contacts_for_adding_to_group",
+      "clefincode_chat.api.api_1_2_1.api.get_contacts_for_adding_to_group",
     args: {
       user_email: user_email,
       existing_members: existing_members,
@@ -518,7 +519,7 @@ async function get_contacts_for_adding_to_group(
 
 export async function add_group_member(new_members, room, last_active_sub_channel) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_0_1.api.add_group_member",
+    method: "clefincode_chat.api.api_1_2_1.api.add_group_member",
     args: {
       new_members: new_members,
       room: room,

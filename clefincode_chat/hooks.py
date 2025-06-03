@@ -126,12 +126,19 @@ after_migrate  = "clefincode_chat.setup.after_migrate.after_migrate"
 #		"on_trash": "method"
 #	}
 # }
+
 doc_events = {
-	"Contact": {
-		"after_insert": "clefincode_chat.api.api_1_0_1.api.sync_with_chat_profile",
-        "on_update" : "clefincode_chat.api.api_1_0_1.api.sync_with_chat_profile"
-	},
+    "Contact": {
+        "after_insert": [
+            "clefincode_chat.api.api_1_2_1.api.sync_with_chat_profile",
+            "clefincode_chat.api.api_1_2_1.api.auto_fill_contact_platform"
+        ],
+        "on_update": [
+            "clefincode_chat.api.api_1_2_1.api.sync_with_chat_profile",
+        ]
+    }
 }
+
 
 # Scheduled Tasks
 # ---------------
@@ -219,7 +226,12 @@ override_whitelisted_methods = {
 # ]
 
 sounds = [
-    {'name': 'chat-notification', 'src': '/assets/clefincode_chat/sounds/chat-notification.mp3', 'volume': 0.2},
+    {'name': 'chat-notification', 'src': '/assets/clefincode_chat/sounds/new-chat-notification.mp3', 'volume': 0.01},
     {'name': 'chat-message-send', 'src': '/assets/clefincode_chat/sounds/chat-message-send.mp3', 'volume': 0.2},
     {'name': 'chat-message-receive', 'src': '/assets/clefincode_chat/sounds/chat-message-receive.mp3', 'volume': 0.5}
+]
+
+
+webhooks = [
+    {"from_route": "/telegram/webhook", "to_method": "clefincode_chat.webhook.telegram_webhook"}
 ]

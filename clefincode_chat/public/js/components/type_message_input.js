@@ -39,7 +39,7 @@ export default class TypeMessageInput {
       isolateCharacter: true,
       defaultMenuOrientation: "top",
       source: frappe.utils.debounce(async function (search_term, renderList) {
-        let method = "clefincode_chat.api.api_1_0_1.api.get_names_for_mentions";
+        let method = "clefincode_chat.api.api_1_2_1.api.get_names_for_mentions";
         let values = await frappe.xcall(method, {
           search_term : search_term , room : chat_space.profile.room
         });
