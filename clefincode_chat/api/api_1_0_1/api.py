@@ -43,7 +43,14 @@ else:
         "frappe_legacy",
     ],
 )
-    
+ 
+def get_clean_timezone(user_timezone):
+    if isinstance(user_timezone, dict):
+        return user_timezone.get("time_zone", "UTC")
+    elif isinstance(user_timezone, str):
+        return user_timezone
+    return "UTC"
+   
 #############################################################################################
 ######################################## Users Accounts #####################################
 #############################################################################################
@@ -3055,7 +3062,7 @@ def convert_utc_to_user_timezone(utc_time, user_timezone, formatted=None):
     utc_time = pytz.utc.localize(utc_time)
 
     # Define user timezone
-    user_tz = pytz.timezone(user_timezone)
+    user_tz = pytz.timezone(get_clean_timezone(user_timezone))
 
     # Convert to user timezone
     user_time = utc_time.astimezone(user_tz)
