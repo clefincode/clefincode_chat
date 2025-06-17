@@ -3723,8 +3723,11 @@ def get_body_message(results):
         elif results.get("is_call") and results["is_call"]== "1":
             body = u'\U0001F4DE Voice call'
     else:
-        soup = BeautifulSoup(results["content"], 'html.parser')
-        body = soup.get_text().lstrip()
+        if results.get("is_call") and results["is_call"]== "1":
+            body = u'\U0001F4DE Voice call'
+        else:
+            soup = BeautifulSoup(results["content"], 'html.parser')
+            body = soup.get_text().lstrip()
     return body.capitalize()
 # ==========================================================================================
 def get_body_message_information(realtime_type):
@@ -4586,7 +4589,7 @@ def decline_meet(meeting_id):
 
 # ==========================================================================================
 @frappe.whitelist()
-def create_meeting(uuid,channel_id,meet_name,moderator_email, moderator_name , users, meeting_id ,caller_id,is_video,group):
+def create_meeting(uuid,channel_id,meet_name,moderator_email, moderator_name , users, meeting_id ,caller_id,is_video,group , background_color , color):
     creation_date = datetime.datetime.utcnow()
     meet_group=False
     if group=='true':
@@ -4607,6 +4610,7 @@ def create_meeting(uuid,channel_id,meet_name,moderator_email, moderator_name , u
     meet_doc.save(ignore_permissions=True)
     frappe.db.commit()
     results = {
+        "channel_id" : channel_id,
         "realtime_type" : "meet",
         "meeting_id":meeting_id,
         "caller_name":moderator_name,
@@ -4619,8 +4623,10 @@ def create_meeting(uuid,channel_id,meet_name,moderator_email, moderator_name , u
         "nameCaller": moderator_name,
         "handle": '0123456789',
         "isVideo": is_video if is_video else 0,
+        "background_color": background_color,
+        "color":color
     }
     for user in json.loads(users):
-        send_notification(user["email"] , results, "meet",None,None,True)
+        send_notification(user["email"] , results, "meet",None,None)
     return {"results" : [{"meet" : meet_doc.name}]}        
 # =========================================================================================
