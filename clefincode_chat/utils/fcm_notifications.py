@@ -78,7 +78,7 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
             try:                
                 message = messaging.Message(
                 notification =messaging.Notification(),   
-                data = {"msg_type": message_type or '',"route" : str(info) , "realtime_type" : realtime_type , "notification_title" : title ,"notification_body": body},
+                data = {"msg_type": message_type or '',"route" : str(info) , "realtime_type" : realtime_type , "notification_title" : title or '' ,"notification_body": body or ''},
                 token = registration_token,   
                 apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default"))),
                 )
