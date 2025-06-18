@@ -34,7 +34,8 @@
   "is_screenshot",
   "whatsapp_message_id",
   "instagram_message_id",
-  "messenger_message_id"
+  "messenger_message_id",
+  "is_video_call"
  ],
  "fields": [
   {
@@ -151,11 +152,11 @@
    "label": "Is Voice Clip"
   },
   {
-    "default": "0",
-    "fieldname": "is_call",
-    "fieldtype": "Check",
-    "label": "Is Call"
-   },
+   "default": "0",
+   "fieldname": "is_call",
+   "fieldtype": "Check",
+   "label": "Is Call"
+  },
   {
    "fieldname": "whatsapp_message_id",
    "fieldtype": "Data",
@@ -199,12 +200,18 @@
    "fieldname": "messenger_message_id",
    "fieldtype": "Data",
    "label": "Messenger Message Id"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_video_call",
+   "fieldtype": "Check",
+   "label": "Is Video Call"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-13 13:26:27.013053",
+ "modified": "2025-06-18 12:47:48.838545",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Message",
