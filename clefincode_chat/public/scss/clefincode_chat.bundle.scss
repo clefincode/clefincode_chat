@@ -102,8 +102,42 @@ $height: 582px;
         right: 8px;
       }
     }
-
+    #chat-bubble > .badge {
+      position: relative;
+      top: -70px;
+      right: -45px;
+      background-color: red;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 50%;
+      padding: 2px 6px;
+      min-width: 20px;
+      height: 20px;
+      text-align: center;
+      line-height: 16px;
+      box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+      z-index: 10;
+    }
+    
     .chat-bubble {
+      .badge{
+      position: absolute;
+  top: 6px;
+    right: 24px;
+  background-color: red;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  border-radius: 50%;
+  padding: 2px 6px;
+  min-width: 20px;
+  height: 20px;
+  text-align: center;
+  line-height: 16px;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+    }
       cursor: pointer;
       background: #181f2f;
       color: var(--white);

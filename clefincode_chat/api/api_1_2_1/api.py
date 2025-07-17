@@ -429,6 +429,36 @@ def calculate_unread_messages(user):
 
     return {"unread_messages" : unread_messages , "unread_rooms" : unread_rooms}
 # ==========================================================================================
+# same as  Calculate_unread_messages but this is for guest to not add (allow_guest=true)
+@frappe.whitelist(allow_guest=True)
+def calculate_unread_messages_for_guest(channel,token):
+    profile_details = validate_token(token)
+    if not profile_details:
+        frappe.throw("Invalid or unauthorized token.")
+    unread_messages = 0
+    channel_profile = frappe.db.get_value("ClefinCode Chat Channel",channel,["chat_profile"])
+    
+
+    # Get unread messages only for guest-type channels
+    results = frappe.db.sql("""
+        SELECT 
+            ChatChannel.name AS room,
+            ChatChannel.last_message_number - ChatChannelUser.last_message_read AS user_unread_messages
+        FROM `tabClefinCode Chat Channel` AS ChatChannel
+        INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser  
+            ON ChatChannelUser.parent = ChatChannel.name
+        WHERE ChatChannel.type = 'Guest' AND ChatChannelUser.profile_id = %s
+    """, (channel_profile,), as_dict=True)
+
+
+    if results:
+        for room in results:
+            if room.user_unread_messages and room.user_unread_messages > 0:
+                unread_messages += 1
+                
+
+    return {"unread_messages": unread_messages}
+
 #############################################################################################
 ######################################## Rooms / Channels ###################################
 #############################################################################################
@@ -1066,7 +1096,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                 share_everyone = 1
                 share_doctype("ClefinCode Chat Message", new_message.name, everyone = share_everyone)
         
-        channel_doc = frappe.get_doc("ClefinCode Chat Channel" , room)    
+        channel_doc = frappe.get_doc("ClefinCode Chat Channel" , room)
         
         last_responder_user = channel_doc.last_responder_user
         if channel_doc.type == "Group":
@@ -1156,12 +1186,16 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             send_notification(only_receive_by , results, "send_message", room_name, message_template_type) 
             return  {"results" : [{"new_message_name" : new_message.name}]}
 
-        if channel_doc.type == "Guest":            
+        if channel_doc.type == "Guest":
+            
+            frappe.publish_realtime("guest_unread_update", {}, user="Guest")
             results["room"] = room        
             if channel_doc.chat_profile.startswith("Guest"):
                 results["send_date"] = convert_utc_to_user_timezone(send_date, get_time_zone())
                 frappe.publish_realtime(event=room, message=results , room = guest_room_name)
                 for member in channel_doc.members:
+                    if not member.user:
+                        continue
                     if share_everyone == 0: share_doctype("ClefinCode Chat Message", new_message.name, member.user)
                     results["room"] = room
                     results["send_date"] = convert_utc_to_user_timezone(send_date, get_user_timezone(member.user)["results"][0]["time_zone"])
@@ -1468,6 +1502,21 @@ def get_latest_channels_updates(user_email, last_message_date):
     return {"results": sorted(results, key=lambda d: d["send_date"], reverse=True)}
 
 # ==========================================================================================
+@frappe.whitelist(allow_guest=True)
+def mark_messsages_as_read_for_guest(token,channel = None, parent_channel = None):
+    profile_details = validate_token(token)
+    if not profile_details:
+        frappe.throw("Invalid or unauthorized token.")
+    channel_doc = frappe.db.get_value("ClefinCode Chat Channel", channel, ["last_message_number", "type","chat_profile"], as_dict=True)
+    last_message_number = channel_doc.last_message_number
+    chat_profile = channel_doc.chat_profile
+    frappe.db.sql("""
+        UPDATE `tabClefinCode Chat Channel User`
+        SET last_message_read = %s, unread_messages = 0
+        WHERE profile_id = %s AND parent = %s
+    """, (last_message_number, chat_profile, channel))
+# ==========================================================================================
+
 @frappe.whitelist()
 def mark_messsages_as_read(user , channel = None, parent_channel = None):
     if channel:
@@ -2707,11 +2756,12 @@ def get_chat_profile_first_name(chat_profile):
     return frappe.db.get_value("ClefinCode Chat Profile", chat_profile , "full_name").split(' ')[0]
 # ==========================================================================================
 def get_contact_first_name(contact):
-    return frappe.db.sql(f"""
+    result = frappe.db.sql(f"""
         SELECT ChatProfile.full_name
         FROM `tabClefinCode Chat Profile` AS ChatProfile, `tabClefinCode Chat Profile Contact Details` AS ContactDetails
         WHERE ContactDetails.parent = ChatProfile.name AND ChatProfile.is_support <> 1 AND ContactDetails.contact_info = '{contact}'
-        """ , as_dict = True)[0].full_name.split(' ')[0]
+        """ , as_dict = True)
+    return result[0]['full_name'] if result and result[0]['full_name'] else None
 # ==========================================================================================
 def get_contact_full_name(contact): 
     full_name = frappe.db.sql(f"""
