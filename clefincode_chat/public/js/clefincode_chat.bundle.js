@@ -1,8 +1,4 @@
-import {
-  ChatBubble,
-  ChatPortalSpace,
-  ChatList
-} from "./components";
+import { ChatBubble, ChatPortalSpace, ChatList } from "./components";
 
 frappe.provide("frappe.ErpnextChat");
 frappe.provide("frappe.ErpnextChat.settings");
@@ -20,13 +16,23 @@ frappe.ErpnextChat = class {
 
     if (res.user == "Administrator") return;
 
-    if (res.user == "Guest") 
-    {
-      if(!res.enable_portal_support) return ;        
+    if (res.user == "Guest") {
+      if (!res.enable_portal_support) return;
       await this.create_chatbot();
-      
-    }
-    else await this.create_app();
+
+      frappe.socketio.init(res.socketio_port);
+      this.setup_socketio_mobile();
+      if (this.res.channel) {
+        const calculate_unread_messages_guest =
+          await calculate_unread_messages_forGuest(this.res.channel);
+
+        if (calculate_unread_messages_guest.unread_messages > 0) {
+          $("#chat-notification-count").text(
+            calculate_unread_messages_guest.unread_messages
+          );
+        }
+      }
+    } else await this.create_app();
 
     frappe.socketio.init(res.socketio_port);
 
@@ -225,6 +231,9 @@ frappe.ErpnextChat = class {
 
     this.chat_bubble = new ChatBubble(this);
     this.chat_bubble.render();
+    $("#chat-bubble").append(
+      '<span class="badge" id="chat-notification-count"></span>'
+    );
 
     const navbar_icon_html = `
         <li class='nav-item dropdown dropdown-notifications 
@@ -265,10 +274,14 @@ frappe.ErpnextChat = class {
     this.chat_bubble = new ChatBubble(this);
     this.chat_bubble.render();
 
+    $(".chat-bubble").append(
+      '<span class="badge" id="chat-notification-count"></span>'
+    );
+
     this.setup_events();
   }
 
-  show_chat_widget() {
+  async show_chat_widget() {
     this.is_open = true;
     this.$chat_element.fadeIn(250);
     if (
@@ -284,6 +297,22 @@ frappe.ErpnextChat = class {
         "fast"
       );
     }
+    if (this.res.user === "Guest" && !this.res.channel) {
+      const updated_res = await get_settings(
+        localStorage.getItem("guest_token") || ""
+      );
+      this.res.channel = updated_res.channel;
+    }
+    if (!this.res.is_admin && this.res.channel && this.res.user === "Guest") {
+      frappe.call({
+        method: "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read_for_guest",
+        args: {
+          token: localStorage.getItem("guest_token"),
+          channel: this.res.channel
+          
+        },
+      });
+    }
     if (this.res.is_admin) {
       this.chat_list = new ChatList({
         $wrapper: this.$chat_container,
@@ -292,7 +321,7 @@ frappe.ErpnextChat = class {
         is_admin: this.res.is_admin,
         time_zone: this.res.time_zone,
         user_type: this.res.user_type,
-        is_limited_user: this.res.is_limited_user
+        is_limited_user: this.res.is_limited_user,
       });
       this.chat_list.render();
     }
@@ -301,6 +330,15 @@ frappe.ErpnextChat = class {
   hide_chat_widget() {
     this.is_open = false;
     this.$chat_element.fadeOut(300);
+    if (!this.res.is_admin && this.res.channel && this.res.user === "Guest") {
+      frappe.call({
+        method: "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read_for_guest",
+        args: {
+          token: localStorage.getItem("guest_token"),
+          channel: this.res.channel,
+        },
+      });
+    }
     if (this.res.is_admin) {
       this.chat_list.is_open = 0;
       this.chat_list.$chat_list.remove();
@@ -348,9 +386,11 @@ frappe.ErpnextChat = class {
       // frappe.utils.play_sound("chat-notification");
 
       // Alternative way for playing the notification sound.
-      const audio = new Audio('/assets/clefincode_chat/sounds/new-chat-notification.mp3');
-      audio.play().catch(error => {
-          console.error('Error playing sound:', error);
+      const audio = new Audio(
+        "/assets/clefincode_chat/sounds/new-chat-notification.mp3"
+      );
+      audio.play().catch((error) => {
+        console.error("Error playing sound:", error);
       });
     };
 
@@ -378,13 +418,52 @@ frappe.ErpnextChat = class {
   setup_socketio_mobile() {
     frappe.realtime.on("receive_message", function (res) {
       var obj = [{ key: "receive_message", data: [JSON.stringify(res)] }];
-      console.log(JSON.stringify(obj));
+    });
+    frappe.realtime.on("guest_unread_update", async () => {
+      if (!this.is_open) {
+        // Play notification sound
+        const audio = new Audio(
+          "/assets/clefincode_chat/sounds/new-chat-notification.mp3"
+        );
+        audio.play().catch((error) => {
+          console.error("Error playing sound:", error);
+        });
+
+        // Make sure badge container exists (if needed)
+        if ($("#chat-notification-count").length === 0) {
+          $(".chat-bubble").append(
+            '<span class="badge" id="chat-notification-count"></span>'
+          );
+        }
+
+        // Only for guest users, calculate live unread count
+        if (this.res.user === "Guest") {
+          try {
+            if (!this.res.channel) {
+              const token = localStorage.getItem("guest_token") || "";
+              const res = await get_settings(token);
+              this.res = res;
+            }
+
+            if (this.res.channel) {
+              const result = await calculate_unread_messages_forGuest(
+                this.res.channel
+              );
+              $("#chat-notification-count").text(result.unread_messages || "");
+            } else {
+              console.warn(
+                "No channel found for guest after re-fetching settings."
+              );
+            }
+          } catch (error) {
+            console.error("Error calculating guest unread messages:", error);
+          }
+        }
+      }
     });
 
     // This is a way to print data on browser console (only for testing)
-    frappe.realtime.on("console", function (res) {
-      console.log(res);
-    });
+    
   }
 }; //End ErpnextChat Class
 
@@ -405,6 +484,18 @@ async function calculate_unread_messages(user) {
     method: "clefincode_chat.api.api_1_2_1.api.calculate_unread_messages",
     args: {
       user: user,
+    },
+  });
+  return await res.message;
+}
+async function calculate_unread_messages_forGuest(channel) {
+  const res = await frappe.call({
+    type: "GET",
+    method:
+      "clefincode_chat.api.api_1_2_1.api.calculate_unread_messages_for_guest",
+    args: {
+      channel: channel,
+      token: localStorage.getItem("guest_token") || ""
     },
   });
   return await res.message;

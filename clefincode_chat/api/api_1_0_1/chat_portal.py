@@ -23,7 +23,17 @@ def create_guest_profile_and_channel(content , sender , sender_email , creation_
         "creation_date": creation_date,
         "modified_date": creation_date,
         "last_message" : content,
-        "members" : [{'doctype': 'ClefinCode Chat Channel User', 'profile_id': get_profile_id(respondent_user) , 'user': respondent_user , 'platform': 'Chat'}]
+        "members" : [
+            {'doctype': 'ClefinCode Chat Channel User', 
+             'profile_id': get_profile_id(respondent_user) , 
+             'user': respondent_user ,
+             'platform': 'Chat'},
+            {
+            'doctype': 'ClefinCode Chat Channel User',
+            'profile_id': profile.name,  # assuming profile.name is guest profile ID
+            'user': '',
+            'platform': 'Chat'}
+                     ]
         }).insert(ignore_permissions = True)
 
     frappe.db.set_single_value("ClefinCode Chat Settings", "last_user", respondent_user) 
