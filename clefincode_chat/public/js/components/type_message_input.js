@@ -18,7 +18,11 @@ export default class TypeMessageInput {
     this.quill = new Quill(
       this.chat_space.$chat_actions.find(".type-message")[0],
       this.get_quill_options()
+      
     );
+    $(this.chat_space.$chat_actions.find(".type-message")[0])
+    .find(".ql-editor")
+    .addClass("input-message");
     this.quill.focus();
   }
 

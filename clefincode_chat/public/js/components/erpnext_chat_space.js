@@ -1558,7 +1558,7 @@ export default class ChatSpace {
       return;
     }
 
-    let content = this.$chat_space.find(".ql-editor").html();
+    let content = this.$chat_space.find(".ql-editor.input-message").html();
     (this.is_link = null),
       (this.is_media = null),
       (this.is_document = null),
