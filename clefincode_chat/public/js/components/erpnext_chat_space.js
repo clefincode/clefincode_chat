@@ -819,8 +819,24 @@ export default class ChatSpace {
         if (me.profile.room) {
           // Only call setupTypingIndicator if it's not already active
           if (!me.isTypingIndicatorActive) {
-            me.setupTypingIndicator();
+              const textValue = $(this).find(".ql-editor").text();
+           console.log(typeof textValue);
+
+          if (!me.isTypingIndicatorActive) {
+            if (textValue.startsWith("/") && textValue.length === 1) {
+              
+              me.setupTypingIndicator(textValue);
+            } else {
+              me.setupTypingIndicator();
+              const container = document.querySelector("#template-suggestions");
+              if (container) container.remove();
+            }
             me.isTypingIndicatorActive = true;
+          }
+           else {
+              const container = document.querySelector("#template-suggestions");
+              if (container) container.remove();
+            }
           }
         }
 
@@ -1558,7 +1574,7 @@ export default class ChatSpace {
       return;
     }
 
-    let content = this.$chat_space.find(".ql-editor.input-message").html();
+    let content = this.$chat_space.find(".ql-editor").html();
     (this.is_link = null),
       (this.is_media = null),
       (this.is_document = null),
@@ -2666,7 +2682,15 @@ export default class ChatSpace {
             me.hideTypingIndicator(res.user);
           }
         }
-      } else if (res.realtime_type == "set_topic") {
+      }else if (res.realtime_type == "show_template") {
+      
+        
+       
+          if (res.user === me.profile.user_email && res.template && res.template.length > 0) {
+            me.showTemplateSuggestions(res);
+          } 
+      }
+       else if (res.realtime_type == "set_topic") {
         me.chat_topic = res.chat_topic;
         me.reference_doctypes = me.reference_doctypes.concat(
           res.mention_doctypes
@@ -2911,8 +2935,7 @@ export default class ChatSpace {
 
     me.lastScrollTop = st; // Update last scroll position
   }
-
-  async setupTypingIndicator() {
+async setupTypingIndicator(textValue) {
     let user = this.profile.user_email;
     let room;
 
@@ -2921,7 +2944,16 @@ export default class ChatSpace {
     } else {
       room = this.profile.room;
     }
-    this.callSetTypingAPI(user, room, "true");
+   
+    if (textValue && textValue.startsWith("/")) {
+      this.callSetTypingAPI(user, room, "true", textValue);
+      
+    } else {
+    
+      this.callSetTypingAPI(user, room, "true");
+    }
+
+
 
     setTimeout(async () => {
       this.isTypingIndicatorActive = false;
@@ -2936,14 +2968,16 @@ export default class ChatSpace {
     }, 3000);
   }
 
-  callSetTypingAPI(user, room, isTyping) {
+  callSetTypingAPI(user, room, isTyping,textValue) {
+    console.log(textValue);
     frappe.call({
-      method: "clefincode_chat.api.api_1_2_1.api.set_typing",
+      method: "clefincode_chat.api.api_1_3_1.api.set_typing",
       args: {
         user: user,
         room: room,
         is_typing: isTyping,
         last_active_sub_channel: this.last_active_sub_channel,
+        text: textValue,
       },
     });
   }
@@ -2961,7 +2995,110 @@ export default class ChatSpace {
       }, 3000);
     }
   }
+showTemplateSuggestions(res) {
+    const chatWindow = $(`.chat-window[data-room="${res.room}"]`);
+  if (!chatWindow.length) {
+    console.warn("Chat window not found for room:", res.room);
+    return;
+  }
 
+  const editor = chatWindow.find(".type-message .ql-editor");
+
+
+  chatWindow.find("#template-suggestions").remove();
+  
+  const container = $(`
+   <div id="template-suggestions"
+  style="
+    position:absolute;
+    background:#fff;
+    border:1px solid #ccc;
+    border-radius:6px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.15);
+    padding:8px;
+    z-index:500;
+    max-height:220px;
+    overflow-y:auto;
+    font-size:13px;
+    width:256px;
+    opacity:0;
+    transform:translateY(10px);
+    transition:all 0.25s ease;
+  ">
+</div>
+  `);
+
+  res.template.forEach((t) => {
+    const name = t.name || "Unnamed Template";
+
+   const item = $(`
+  <div style="padding:8px; cursor:pointer; border-bottom:1px solid #eee;">
+    <table style="width:100%; font-size:13px;">
+      <tr>
+        <td style="font-weight:bold; color:#333;">${t.meta_template_name}</td>
+       
+      </tr>
+      
+    </table>
+  </div>
+`);
+
+    item.hover(
+      function () {
+        $(this).css("background", "#e6dedeff");
+      },
+      function () {
+        $(this).css("background", "transparent");
+      }
+    );
+
+    item.on("click", function () {
+      editor.text("/" + name);
+      container.fadeOut(200, () => container.remove());
+
+      const message_info = {
+        content: name,
+        user: res.user,
+        room: res.room,
+        email: res.user,
+        message_type: "information",
+        message_template_type: "Send Template",
+      };
+
+      send_message(message_info);
+      editor.html("");
+    });
+
+    container.append(item);
+  });
+
+  
+  editor.parent().css("position", "relative");
+  editor.after(container);
+
+  
+  const rect = editor[0].getBoundingClientRect();
+  const containerHeight = container.outerHeight();
+
+  container.css({
+    top: -(containerHeight + 5) + "px",
+    left: "0px",
+    width: rect.width + "px",
+  });
+
+  setTimeout(() => {
+    container.css({
+      opacity: "1",
+      transform: "translateY(0)",
+    });
+  }, 10);
+}
+insertTemplateText (text) {
+  const editor = me.$chat_actions.find(".ql-editor");
+  if (editor && editor.length > 0) {
+    editor.text(text);
+  }
+};
   async hideTypingIndicator(user_email) {
     if (this.profile.room_type == "Direct") {
       if (user_email && this.profile.contact == user_email) {

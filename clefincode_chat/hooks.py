@@ -136,30 +136,34 @@ doc_events = {
         "on_update": [
             "clefincode_chat.api.api_1_2_1.api.sync_with_chat_profile",
         ]
-    }
+    },
+    "Notification Log": {
+    "after_insert": [
+        "clefincode_chat.api.api_1_3_1.api.after_insert_notification"
+    ]},
 }
 
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
+scheduler_events = {
 #	"all": [
 #		"clefincode_chat.tasks.all"
 #	],
 #	"daily": [
 #		"clefincode_chat.tasks.daily"
 #	],
-#	"hourly": [
-#		"clefincode_chat.tasks.hourly"
-#	],
+    "hourly": [
+		"clefincode_chat.utils.utils.check_twilio_template_status"
+	]
 #	"weekly": [
 #		"clefincode_chat.tasks.weekly"
 #	],
 #	"monthly": [
 #		"clefincode_chat.tasks.monthly"
 #	],
-# }
+}
 
 # Testing
 # -------
@@ -170,7 +174,9 @@ doc_events = {
 # ------------------------------
 override_whitelisted_methods = {
         "frappe.desk.form.load.getdoc": "clefincode_chat.desk.custom_load.getdoc",
-        "frappe.desk.form.load.get_docinfo": "clefincode_chat.desk.custom_load.get_docinfo"
+        "frappe.desk.form.load.get_docinfo": "clefincode_chat.desk.custom_load.get_docinfo",
+        "whatsapp_twillio": "clefincode_chat.webhook.whatsapp_twillio_webhook"
+
     }
 #
 # override_whitelisted_methods = {

@@ -1,6 +1,8 @@
 import frappe
 from frappe.utils import now_datetime
 from datetime import timedelta
+import requests
+from requests.auth import HTTPBasicAuth
 
 @frappe.whitelist()
 def choose_user_to_respond(doctype, docname = None):
@@ -168,3 +170,74 @@ def get_access_token_messenger():
     if not access_token:
         frappe.throw("Access Token doesn't exist")
     return access_token
+# ============================================================================
+def get_auth_token_twillio():
+    doc = frappe.get_doc("ClefinCode Twilio Integration")
+    auth_token = doc.get_password("auth_token")
+    if not auth_token:
+        frappe.throw("Access Token doesn't exist")
+    return auth_token
+
+# ============================================================================================================
+
+def check_twilio_template_status():
+  
+    try:
+       
+        pending_templates = frappe.get_all(
+            "ClefinCode WhatsApp Template",
+            filters={"template_status": "PENDING"},
+            fields=["name", "whatsapp_template_id"]
+        )
+
+        if not pending_templates:
+            frappe.logger().info("✅ لا توجد قوالب معلقة حالياً.")
+            return
+
+     
+        integration_doc = frappe.get_doc("ClefinCode Twilio Integration")
+        account_sid = integration_doc.get("account_sid")
+        auth_token = get_auth_token_twillio()
+
+        if not account_sid or not auth_token:
+            frappe.throw("Twilio credentials not found in ClefinCode WhatsApp Integration")
+
+        
+        for template in pending_templates:
+            sid = template.get("whatsapp_template_id")
+            if not sid:
+                continue
+
+            url = f"https://content.twilio.com/v1/Content/{sid}/ApprovalRequests"
+            resp = requests.get(url, auth=HTTPBasicAuth(account_sid, auth_token), timeout=30)
+
+            try:
+                data = resp.json()
+            except Exception:
+                frappe.log_error(resp.text, "Twilio JSON Parse Error")
+                continue
+
+            if resp.status_code != 200:
+                frappe.log_error(resp.text, f"Twilio status check failed ({sid})")
+                continue
+
+            if "whatsapp" in data:
+                status = data["whatsapp"].get("status", "").upper()
+                rejection_reason = data["whatsapp"].get("rejection_reason", "")
+
+            
+                frappe.db.set_value(
+                    "ClefinCode WhatsApp Template",
+                    template["name"],
+                    {
+                        "template_status": status,
+                    }
+                )
+
+                
+                frappe.logger().info(f"✅ Updated {template['name']} → {status} ({rejection_reason})")
+
+        frappe.db.commit()
+
+    except Exception as e:
+        frappe.log_error(f"check_twilio_template_status error: {str(e)}", "Twilio Template Checker")

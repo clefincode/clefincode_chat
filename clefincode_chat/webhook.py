@@ -13,10 +13,13 @@ import requests
 import mimetypes
 from mimetypes import guess_type
 from frappe.utils import random_string
-from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status, get_access_token_instagram, get_access_token_messenger
-from clefincode_chat.api.api_1_2_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
+from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status, get_access_token_instagram, get_access_token_messenger , get_auth_token_twillio
+from clefincode_chat.api.api_1_3_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
 import urllib.parse
 from frappe.utils.password import get_decrypted_password
+from requests.auth import HTTPBasicAuth
+
+from twilio.twiml.messaging_response import MessagingResponse
 
 
 @frappe.whitelist(allow_guest=True)
@@ -1568,4 +1571,88 @@ def download_telegram_media(file_id, mime_type, message_type, file_name = None):
     except Exception as e:
         frappe.log_error(title="Telegram Media Download Error", message=str(e))
         return None, None, None
-# ==========================================================================================
+# ==========================================================================================# ==========================================================================================
+@frappe.whitelist(allow_guest=True)
+def whatsapp_twillio_webhook():
+
+    """
+    Handle incoming Twilio WhatsApp messages and integrate with ClefinCode Chat system
+    """
+    try:
+        form_dict = frappe.local.form_dict
+        log_webhook(form_dict)  
+         #Helper function to normalize numbers
+        def normalize_number(number: str) -> str:
+            return number.replace("whatsapp:+", "") if number and number.startswith("whatsapp:+") else number
+
+        message_body = form_dict.get("Body")
+        sender_number = normalize_number(form_dict.get("From"))
+        receiver_number = normalize_number(form_dict.get("To"))            
+        message_type = "text"
+        
+        media_count = int(form_dict.get("NumMedia", "0"))
+        media_url, mime_type, file_url = None, None, None
+        if media_count > 0:
+            media_type = form_dict.get("MediaContentType0", "").split("/")[0]
+            mime_type = form_dict.get("MediaContentType0", "").split("/")[1]
+            media_url = form_dict.get("MediaUrl0")
+            file_url = download_media_twilio(media_url, mime_type=mime_type, message_type=media_type)
+            message_type = media_type
+
+        # تحقق من استقبال الرقم
+        if not validate_receiver_profile(str(receiver_number)):
+            return
+        
+       
+        chat_profile = get_or_create_chat_profile(sender_number, sender_number)  
+
+        whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
+        chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages=[{"type": message_type, "body": message_body}])
+        chat_channel, _ = chat_channel_info
+        last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
+
+       
+        if message_type == "text":
+            send(content=message_body, user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel)
+        else:
+            content = handle_attachment(file_url, form_dict.get("MediaFilename0", "attachment"), message_type)
+            send(content=content, user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url)
+
+      
+    except Exception as e:
+        frappe.log_error(title="Twilio WhatsApp Webhook Error", message=str(e))
+
+
+def download_media_twilio(media_url, mime_type=None, message_type="media", filename=None, folder="Home/Attachments"):
+   
+    doc = frappe.get_doc("ClefinCode Twilio Integration")
+    account_sid =doc.get("account_sid")
+    
+    auth_token= get_auth_token_twillio()
+
+    if not media_url:
+        return None
+
+    if not filename:
+        ext = mime_type.split("/")[-1] if mime_type else "bin"
+        filename = f"{message_type}_{int(frappe.utils.now_datetime().timestamp())}.{ext}"
+
+    try:
+        response = requests.get(media_url, auth=HTTPBasicAuth(account_sid, auth_token))
+        if response.status_code == 200:
+            file_doc = frappe.get_doc({
+                "doctype": "File",
+                "file_name": filename,
+                "folder": folder,
+                "is_private": 1,  
+                "content": response.content
+            })
+            file_doc.insert(ignore_permissions=True)
+            frappe.db.commit()
+            return file_doc.file_url  
+        else:
+            frappe.log_error(title="Twilio Media Download Failed", message=f"Status: {response.status_code}, URL: {media_url}")
+            return None
+    except Exception as e:
+        frappe.log_error(title="Twilio Media Download Error", message=str(e))
+        return None

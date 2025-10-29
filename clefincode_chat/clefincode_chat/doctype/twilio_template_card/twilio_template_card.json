@@ -1,0 +1,32 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-10-09 10:36:56.572911",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "card"
+ ],
+ "fields": [
+  {
+   "fieldname": "card",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Card",
+   "options": "Template Card Carousel"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-10-16 07:43:18.849665",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "Twilio Template Card",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

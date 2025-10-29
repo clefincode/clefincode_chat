@@ -1,0 +1,40 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-10-09 10:36:56.468660",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "var_number",
+  "example"
+ ],
+ "fields": [
+  {
+   "fieldname": "var_number",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Variable Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "example",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Example Value",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-10-09 13:16:50.981771",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "Twilio Template Variable",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
