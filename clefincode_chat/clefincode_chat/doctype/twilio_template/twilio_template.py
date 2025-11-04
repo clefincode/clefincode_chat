@@ -18,7 +18,8 @@ class TwilioTemplate(Document):
     def post_whatsapp_template_twilio(self):
         try:
             # read Twilio creds from Integration doctype
-            doc = frappe.get_doc("ClefinCode WhatsApp Integration")
+            doc = frappe.get_doc("ClefinCode Twilio Integration")
+            
             account_sid = doc.get("account_sid")
             auth_token = get_auth_token_twillio()
             if not account_sid or not auth_token:
