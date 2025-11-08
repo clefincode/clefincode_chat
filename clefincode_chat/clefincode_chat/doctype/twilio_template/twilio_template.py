@@ -28,9 +28,9 @@ class TwilioTemplate(Document):
             # prepare content payload
             # use safe name for twilio approval (lowercase underscores)
             types = {}
-            body=BeautifulSoup(self.body, 'html.parser').get_text() if self.body else ""
+            body=BeautifulSoup(self.body, 'html.parser').get_text(separator='\n') if self.body else ""
             if self.template_type == 'twilio/text':
-                types['twilio/text'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text()}
+                types['twilio/text'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(separator='\n')}
 
             elif self.template_type == 'twilio/media':
                 media = [ self.media_url] if self.media_url else []
@@ -57,7 +57,7 @@ class TwilioTemplate(Document):
                     elif b.type_of_action == 'COPY_CODE':
                         action['text'] = b.copy_code_text  # Adjust as per docs
                     actions.append(action)
-                types['twilio/call-to-action'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(), 'actions': actions}
+                types['twilio/call-to-action'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(separator='\n'), 'actions': actions}
 
             elif self.template_type == 'twilio/card':
                 # Assuming single card for card types
@@ -71,7 +71,7 @@ class TwilioTemplate(Document):
                     elif b.type_of_action == 'COPY_CODE':
                         action['text'] = b.copy_code_text  # Adjust as per docs
                     actions.append(action)
-                types['twilio/card'] = {'title': BeautifulSoup(self.body, 'html.parser').get_text(),"subtitle":self.subtitle, 'actions': actions}
+                types['twilio/card'] = {'title': BeautifulSoup(self.body, 'html.parser').get_text(separator='\n'),"subtitle":self.subtitle, 'actions': actions}
             elif self.template_type =='whatsapp/card':
                 # Assuming single card for card types
                 actions = []
@@ -84,7 +84,7 @@ class TwilioTemplate(Document):
                     elif b.type_of_action == 'COPY_CODE':
                         action['text'] = b.copy_code_text  # Adjust as per docs
                     actions.append(action)
-                types['whatsapp/card'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(),"header_text":self.header_text,"footer":self.footer, 'actions': actions}
+                types['whatsapp/card'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(separator='\n'),"header_text":self.header_text,"footer":self.footer, 'actions': actions}
 
 
             elif self.template_type == 'twilio/carousel':
@@ -94,7 +94,7 @@ class TwilioTemplate(Document):
                  for b in self.items:
                     item = {'item': b.item, 'description': b.description, 'id':b.id}
                     items.append(item)
-                 types['twilio/list-picker'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(), 'items': items, "button": "Select a destination"}
+                 types['twilio/list-picker'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(separator='\n'), 'items': items, "button": "Select a destination"}
             elif self.template_type == 'whatsapp/authentication':
                 actions = []
                 for b in self.call_to_action:
