@@ -1,8 +1,8 @@
-import frappe
+import frappe, shutil, os
 import datetime
 import json
 import mimetypes
-import os
+
 import base64
 from PIL import Image
 from io import BytesIO
@@ -30,7 +30,7 @@ import zipfile
 from moviepy.editor import VideoFileClip
 import tempfile
 from frappe.utils import now_datetime
-
+from frappe.utils import get_files_path, get_url
 
 
 
@@ -4093,6 +4093,31 @@ def make_file_public(file_path):
     except Exception as e:
         frappe.log_error(f"Failed to make file public: {str(e)}")
         frappe.throw(f"Failed to prepare media file for sending: {str(e)}")
+def get_temp_public_url(file_url):
+  
+
+    if not file_url:
+        frappe.throw("file_url is required")
+
+    
+    file_name = os.path.basename(file_url)
+
+    private_path = get_files_path(file_name, is_private=True)
+    public_path = get_files_path(file_name, is_private=False)
+    public_url = f"{get_url()}/files/{file_name.replace(' ', '%20')}"
+
+    
+    if "private/files" in file_url or os.path.exists(private_path):
+        try:
+           
+            if not os.path.exists(public_path):
+                shutil.copy(private_path, public_path)
+                frappe.log_error(f"Temporary public copy created: {public_url}", "File Temp Copy")
+        except Exception as e:
+            frappe.log_error(str(e), "Error copying private file")
+            frappe.throw("Unable to create temporary copy for private file")
+
+    return public_url
 # ==========================================================================================
 def reset_file_to_private(file_path):
     """
@@ -4622,10 +4647,12 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
 
         if message_type in ['image', 'video', 'audio', 'document']:
             media_url = message
-            
-            site_url = frappe.utils.get_url()  
             media_url, was_private = make_file_public(media_url)
+            public_url=media_url
+            site_url = frappe.utils.get_url()  
+            
             if is_voice_clip:
+                
                 #media_url =frappe.utils.get_site_path(media_url.lstrip('/'))
                 site_name = frappe.local.site
                 media_url = convert_to_ogg( os.path.join(".", site_name, "public", media_url.lstrip("/")))
@@ -4648,12 +4675,17 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
 
             
             media_url=site_url+media_url
+            media_url = urllib.parse.quote(media_url, safe=':/')
+            
             msg = client.messages.create(
                 from_=f'whatsapp:{twilio_whatsapp_number}',
                 body=message if message_type != 'image' else None,
                 media_url=[media_url],   # must be a list of URLs
                 to=f'whatsapp:{receiver}'
             )
+            # Reset file to private if applicable
+            if was_private:
+                reset_file_to_private(public_url)
         else:  # text
             
             msg = client.messages.create(
