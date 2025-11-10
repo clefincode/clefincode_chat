@@ -112,7 +112,7 @@
   {
    "depends_on": "eval:['twilio/media', 'twilio/card', 'whatsapp/card'].includes(doc.template_type)",
    "fieldname": "media_url",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Media URL"
   },
   {
@@ -126,7 +126,7 @@
    "fieldname": "variables",
    "fieldtype": "Table",
    "label": "Variables",
-   "options": "Twilio Template Variable"
+   "options": "Twilio Template Variable Mapping"
   },
   {
    "depends_on": "eval:doc.template_type == 'twilio/call-to-action'||doc.template_type == 'twilio/card';",
@@ -310,7 +310,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-10-16 10:45:11.481991",
+ "modified": "2025-11-09 11:14:01.664829",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Twilio Template",

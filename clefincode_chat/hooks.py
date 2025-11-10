@@ -141,6 +141,21 @@ doc_events = {
     "after_insert": [
         "clefincode_chat.api.api_1_3_1.api.after_insert_notification"
     ]},
+     "*": {
+        "before_insert": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "after_insert": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "before_validate": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "validate": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "on_update": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "before_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "on_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "before_cancel": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "on_cancel": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "on_trash": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "after_delete": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "before_update_after_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "on_update_after_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event"
+    }
 }
 
 
@@ -241,3 +256,4 @@ sounds = [
 webhooks = [
     {"from_route": "/telegram/webhook", "to_method": "clefincode_chat.webhook.telegram_webhook"}
 ]
+patches = ["clefincode_chat.patches.v1_3_1.add_whatsapp_to_notification"]

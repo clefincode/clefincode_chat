@@ -3647,7 +3647,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                             "ClefinCode WhatsApp Template",
                             filters={
                                 "docstatus": 1,
-                                # "whatsapp_profile": ["=", whatsapp_profile_name],  
+                                "whatsapp_profile": ["=", whatsapp_profile_name],  
                             },
                             fields=["name", "meta_template_name"]
                         )
@@ -4093,6 +4093,8 @@ def make_file_public(file_path):
     except Exception as e:
         frappe.log_error(f"Failed to make file public: {str(e)}")
         frappe.throw(f"Failed to prepare media file for sending: {str(e)}")
+        
+#=================================================================================
 def get_temp_public_url(file_url):
   
 
@@ -4707,6 +4709,8 @@ def send_whatsapp_message_from_template(docname, to_number, whatsapp_profile):
  
     template = None
     doctype = None
+    
+
 
     if frappe.db.exists("ClefinCode WhatsApp Template", docname):
         template = frappe.get_doc("ClefinCode WhatsApp Template", docname)
@@ -4750,7 +4754,6 @@ def send_whatsapp_message_from_template(docname, to_number, whatsapp_profile):
 
         body_preview = json.dumps(variables, indent=2)
 
-    # 🔹 إرسال الرسالة
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
         to=f"whatsapp:{to_number}",
@@ -4758,6 +4761,88 @@ def send_whatsapp_message_from_template(docname, to_number, whatsapp_profile):
         content_variables=json.dumps(variables)
     )
 
+    frappe.logger("whatsapp").info(
+        f"✅ Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
+    )
+
+    return {
+        "sid": message.sid,
+        "status": message.status,
+        "variables": variables,
+        "body_preview": body_preview,
+        "doctype": doctype
+    }
+    
+@frappe.whitelist()
+def send_whatsapp_message_from_template_notification(docname, receive_profile, whatsapp_profile,doc):
+ 
+    template = None
+    doctype = "Twilio Template"
+   
+
+
+    if frappe.db.exists("ClefinCode WhatsApp Template", docname):
+        template = frappe.get_doc("ClefinCode WhatsApp Template", docname)
+        doctype = "ClefinCode WhatsApp Template"
+    elif frappe.db.exists("Twilio Template", docname):
+        template = frappe.get_doc("Twilio Template", docname)
+        doctype = "Twilio Template"
+    else:
+        frappe.throw(f"No template found with name '{docname}' in known doctypes.")
+
+    if not template.whatsapp_template_id:
+        frappe.throw(" No 'WhatsApp Template ID' found in this template.")
+    
+   
+    to_number = frappe.db.get_value(
+    "ClefinCode Chat Profile Contact Details",
+    {"parent": receive_profile, "type": "WhatsApp"},
+    "contact_info"
+      )
+    
+    
+    profile = frappe.get_doc("ClefinCode WhatsApp Profile", whatsapp_profile)
+    from_number = profile.whatsapp_number
+
+    integration_doc = frappe.get_doc("ClefinCode Twilio Integration")
+    account_sid = integration_doc.get("account_sid")
+    auth_token = get_auth_token_twillio()
+    client = Client(account_sid, auth_token)
+
+    variables = {}
+    body_preview = ""
+    frappe.log_error("send_whatsapp_message_from_template_notification",doctype)
+    
+    if doctype == "ClefinCode WhatsApp Template":
+        for idx, btn in enumerate(template.buttons, start=1):
+            text = str(getattr(btn, "button_text", "")).strip()
+            if text:
+                variables[str(idx)] = text
+
+        body_preview = template.body or ""
+        # for k, v in variables.items():
+        #     body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
+
+    elif doctype == "Twilio Template":
+        for var in template.variables:
+            key = str(var.variable_key).strip()
+            source_doctype = str(var.source_doctype)
+            source_field=str(var.source_field)
+            value= frappe.db.get_value(
+                            source_doctype,doc.name,source_field
+                            )
+            if key and value:
+                variables[key] = value
+
+        body_preview = json.dumps(variables, indent=2)
+        frappe.log_error("notification3433",variables)
+    message = client.messages.create(
+        from_=f"whatsapp:{from_number}",
+        to=f"whatsapp:{to_number}",
+        content_sid=template.whatsapp_template_id,
+        content_variables=json.dumps(variables)
+    )
+    
     frappe.logger("whatsapp").info(
         f"✅ Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
     )
@@ -4961,3 +5046,49 @@ def upload_media_to_meta(phone_number_id, access_token, file_url, media_type):
     except Exception as e:
         frappe.log_error("Media Upload Error", str(e))
         return None
+#=======================================================
+def send_whatsapp_message_twilio_notification(sender, receiver, message, message_type="text",file_name=None):
+    try:
+        # Retrieve Twilio credentials from Frappe database
+        doc = frappe.get_doc("ClefinCode Twilio Integration")
+        account_sid =doc.get("account_sid")
+        auth_token = get_auth_token_twillio()
+        twilio_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", sender, "whatsapp_number")
+
+        client = Client(account_sid, auth_token)
+
+        if message_type in ['document']:
+            media_url = message
+            media_url, was_private = make_file_public(media_url)
+            public_url=media_url
+            site_url = frappe.utils.get_url()  
+           
+
+            
+            media_url=site_url+media_url
+            media_url = urllib.parse.quote(media_url, safe=':/')
+            body = file_name or message  
+            
+            
+            msg = client.messages.create(
+                from_=f'whatsapp:{twilio_whatsapp_number}',
+                body = body,
+                media_url=[media_url],   # must be a list of URLs
+                to=f'whatsapp:{receiver}'
+            )
+            # Reset file to private if applicable
+            if was_private:
+                reset_file_to_private(public_url)
+        else:  # text
+            
+            msg = client.messages.create(
+                from_=f'whatsapp:{twilio_whatsapp_number}',
+                body=message,
+                to=f'whatsapp:{receiver}'
+            )
+
+       
+        frappe.db.commit()
+
+    except Exception as e:
+        frappe.log_error(title="send whatsapp message Exception", message=str(e))

@@ -140,7 +140,7 @@ class TwilioTemplate(Document):
 
             # Add for other types...
 
-            variables = {str(var.var_number): var.example for var in self.variables}
+            variables = {}#{str(var.variable_key): var.example for var in self.variables}
             payload = {
                 'friendly_name': self.friendly_name,
                 'language': self.language,

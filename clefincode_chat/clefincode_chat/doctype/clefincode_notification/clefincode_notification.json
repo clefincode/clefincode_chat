@@ -1,0 +1,291 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-11-06 11:59:50.085851",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "reference_doctype",
+  "event_frequency",
+  "doctype_event",
+  "condition",
+  "column_break_3",
+  "channel",
+  "message_type",
+  "notification_type",
+  "disabled",
+  "template",
+  "template_content",
+  "media_url",
+  "message_content",
+  "create_template",
+  "help_section",
+  "field_name",
+  "help_html",
+  "column_break_12",
+  "section_break_11",
+  "code",
+  "attach_document_print",
+  "custom_attachment",
+  "attach",
+  "file_name",
+  "header_type",
+  "attach_from_field",
+  "variables",
+  "clefincode_notification_recipient_list",
+  "property_section",
+  "set_property_after_alert",
+  "property_value",
+  "days_in_advance",
+  "date_changed",
+  "notification_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference Document Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.notification_type == \"Scheduler Event\"",
+   "fieldname": "event_frequency",
+   "fieldtype": "Select",
+   "label": "Event Frequency",
+   "mandatory_depends_on": "eval:doc.script_type == \"Scheduler Event\"",
+   "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long"
+  },
+  {
+   "depends_on": "eval:doc.notification_type==='DocType Event'",
+   "fieldname": "doctype_event",
+   "fieldtype": "Select",
+   "label": "DocType Event",
+   "options": "Before Insert\nBefore Validate\nBefore Save\nAfter Insert\nAfter Save\nBefore Submit\nAfter Submit\nBefore Cancel\nAfter Cancel\nBefore Delete\nAfter Delete\nBefore Save (Submitted Document)\nAfter Save (Submitted Document)\nDays After\nDays Before"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "help_section",
+   "fieldtype": "Section Break",
+   "label": "Help"
+  },
+  {
+   "fieldname": "help_html",
+   "fieldtype": "HTML",
+   "hidden": 1,
+   "options": "<pre><code>doc.grand_total &gt; 0</code></pre>\n\n<p>Conditions should be written in simple Python. Please use properties available in the form only.</p>\n\n<p>Example: </p><pre><code>doc.status=='Enabled' </code></pre><p></p>\n\n<p> For scheduler events you can use follwing methods</p>\n<p>Allowed functions: </p><ul>\n<li>frappe.db.get_value</li>\n<li>frappe.db.get_list</li>\n<li>frappe.session</li>\n<li>frappe.utils.now_datetime</li>\n<li>frappe.utils.get_datetime</li>\n<li>frappe.utils.add_to_date</li>\n<li>frappe.utils.now</li>\n</ul>\n<p>Example: </p><pre><code>doc.creation &gt; frappe.utils.add_to_date(frappe.utils.now_datetime(\n), days=-5, as_string=True, as_datetime=True) </code></pre><p></p>\n\n<p>\n\t<strong>For scheduled events, use </strong>\n<br>\n1. Simple template sending, without parameters, just send a template\n</p><pre><code class=\"language-python\">\ndoc.set(\"_contact_list\", [\"919123456789\"])\n</code>\n</pre>\n\n2. Message based on doctype with parameters\n<pre><code class=\"language-python\">\nquotation_list = frappe.get_list(\"Quotation\", {\"name\": \"VEN-COT-24-29806\", \"custom_whatsapp_notify\": 0})\nfor qo in quotation_list:\n\tdata_list.append({\n\t\t\"name\": qo.name,\n\t\t\"phone_no\": \"5548996436821\",\n\t})\ndoc.set(\"_data_list\", data_list)\n</code>\n</pre>\n\n<p></p> "
+  },
+  {
+   "fieldname": "notification_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Notification Type",
+   "options": "DocType Event\nScheduler Event",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "Template",
+   "mandatory_depends_on": "eval:doc.message_type=='Template';",
+   "options": "Twilio Template"
+  },
+  {
+   "fieldname": "condition",
+   "fieldtype": "Code",
+   "label": "Condition",
+   "options": "Python Expression"
+  },
+  {
+   "description": "Mobile number field",
+   "fieldname": "field_name",
+   "fieldtype": "Data",
+   "label": "Field Name",
+   "mandatory_depends_on": "//eval:['DocType Event'].includes(doc.notification_type)"
+  },
+  {
+   "fieldname": "column_break_12",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_11",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Code",
+   "options": "HTML",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "WhatsApp Template requires a document. ",
+   "fieldname": "attach_document_print",
+   "fieldtype": "Check",
+   "label": " Attach Document Print"
+  },
+  {
+   "default": "0",
+   "description": "WhatsApp Template requires document",
+   "fieldname": "custom_attachment",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Custom attachment"
+  },
+  {
+   "depends_on": "eval:doc.custom_attachment",
+   "description": "Upload the file as public. Whatsapp cannot access the private file.",
+   "fieldname": "attach",
+   "fieldtype": "Attach",
+   "label": "Attach"
+  },
+  {
+   "depends_on": "eval:doc.custom_attachment",
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "label": "File name"
+  },
+  {
+   "fieldname": "header_type",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Header Type"
+  },
+  {
+   "depends_on": "eval:doc.custom_attachment",
+   "description": "Attach media from doctype field",
+   "fieldname": "attach_from_field",
+   "fieldtype": "Data",
+   "label": "Attach from field "
+  },
+  {
+   "fieldname": "property_section",
+   "fieldtype": "Section Break",
+   "label": "Set Property After Alert"
+  },
+  {
+   "fieldname": "set_property_after_alert",
+   "fieldtype": "Select",
+   "label": "Set Property After Alert"
+  },
+  {
+   "fieldname": "property_value",
+   "fieldtype": "Data",
+   "label": "Value To Be Set"
+  },
+  {
+   "depends_on": "eval:doc.doctype_event==='Days Before' || doc.doctype_event==='Days After'",
+   "description": "Send days before or after the reference date",
+   "fieldname": "days_in_advance",
+   "fieldtype": "Int",
+   "label": "Days Before or After",
+   "mandatory_depends_on": "eval:doc.doctype_event==='Days Before' || doc.doctype_event==='Days After'"
+  },
+  {
+   "depends_on": "eval:doc.doctype_event==='Days Before' || doc.doctype_event==='Days After'",
+   "fieldname": "date_changed",
+   "fieldtype": "Select",
+   "label": "Reference Date",
+   "mandatory_depends_on": "eval:doc.doctype_event==='Days Before' || doc.doctype_event==='Days After'"
+  },
+  {
+   "fieldname": "notification_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Notification Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fetch_from": "template.body",
+   "fetch_if_empty": 1,
+   "fieldname": "template_content",
+   "fieldtype": "Text Editor",
+   "label": "Template Content"
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fieldname": "create_template",
+   "fieldtype": "Button",
+   "label": "Create Template"
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "options": "Whatsapp\nTelegram"
+  },
+  {
+   "fieldname": "clefincode_notification_recipient_list",
+   "fieldtype": "Table",
+   "label": "Clefincode Notification Recipient list",
+   "options": "Clefincode Notification Recipient list"
+  },
+  {
+   "fieldname": "variables",
+   "fieldtype": "Table",
+   "label": "Variables",
+   "options": "Twilio Template Variable Mapping"
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fetch_from": "template.media_url",
+   "fieldname": "media_url",
+   "fieldtype": "Small Text",
+   "label": "Media URL"
+  },
+  {
+   "fieldname": "message_type",
+   "fieldtype": "Select",
+   "label": "Message Type",
+   "options": "Message\nTemplate"
+  },
+  {
+   "depends_on": "eval:doc.message_type!='Template';",
+   "fieldname": "message_content",
+   "fieldtype": "Small Text",
+   "label": "Message_content"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-11-10 15:22:31.355356",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "Clefincode Notification",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
