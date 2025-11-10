@@ -61,6 +61,22 @@ frappe.notification = {
 };
 
 frappe.ui.form.on('Clefincode Notification', {
+	onload: function (frm) {
+		frm.set_query("reference_doctype", function () {
+			return {
+				filters: {
+					istable: 0,
+				},
+			};
+		});
+		frm.set_query("print_format", function () {
+			return {
+				filters: {
+					doc_type: frm.doc.reference_doctype,
+				},
+			};
+		});
+	},
 	refresh: function (frm) {
 		frm.trigger("load_template");
 		frappe.notification.setup_fieldname_select(frm);

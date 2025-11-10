@@ -164,24 +164,10 @@ class ClefincodeNotification(Document):
                 # frappe.db.begin()
                 key = doc.get_document_share_key()  # noqa
                 frappe.db.commit()
-                print_format = "Standard"
-                doctype = frappe.get_doc("DocType", doc_data['doctype'])
-                if doctype.custom:
-                    if doctype.default_print_format:
-                        print_format = doctype.default_print_format
-                else:
-                    default_print_format = frappe.db.get_value(
-                        "Property Setter",
-                        filters={
-                            "doc_type": doc_data['doctype'],
-                            "property": "default_print_format"
-                        },
-                        fieldname="value"
-                    )
-                print_format = default_print_format if default_print_format else print_format
-                res=pdf(doc_data['doctype'], doc.name,key,print_format)
+               
+                res=pdf(doc_data['doctype'], doc.name,key,self.print_format,self.language)
               
-                frappe.log_error("dsds",res)
+                frappe.log_error("dsds",[self.print_format,variables])
                 #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
                 send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
 
@@ -216,14 +202,22 @@ def trigger_notifications(method="daily"):
 
     
 @frappe.whitelist(allow_guest=True)
-def pdf(doctype, name, key, format=None):
+def pdf(doctype, name, key, format=None,lang=None):
     try:
         # Get the document
+        from packaging import version
+        frappe_version = frappe.__version__
         doc = frappe.get_doc(doctype, name)
         frappe.logger().info(f"PDF generation started for {doctype} {name}")
+        
+        if version.parse(frappe_version) >= version.parse("15.0.0"):
+             html = frappe.get_print(doctype, name, print_format=format,lang=lang, doc=doc, no_letterhead=0)
+        else:
+            frappe.local.lang = lang or "en"
+            html = frappe.get_print(doctype, name, print_format=format, doc=doc, no_letterhead=0)
 
         # Generate HTML and PDF
-        html = frappe.get_print(doctype, name, print_format=format, doc=doc, no_letterhead=0)
+        
         pdf_data = get_pdf(html)
 
         # Save PDF to File DocType (auto-handles public/private path)

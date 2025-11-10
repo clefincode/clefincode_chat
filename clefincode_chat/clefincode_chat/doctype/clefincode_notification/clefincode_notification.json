@@ -28,6 +28,8 @@
   "section_break_11",
   "code",
   "attach_document_print",
+  "print_format",
+  "language",
   "custom_attachment",
   "attach",
   "file_name",
@@ -134,7 +136,6 @@
   },
   {
    "default": "0",
-   "description": "WhatsApp Template requires a document. ",
    "fieldname": "attach_document_print",
    "fieldtype": "Check",
    "label": " Attach Document Print"
@@ -262,11 +263,24 @@
    "fieldname": "message_content",
    "fieldtype": "Small Text",
    "label": "Message_content"
+  },
+  {
+   "depends_on": "attach_document_print",
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Link",
+   "label": "Language",
+   "options": "Language"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-10 15:22:31.355356",
+ "modified": "2025-11-10 16:55:52.260286",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification",
