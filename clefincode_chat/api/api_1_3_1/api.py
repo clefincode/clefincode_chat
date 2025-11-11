@@ -1,3 +1,4 @@
+import re
 import frappe, shutil, os
 import datetime
 import json
@@ -4705,21 +4706,29 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
 
 # ==========================================================================================
 @frappe.whitelist()
-def send_whatsapp_message_from_template(docname, to_number, whatsapp_profile):
+def send_whatsapp_message_from_template(content, to_number, whatsapp_profile):
  
     template = None
     doctype = None
+    messages = content.split(',')
+
+    if len(messages) < 2:
+        template_name = content.strip()
+        docname = ""
+    else:
+        template_name = messages[0].strip()
+        docname = messages[1].strip()
     
 
 
-    if frappe.db.exists("ClefinCode WhatsApp Template", docname):
-        template = frappe.get_doc("ClefinCode WhatsApp Template", docname)
+    if frappe.db.exists("ClefinCode WhatsApp Template", template_name):
+        template = frappe.get_doc("ClefinCode WhatsApp Template", template_name)
         doctype = "ClefinCode WhatsApp Template"
-    elif frappe.db.exists("Twilio Template", docname):
-        template = frappe.get_doc("Twilio Template", docname)
+    elif frappe.db.exists("Twilio Template", template_name):
+        template = frappe.get_doc("Twilio Template", template_name)
         doctype = "Twilio Template"
     else:
-        frappe.throw(f"No template found with name '{docname}' in known doctypes.")
+        frappe.throw(f"No template found with name '{template_name}' in known doctypes.")
 
     if not template.whatsapp_template_id:
         frappe.throw(" No 'WhatsApp Template ID' found in this template.")
@@ -4747,13 +4756,50 @@ def send_whatsapp_message_from_template(docname, to_number, whatsapp_profile):
 
     elif doctype == "Twilio Template":
         for var in template.variables:
-            key = str(var.var_number).strip()
-            value = str(var.example).strip()
-            if key and value:
-                variables[key] = value
+                key = (var.variable_key or "").strip()
+                source_doctype = (var.source or "").strip()
+                source_field = (var.source_field or "").strip()
+                value=var.default 
 
-        body_preview = json.dumps(variables, indent=2)
+                if not key:
+                    continue
+                if (source_doctype and source_field):
+                   
+                    match = re.search(r"\(([^)]+)\)", source_doctype)
+                    if match:
+                        linked_doctype = match.group(1).strip()     # e.g. "Customer"
+                        fieldname = source_doctype.split("(")[0].strip()  # e.g. "customer"
 
+                        # Get linked docname from the parent document (by querying the field)
+                        linked_docname = frappe.db.get_value(template.reference_doctype, docname, fieldname)
+
+                        if not linked_docname:
+                            frappe.log_error(
+                                f"No linked docname found for field '{fieldname}' in {template.reference_doctype} {docname}",
+                                "Twilio Template Mapping"
+                            )
+                            continue
+
+                        # Fetch the field value from the linked doctype
+                        value = frappe.db.get_value(linked_doctype, linked_docname, source_field)
+                        if value.startswith("/"):
+                            value=value[1:]
+
+                    else:
+                        # 🔹 Normal case — get the field value from the current document
+                        value = frappe.db.get_value(source_doctype, docname, source_field)
+                        if value.startswith("/"):
+                            value=value[1:]
+                # else:
+                #     value=(var.default or "").strip()
+
+                if key and value is not None:
+                    variables[key] = value
+                frappe.log_error("tempate_key_error",variables)
+       
+       
+    #     body_preview = json.dumps(variables, indent=2)
+    frappe.log_error(" Sent WhatsApp template",json.dumps(variables))
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
         to=f"whatsapp:{to_number}",
@@ -4764,7 +4810,7 @@ def send_whatsapp_message_from_template(docname, to_number, whatsapp_profile):
     frappe.logger("whatsapp").info(
         f"✅ Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
     )
-
+    
     return {
         "sid": message.sid,
         "status": message.status,

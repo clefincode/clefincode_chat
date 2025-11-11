@@ -54,6 +54,9 @@ class ClefincodeNotification(Document):
                 ))
     def send_template_message(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
         doc_data = doc.as_dict()
+        frappe.log_error("doc_data",[doc_data])
+        frappe.log_error("doc_profile",[doc.profile_id])
+       
         recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
             {"parent": self.name},
             "rcevier_by_filed"
@@ -125,13 +128,13 @@ class ClefincodeNotification(Document):
                     if key and value:
                         variables[key] = value
         recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
-        if self.message_type=="Template":
-        
-                
+        if self.message_type=="Template":  
+                content=self.template+","+doc.name    
+                frappe.log_error("notification from template",content)         
 
-                
+                send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template")
             
-                send_whatsapp_message_from_template_notification(self.template,recevie_profile,"14155238886",doc)
+                # send_whatsapp_message_from_template_notification(self.template,recevie_profile,"14155238886",doc)
                 if doc_data and self.set_property_after_alert and self.property_value:
                         if doc_data.doctype and doc_data.name:
                             fieldname = self.set_property_after_alert

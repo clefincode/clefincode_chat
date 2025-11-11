@@ -76,6 +76,13 @@ frappe.ui.form.on('Clefincode Notification', {
 				},
 			};
 		});
+			frm.set_query("template", function () {
+			return {
+				filters: {
+					reference_doctype: frm.doc.reference_doctype,
+				},
+			};
+		});
 	},
 	refresh: function (frm) {
 		frm.trigger("load_template");
@@ -145,7 +152,7 @@ frappe.ui.form.on('Twilio Template Variable Mapping', {
             const row = locals[cdt][cdn];
         if (!row.source_doctype) return;
 
-        
+			console.log(row.source_doctype);
             const meta_fields = frappe.meta.get_docfields(row.source_doctype);
 
             const no_value_fields = frappe.model.no_value_fields || [
