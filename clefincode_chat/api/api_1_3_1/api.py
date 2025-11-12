@@ -2975,7 +2975,9 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
                         new_message.message_type != "information")
 
     if new_message.message_type == "information":
+        frappe.log_error("process whatapp template",content)
         message_content = process_message_template(content)
+        frappe.log_error("process whatapp template message_content",message_content)
         message = f"_{BeautifulSoup(message_content, 'html.parser').get_text()}_"
     elif file_type in ["image", "video", "audio", "document"]:
         if is_screenshot:
@@ -2994,7 +2996,7 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
         send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
-            send_whatsapp_message_from_template(message_content, whatsapp_customer_number,platform_gateway)
+            send_whatsapp_message_from_template(message_content, whatsapp_customer_number,platform_gateway,attachment)
         else:
             send_whatsapp_message_twilio(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
 # ==========================================================================================
@@ -4706,7 +4708,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
 
 # ==========================================================================================
 @frappe.whitelist()
-def send_whatsapp_message_from_template(content, to_number, whatsapp_profile):
+def send_whatsapp_message_from_template(content, to_number, whatsapp_profile,attachment=None):
  
     template = None
     doctype = None
@@ -4783,13 +4785,13 @@ def send_whatsapp_message_from_template(content, to_number, whatsapp_profile):
                         # Fetch the field value from the linked doctype
                         value = frappe.db.get_value(linked_doctype, linked_docname, source_field)
                         if value.startswith("/"):
-                            value=value[1:]
+                            value= urllib.parse.quote(value[1:], safe=':/')
 
                     else:
                         # 🔹 Normal case — get the field value from the current document
                         value = frappe.db.get_value(source_doctype, docname, source_field)
                         if value.startswith("/"):
-                            value=value[1:]
+                            value= urllib.parse.quote(value[1:], safe=':/')
                 # else:
                 #     value=(var.default or "").strip()
 
@@ -4799,6 +4801,14 @@ def send_whatsapp_message_from_template(content, to_number, whatsapp_profile):
        
        
     #     body_preview = json.dumps(variables, indent=2)
+    if attachment:
+        if template.media_url:
+           attach_var= extract_placeholder(template.media_url)
+           if attach_var:
+               link=attachment.lstrip('/')
+               variables[attach_var] = urllib.parse.quote(link, safe=':/')
+               
+        
     frappe.log_error(" Sent WhatsApp template",json.dumps(variables))
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
@@ -4890,7 +4900,7 @@ def send_whatsapp_message_from_template_notification(docname, receive_profile, w
     )
     
     frappe.logger("whatsapp").info(
-        f"✅ Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
+        f"Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
     )
 
     return {
@@ -5138,3 +5148,12 @@ def send_whatsapp_message_twilio_notification(sender, receiver, message, message
 
     except Exception as e:
         frappe.log_error(title="send whatsapp message Exception", message=str(e))
+#======================================================================================
+def extract_placeholder(media_url: str) -> str | None:
+    """
+    Extracts the variable name or number inside {{ }} from a URL.
+    Example:
+        'https://erp.clefincode.com/{{media_var}}' → 'media_var'
+    """
+    match = re.search(r"\{\{(.*?)\}\}", media_url or "")
+    return match.group(1) if match else None

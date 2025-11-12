@@ -140,7 +140,23 @@ frappe.ui.form.on('Clefincode Notification', {
 
 	reference_doctype: function (frm) {
 		frappe.notification.setup_fieldname_select(frm);
-	}
+	},
+	attach_document_print: function(frm) {
+        if (frm.doc.attach_document_print) {
+            frappe.confirm(
+                __('By selecting "Attach Print", the currently defined media variable will be replaced with the print file that will be sent. Do you want to continue?'),
+                function() {
+                    // User confirmed
+                    frappe.msgprint(__('You have chosen to attach the print file. The media variable will be updated accordingly.'));
+                },
+                function() {
+                    // User cancelled → uncheck the box
+                    frm.set_value('attach_print', 0);
+                    frappe.msgprint(__('Operation cancelled. The media variable remains unchanged.'));
+                }
+            );
+        }
+    }
 });
 frappe.ui.form.on('Twilio Template Variable Mapping', {
     variables_add: function(frm, cdt, cdn) {

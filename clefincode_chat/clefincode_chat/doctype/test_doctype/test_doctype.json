@@ -9,7 +9,8 @@
  "field_order": [
   "profile_id",
   "full_name",
-  "name1"
+  "name1",
+  "image"
  ],
  "fields": [
   {
@@ -28,11 +29,16 @@
    "fieldname": "name1",
    "fieldtype": "Data",
    "label": "name"
+  },
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach",
+   "label": "image"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-09 12:30:26.943732",
+ "modified": "2025-11-12 12:41:02.746895",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "test doctype",

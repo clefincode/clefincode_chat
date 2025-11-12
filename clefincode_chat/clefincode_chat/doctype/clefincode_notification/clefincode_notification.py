@@ -3,6 +3,8 @@
 
 # import frappe
 import json
+import re
+from urllib.parse import urlparse
 import frappe
 
 from frappe import _dict, _
@@ -38,6 +40,41 @@ class ClefincodeNotification(Document):
         #     )
         #     if not any(field.fieldname == self.field_name for field in fields): # noqa
         #         frappe.throw(_("Field name {0} does not exists").format(self.field_name))
+                # Check if the "Attach Print" option is enabled
+        if self.message_type=="Template": 
+            if self.attach_document_print:
+                # Ensure a template is selected
+                if not self.template:
+                    frappe.throw("Please select a template before enabling 'Attach Print'.")
+
+                # Fetch the linked Template document
+                template = frappe.get_doc("Twilio Template", self.template)
+
+                # Get the media URL from the template
+                temp_url = template.media_url or ""
+                
+                match = re.match(r"^(.*?)\{\{", temp_url)
+                media_url = match.group(1).strip() if match else temp_url.strip()
+
+                # Get the base site URL
+                base_url = frappe.utils.get_url()
+                media_url = media_url.rstrip('/')
+                base_url = base_url.rstrip('/')
+                media_domain = urlparse(media_url).hostname
+                base_domain = urlparse(base_url).hostname
+                frappe.log_error("base url",[media_domain,base_domain])
+
+                # Compare media_url with the base site URL
+                if  media_domain != base_domain:
+                    frappe.throw(
+                        title="Invalid Media URL",
+                        msg=(
+                            "The media URL in the selected template does not match this site's base domain.<br>"
+                            f"<b>Media URL:</b> {media_domain}<br>"
+                            f"<b>Base URL:</b> {base_domain}<br>"
+                            "Please replace the template with one belonging to this site."                            
+                        )
+                    )
         if self.custom_attachment:
             if not self.attach and not self.attach_from_field:
                 frappe.throw(_("Either {0} a file or add a {1} to send attachemt").format(
@@ -128,29 +165,28 @@ class ClefincodeNotification(Document):
                     if key and value:
                         variables[key] = value
         recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
+        attachment=None
         if self.message_type=="Template":  
                 content=self.template+","+doc.name    
-                frappe.log_error("notification from template",content)         
+                frappe.log_error("notification from template",content)
+                if self.attach_document_print:
+                    # frappe.db.begin()
+                    key = doc.get_document_share_key()  # noqa
+                    frappe.db.commit()
+                
+                    res=pdf(doc_data['doctype'], doc.name,key,self.print_format,self.language)
+                    attachment=res['file_url']
+                      
 
-                send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template")
+                #send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template")
             
                 # send_whatsapp_message_from_template_notification(self.template,recevie_profile,"14155238886",doc)
-                if doc_data and self.set_property_after_alert and self.property_value:
-                        if doc_data.doctype and doc_data.name:
-                            fieldname = self.set_property_after_alert
-                            value = self.property_value
-                            meta = frappe.get_meta(doc_data.get("doctype"))
-                            df = meta.get_field(fieldname)
-                            if df:
-                                if df.fieldtype in frappe.model.numeric_fieldtypes:
-                                    value = frappe.utils.cint(value)
-
-                                frappe.db.set_value(doc_data.get("doctype"), doc_data.get("name"), fieldname, value)
+                
+                
+                send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template",attachment=attachment)
         else:
            
-
-           
-        # for k, v in variables.items():
+                   # for k, v in variables.items():
         #     body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
             message =self.message_content
             body_preview = message or ""
@@ -173,7 +209,17 @@ class ClefincodeNotification(Document):
                 frappe.log_error("dsds",[self.print_format,variables])
                 #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
                 send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
+        if doc_data and self.set_property_after_alert and self.property_value:
+                        if doc_data.doctype and doc_data.name:
+                            fieldname = self.set_property_after_alert
+                            value = self.property_value
+                            meta = frappe.get_meta(doc_data.get("doctype"))
+                            df = meta.get_field(fieldname)
+                            if df:
+                                if df.fieldtype in frappe.model.numeric_fieldtypes:
+                                    value = frappe.utils.cint(value)
 
+                                frappe.db.set_value(doc_data.get("doctype"), doc_data.get("name"), fieldname, value)
 
 
 
