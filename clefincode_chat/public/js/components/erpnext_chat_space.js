@@ -3052,9 +3052,11 @@ showTemplateSuggestions(res) {
       }
     );
 
-    item.on("click", function () {
+    item.on("click", async function () {
       editor.text("/" + name);
       container.fadeOut(200, () => container.remove());
+      const check = await check_reference_doctype_empty(name); 
+      if (check.empty) {
 
       const message_info = {
         content: name,
@@ -3067,6 +3069,47 @@ showTemplateSuggestions(res) {
 
       send_message(message_info);
       editor.html("");
+    }
+    else {
+            let topic_info = await get_topic_info(res.room);
+
+          console.log("topic_info", topic_info);
+
+          if (!topic_info || !topic_info.length) {
+              console.error("topic_info is empty", topic_info);
+              return;
+          }
+
+          let topic = topic_info[0];
+
+          let chat_topic = topic.chat_topic;
+          let chat_topic_subject = topic.chat_topic_subject;
+          let chat_topic_status = topic.chat_topic_status;
+          let reference_doctypes = topic.reference_doctypes;
+
+          // reference_doctypes is array of objects like:
+          // [{doctype: "Sales Invoice", docname: "..."}]
+
+          if (reference_doctypes.some(d => d.doctype === check.value)) {
+              console.log("Value exists in reference_doctypes");
+          }
+    // else
+    {show_doctype_selector(check.value, function (selected_docname) {
+      
+    const message_info = {
+      content: name + "," + selected_docname,
+       user: res.user,
+        room: res.room,
+        email: res.user,
+        message_type: "information",
+        message_template_type: "Send Template",
+    };
+
+    send_message(message_info);
+    editor.html("");
+  });}
+      
+    }
     });
 
     container.append(item);
@@ -3648,4 +3691,35 @@ async function create_website_support_group(website_user_email, content) {
     },
   });
   return await res.message.results[0];
+}
+
+async function check_reference_doctype_empty(docname) {
+  const res = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.is_reference_doctype_Twilio_Template_empty",
+    args: { docname },
+  });
+
+  return res.message; // { empty: true/false, value: "DocType" }
+}
+
+function show_doctype_selector(doctype, callback) {
+  const d = new frappe.ui.Dialog({
+    title: `Select ${doctype}`,
+    fields: [
+      {
+        fieldname: "docname",
+        label: `Select ${doctype}`,
+        fieldtype: "Link",
+        options: doctype,
+        reqd: 1
+      }
+    ],
+    primary_action_label: "Select",
+    primary_action(values) {
+      d.hide();
+      callback(values.docname);
+    }
+  });
+
+  d.show();
 }

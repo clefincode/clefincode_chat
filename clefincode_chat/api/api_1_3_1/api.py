@@ -1243,7 +1243,12 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
         
         return  {"results" : [{"new_message_name" : new_message.name}]}
     except Exception as e:
-        frappe.log_error(title="error in send message" , message = str(e))
+        error_message = traceback.format_exc()   
+        frappe.log_error(
+            title="error in send message",
+            message=error_message
+        )
+        
         return {"results": [{"status": f"Error: {str(e)}"}]} 
 # ==========================================================================================
 @frappe.whitelist()
@@ -2996,7 +3001,7 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
         send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
-            send_whatsapp_message_from_template(message_content, whatsapp_customer_number,platform_gateway,attachment)
+            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,attachment)
         else:
             send_whatsapp_message_twilio(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
 # ==========================================================================================
@@ -4708,10 +4713,11 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
 
 # ==========================================================================================
 @frappe.whitelist()
-def send_whatsapp_message_from_template(content, to_number, whatsapp_profile,attachment=None):
+def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile,attachment=None):
  
     template = None
     doctype = None
+    content = new_message.content
     messages = content.split(',')
 
     if len(messages) < 2:
@@ -4784,13 +4790,13 @@ def send_whatsapp_message_from_template(content, to_number, whatsapp_profile,att
 
                         # Fetch the field value from the linked doctype
                         value = frappe.db.get_value(linked_doctype, linked_docname, source_field)
-                        if value.startswith("/"):
+                        if value and value.startswith("/"):
                             value= urllib.parse.quote(value[1:], safe=':/')
 
                     else:
                         # 🔹 Normal case — get the field value from the current document
                         value = frappe.db.get_value(source_doctype, docname, source_field)
-                        if value.startswith("/"):
+                        if value and value.startswith("/"):
                             value= urllib.parse.quote(value[1:], safe=':/')
                 # else:
                 #     value=(var.default or "").strip()
@@ -4801,12 +4807,21 @@ def send_whatsapp_message_from_template(content, to_number, whatsapp_profile,att
        
        
     #     body_preview = json.dumps(variables, indent=2)
+    media_url=None
+    if template.media_url:
+         attach_var= extract_placeholder(template.media_url)
+         if attach_var in variables:
+             media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
+    
     if attachment:
         if template.media_url:
            attach_var= extract_placeholder(template.media_url)
            if attach_var:
                link=attachment.lstrip('/')
                variables[attach_var] = urllib.parse.quote(link, safe=':/')
+               if attach_var in variables:
+                 media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
+               
                
         
     frappe.log_error(" Sent WhatsApp template",json.dumps(variables))
@@ -4816,7 +4831,21 @@ def send_whatsapp_message_from_template(content, to_number, whatsapp_profile,att
         content_sid=template.whatsapp_template_id,
         content_variables=json.dumps(variables)
     )
-
+    content = client.content.v1.contents(template.whatsapp_template_id).fetch()
+    
+   
+    html = generate_whatsapp_html_preview(
+    body=BeautifulSoup(template.body, 'html.parser').get_text(separator='\n'),
+    template_name=template.name,
+    template_type=template.template_type,
+    variables=variables,
+    media_url=media_url,
+    items=template.items
+    
+    
+)
+    send(content=html, user=to_number, room=new_message.chat_channel, email=to_number)
+   
     frappe.logger("whatsapp").info(
         f"✅ Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
     )
@@ -4898,7 +4927,9 @@ def send_whatsapp_message_from_template_notification(docname, receive_profile, w
         content_sid=template.whatsapp_template_id,
         content_variables=json.dumps(variables)
     )
+   
     
+
     frappe.logger("whatsapp").info(
         f"Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
     )
@@ -5077,7 +5108,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
     result = response.json()
 
     if response.status_code == 200:
-        frappe.msgprint(f"✅ Template '{template.meta_template_name}' sent successfully.")
+        frappe.msgprint(f" Template '{template.meta_template_name}' sent successfully.")
     else:
         frappe.log_error(
             title="WhatsApp Template Send Error",
@@ -5157,3 +5188,113 @@ def extract_placeholder(media_url: str) -> str | None:
     """
     match = re.search(r"\{\{(.*?)\}\}", media_url or "")
     return match.group(1) if match else None
+#=======================================================================
+def generate_whatsapp_html_preview(
+    body="",
+    template_name="",
+    template_type="twilio/text",
+    variables=None,
+    media_url=None,
+    location=None,
+    cards=None,
+    actions=None,
+    items=None
+):
+    variables = variables or {}
+    cards = cards or []
+    actions = actions or []
+    items = items or []
+
+    # --- Replace variables ---
+    final_body = body
+    for k, v in variables.items():
+        final_body = final_body.replace("{{" + k + "}}", str(v))
+
+    safe_body = final_body.replace("\n", "<br>")
+
+    # --- Helper bubble ---
+    def msg_block(text):
+        safe_text = text.replace("\n", "<br>")
+        return (
+            "<div class='wa-msg-row in'>"
+            "<div class='wa-msg'>"
+            "<div class='wa-msg-text'>" + safe_text + "</div>"
+            "</div></div>"
+        )
+
+    # --- START HTML ---
+    html = (
+        "<div class='whatsapp-card'>"
+        "<header class='wa-chat-header'>" + template_name + "</header>"
+        "<div class='wa-chat-body'>"
+    )
+
+    # BODY message
+    html += msg_block(final_body)
+
+    # --- LIST PICKER ITEMS AS ROWS ---
+    if template_type == "twilio/list-picker" and items:
+        html += "<div class='wa-list-container in'><div class='wa-msg'>"
+        html += "<div class='wa-msg-text'></div>"
+        for it in items:
+            title = it.get("item") or it.get("title") or ""
+            html += "<div class='wa-list-row'>• " + title + "</div>"
+        html += "</div></div>"
+
+    # --- MEDIA ---
+    frappe.log_error("dss",[media_url,template_type])
+    if media_url and template_type in ["twilio/media", "twilio/card", "whatsapp/card"]:
+            ext = media_url.lower().split(".")[-1]
+
+            if ext in ["jpg", "jpeg", "png", "gif", "webp"]:
+                # IMAGE
+                html += (
+                    "<div class='wa-msg-row in'><div class='wa-msg'>"
+                    "<img src='" + media_url + "' style='max-width:100%;'>"
+                    "</div></div>"
+                )
+
+            elif ext in ["mp4", "mov", "webm", "m4v"]:
+                # VIDEO
+                html += (
+                    "<div class='wa-msg-row in'><div class='wa-msg'>"
+                    "<video controls style='max-width:100%;'>"
+                    "<source src='" + media_url + "' type='video/mp4'>"
+                    "</video>"
+                    "</div></div>"
+                )
+
+            elif ext == "pdf":
+                # PDF
+                html += (
+                    "<div class='wa-msg-row in'><div class='wa-msg'>"
+                    "<embed src='" + media_url + "' type='application/pdf' width='100%' height='300px' />"
+                    "</div></div>"
+                )
+
+            else:
+                # UNKNOWN FILE
+                html += (
+                    "<div class='wa-msg-row in'><div class='wa-msg'>"
+                    "<a href='" + media_url + "' target='_blank'>Download file</a>"
+                    "</div></div>"
+                )
+
+    # END WRAPPERS
+    html += "</div></div>"
+
+    return html
+#==========================================================
+@frappe.whitelist()
+def is_reference_doctype_Twilio_Template_empty(docname):
+  
+    if not docname:
+        frappe.throw("Docname is required")
+
+    doc = frappe.get_doc("Twilio Template", docname)
+    value = doc.reference_doctype
+
+    return {
+        "empty": not bool(value),
+        "value": value
+    }
