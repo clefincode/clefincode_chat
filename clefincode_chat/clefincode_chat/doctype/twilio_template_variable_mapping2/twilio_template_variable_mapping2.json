@@ -1,0 +1,53 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-11-11 13:51:01.063975",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "variable_key",
+  "source",
+  "source_field",
+  "default"
+ ],
+ "fields": [
+  {
+   "fieldname": "variable_key",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Variable Key"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source "
+  },
+  {
+   "fieldname": "source_field",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source Field"
+  },
+  {
+   "fieldname": "default",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Default "
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-11-16 18:31:03.883750",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "Twilio Template Variable Mapping2",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
