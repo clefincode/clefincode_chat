@@ -276,6 +276,7 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
 
 
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
+    frappe.log_error("create_direct_channel",messages)
     channel_name = get_profile_full_name(receiver_user_email)   
     message_type = messages[0]["type"] if "type" in messages[0] else None
     
@@ -1599,7 +1600,6 @@ def whatsapp_twillio_webhook():
             file_url = download_media_twilio(media_url, mime_type=mime_type, message_type=media_type)
             message_type = media_type
 
-        # تحقق من استقبال الرقم
         if not validate_receiver_profile(str(receiver_number)):
             return
         
@@ -1607,20 +1607,20 @@ def whatsapp_twillio_webhook():
         chat_profile = get_or_create_chat_profile(sender_number, sender_number)  
 
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
-        chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages=[{"type": message_type, "body": message_body}])
+        chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages=[{"text":{"type": message_type, "body": message_body}}])
         chat_channel, _ = chat_channel_info
         last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
        
         if message_type == "text":
-            send(content=message_body, user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel)
+            send(content="<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel)
         else:
             content = handle_attachment(file_url, form_dict.get("MediaFilename0", "attachment"), message_type)
-            send(content=content, user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url)
+            send(content=content, user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media=1)
 
       
     except Exception as e:
-        frappe.log_error(title="Twilio WhatsApp Webhook Error", message=str(e))
+        frappe.log_error(title="Twilio WhatsApp Webhook Error", message=frappe.get_traceback())
 
 
 def download_media_twilio(media_url, mime_type=None, message_type="media", filename=None, folder="Home/Attachments"):

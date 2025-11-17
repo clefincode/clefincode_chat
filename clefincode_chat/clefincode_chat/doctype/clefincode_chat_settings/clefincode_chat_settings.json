@@ -12,6 +12,7 @@
   "enable_mobile_notifications_section_section",
   "enable_mobile_notifications",
   "with_message_content",
+  "enable_system_notification_on_mobile_app",
   "section_break_4",
   "start_time",
   "end_time",
@@ -138,12 +139,18 @@
    "fieldname": "firebase_server_key",
    "fieldtype": "Text",
    "label": "Firebase Server Key"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_system_notification_on_mobile_app",
+   "fieldtype": "Check",
+   "label": "Enable System Notification on Mobile App"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2024-09-23 21:44:26.134866",
+ "modified": "2025-11-16 17:57:14.112881",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Settings",

@@ -183,12 +183,13 @@ def get_auth_token_twillio():
 def check_twilio_template_status():
   
     try:
-       
+        frappe.log_error("status check")
         pending_templates = frappe.get_all(
-            "ClefinCode WhatsApp Template",
+            "Twilio Template",
             filters={"template_status": "PENDING"},
             fields=["name", "whatsapp_template_id"]
         )
+        frappe.log_error("pending_templates",pending_templates)
 
         if not pending_templates:
             frappe.logger().info("✅ لا توجد قوالب معلقة حالياً.")
@@ -227,14 +228,14 @@ def check_twilio_template_status():
 
             
                 frappe.db.set_value(
-                    "ClefinCode WhatsApp Template",
+                    "Twilio Template",
                     template["name"],
                     {
                         "template_status": status,
                     }
                 )
 
-                
+                frappe.log_error(f"✅ Updated {template['name']} → {status} ({rejection_reason})")
                 frappe.logger().info(f"✅ Updated {template['name']} → {status} ({rejection_reason})")
 
         frappe.db.commit()

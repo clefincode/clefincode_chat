@@ -28,7 +28,7 @@ web_include_js = ['clefincode_chat.bundle.js'] if is_frappe_above_v13 else [
 app_include_css = ['clefincode_chat.bundle.css'] if is_frappe_above_v13 else [
     '/assets/css/clefincode_chat.css']
 
-app_include_js = ['clefincode_chat.bundle.js' , 'override.bundle.js'] if is_frappe_above_v13 else [
+app_include_js = ['clefincode_chat.bundle.js' , 'override.bundle.js','send_doctype.js'] if is_frappe_above_v13 else [
     '/assets/js/clefincode_chat.js' ,  '/assets/js/override.js']
 
 # web_include_css = "/assets/clefincode_chat/css/clefincode_chat.css"
@@ -163,9 +163,9 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
-#	"all": [
-#		"clefincode_chat.tasks.all"
-#	],
+	# "all": [
+	# 	"clefincode_chat.utils.utils.check_twilio_template_status"
+	# ],
 #	"daily": [
 #		"clefincode_chat.tasks.daily"
 #	],
@@ -178,6 +178,7 @@ scheduler_events = {
 #	"monthly": [
 #		"clefincode_chat.tasks.monthly"
 #	],
+ 
 }
 
 # Testing

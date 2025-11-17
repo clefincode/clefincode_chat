@@ -1,6 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "field:notification_name",
  "creation": "2025-11-06 11:59:50.085851",
  "default_view": "List",
  "doctype": "DocType",
@@ -15,6 +16,7 @@
   "channel",
   "message_type",
   "notification_type",
+  "value_changed",
   "disabled",
   "template",
   "template_content",
@@ -67,7 +69,7 @@
    "fieldname": "doctype_event",
    "fieldtype": "Select",
    "label": "DocType Event",
-   "options": "Before Insert\nBefore Validate\nBefore Save\nAfter Insert\nAfter Save\nBefore Submit\nAfter Submit\nBefore Cancel\nAfter Cancel\nBefore Delete\nAfter Delete\nBefore Save (Submitted Document)\nAfter Save (Submitted Document)\nDays After\nDays Before"
+   "options": "Before Insert\nBefore Validate\nBefore Save\nAfter Insert\nAfter Save\nBefore Submit\nAfter Submit\nBefore Cancel\nAfter Cancel\nBefore Delete\nAfter Delete\nBefore Save (Submitted Document)\nAfter Save (Submitted Document)\nDays After\nDays Before\nValue Change"
   },
   {
    "fieldname": "column_break_3",
@@ -91,8 +93,10 @@
    "options": "<pre><code>doc.grand_total &gt; 0</code></pre>\n\n<p>Conditions should be written in simple Python. Please use properties available in the form only.</p>\n\n<p>Example: </p><pre><code>doc.status=='Enabled' </code></pre><p></p>\n\n<p> For scheduler events you can use follwing methods</p>\n<p>Allowed functions: </p><ul>\n<li>frappe.db.get_value</li>\n<li>frappe.db.get_list</li>\n<li>frappe.session</li>\n<li>frappe.utils.now_datetime</li>\n<li>frappe.utils.get_datetime</li>\n<li>frappe.utils.add_to_date</li>\n<li>frappe.utils.now</li>\n</ul>\n<p>Example: </p><pre><code>doc.creation &gt; frappe.utils.add_to_date(frappe.utils.now_datetime(\n), days=-5, as_string=True, as_datetime=True) </code></pre><p></p>\n\n<p>\n\t<strong>For scheduled events, use </strong>\n<br>\n1. Simple template sending, without parameters, just send a template\n</p><pre><code class=\"language-python\">\ndoc.set(\"_contact_list\", [\"919123456789\"])\n</code>\n</pre>\n\n2. Message based on doctype with parameters\n<pre><code class=\"language-python\">\nquotation_list = frappe.get_list(\"Quotation\", {\"name\": \"VEN-COT-24-29806\", \"custom_whatsapp_notify\": 0})\nfor qo in quotation_list:\n\tdata_list.append({\n\t\t\"name\": qo.name,\n\t\t\"phone_no\": \"5548996436821\",\n\t})\ndoc.set(\"_data_list\", data_list)\n</code>\n</pre>\n\n<p></p> "
   },
   {
+   "default": "DocType Event",
    "fieldname": "notification_type",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Notification Type",
@@ -278,14 +282,21 @@
    "fieldtype": "Link",
    "label": "Language",
    "options": "Language"
+  },
+  {
+   "depends_on": "eval:doc.doctype_event==\"Value Change\";",
+   "fieldname": "value_changed",
+   "fieldtype": "Select",
+   "label": "Value Changed"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-11 15:32:18.618823",
+ "modified": "2025-11-17 10:54:43.746355",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {

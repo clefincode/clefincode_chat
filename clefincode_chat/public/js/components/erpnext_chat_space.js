@@ -3027,7 +3027,7 @@ showTemplateSuggestions(res) {
   ">
 </div>
   `);
-
+  
   res.template.forEach((t) => {
     const name = t.name || "Unnamed Template";
 
@@ -3035,7 +3035,7 @@ showTemplateSuggestions(res) {
   <div style="padding:8px; cursor:pointer; border-bottom:1px solid #eee;">
     <table style="width:100%; font-size:13px;">
       <tr>
-        <td style="font-weight:bold; color:#333;">${t.meta_template_name}</td>
+        <td style="font-weight:bold; color:#333;">${t.meta_template_name || t.template_name}</td>
        
       </tr>
       
@@ -3055,7 +3055,7 @@ showTemplateSuggestions(res) {
     item.on("click", async function () {
       editor.text("/" + name);
       container.fadeOut(200, () => container.remove());
-      const check = await check_reference_doctype_empty(name); 
+      const check = await check_reference_doctype_empty(name,"Twilio"); 
       if (check.empty) {
 
       const message_info = {
@@ -3693,10 +3693,10 @@ async function create_website_support_group(website_user_email, content) {
   return await res.message.results[0];
 }
 
-async function check_reference_doctype_empty(docname) {
+async function check_reference_doctype_empty(docname,template_type) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_1.api.is_reference_doctype_Twilio_Template_empty",
-    args: { docname },
+    method: "clefincode_chat.api.api_1_3_1.api.is_reference_doctype_Template_empty",
+    args: { docname,template_type },
   });
 
   return res.message; // { empty: true/false, value: "DocType" }

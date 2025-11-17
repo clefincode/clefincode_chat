@@ -8,6 +8,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 from clefincode_chat.utils.utils import get_access_token, get_auth_token_twillio
+from frappe import enqueue
 
 from time import time
 
@@ -141,6 +142,11 @@ class TwilioTemplate(Document):
             # Add for other types...
 
             variables = {}#{str(var.variable_key): var.example for var in self.variables}
+            for var in self.variables:
+                key = (var.variable_key or "").strip()
+                value=var.default 
+                variables[key]=value
+                
             payload = {
                 'friendly_name': self.friendly_name,
                 'language': self.language,
@@ -216,6 +222,7 @@ class TwilioTemplate(Document):
 
                 try:
                     resp_json = resp.json()
+                    frappe.log_error("template status",resp_json)
                 except ValueError:
                     resp_json = {"raw": resp.text}
 
@@ -232,7 +239,9 @@ class TwilioTemplate(Document):
                     "rejected": "REJECTED",
                     "failed": "REJECTED"
                 }
+                frappe.log_error("template twilio_status",twilio_status)
                 mapped_status = _status_map.get(twilio_status, "PENDING")
+                frappe.log_error("template mapped_status",mapped_status)
 
                 # success: store approval response (status may be 'received' or 'pending')
                 frappe.db.set_value(self.doctype, self.name, "template_status", mapped_status)
@@ -241,6 +250,16 @@ class TwilioTemplate(Document):
                 frappe.msgprint(
                     f"Template created in Twilio (sid: {content_sid}) and submitted for WhatsApp approval (status: {self.template_status})"
                 )
+                enqueue(
+                        method="clefincode_chat.utils.utils.check_twilio_template_status",
+                        queue='long',
+                        job_name=f"Check Twilio Template Status - {self.name}",
+                        timeout=300,
+                        is_async=True,
+                        now=False,
+                       
+                        enqueue_after=180  # delay in seconds
+                    )
 
         except Exception as e:
             frappe.log_error("post_whatsapp_template_twilio",f"post_whatsapp_template_twilio exception: {str(e)}")
