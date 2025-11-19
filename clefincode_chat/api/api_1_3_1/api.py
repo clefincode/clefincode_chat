@@ -1,3 +1,4 @@
+import random
 import re
 import traceback
 import frappe, shutil, os
@@ -1208,6 +1209,9 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
                     # frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
+                    # if new_message.message_template_type=="Send Template":
+                    #     send_clefincode_chat_template(new_message)
+                   
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
                     process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results)
@@ -3166,7 +3170,10 @@ def upload_media(message, phone_number_id, access_token, is_voice_clip=False):
 # ==========================================================================================
 def convert_to_ogg(input_file):
     try:
-        output_file = input_file.rsplit('.', 1)[0] + '.ogg'
+        folder = os.path.dirname(input_file)
+        new_name = f"audio_{random.randint(10000, 99999)}.ogg"
+        output_file = os.path.join(folder, new_name)
+       
         command = [
             'ffmpeg',
             '-i', input_file,
@@ -3669,10 +3676,11 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 "Twilio Template",
                 filters={
                     "whatsapp_template_id": ["is", "set"],
-                    "template_status": "APPROVED"   # ✅ Added condition
+                    
                 },
                 fields=["name", "friendly_name as meta_template_name"]
             )
+            # "template_status": "APPROVED"   # ✅ Added condition
             for t in templates_twilio:
                   t["doctype"] = "Twilio Template"
             templates=templates_clefin + templates_twilio
@@ -3682,9 +3690,11 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
             frappe.publish_realtime(event=room, message=results ,user= user)  
         if member.is_removed == 0 and member.platform == "Chat" and template_option:
             templates = frappe.get_all(
-                    "Clefincode Chat Template"
+                    "Clefincode Chat Template",
+                     fields=["name", "template_name as meta_template_name"]
             )
-            
+            for t in templates:
+                  t["doctype"] = "Clefincode Chat Template"
             results["realtime_type"]= "show_template"
             results["template"]= templates
             frappe.publish_realtime(event=room, message=results ,user= user)  
@@ -3721,7 +3731,8 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                             body = get_body_message_information(realtime_type)
                         push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type)                       
                     else:
-                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type)                                              
+                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type)    
+            frappe.log_error("resrers",results)                                          
     except Exception as e:
         frappe.publish_realtime("console" , message = e)
 #=====================================================================================
@@ -4142,11 +4153,15 @@ def get_temp_public_url(file_url):
 
     return public_url
 # ==========================================================================================
-def reset_file_to_private(file_path):
+def reset_file_to_private(file_path, time_delay=None):
     """
     Resets a file back to private if it is currently public.
     """
     try:
+        if time_delay:
+            import time
+            time.sleep(int(time_delay))
+        frappe.log_error("reset_file_to_private")
         file_doc = frappe.get_doc("File", {"file_url": file_path})
         file_doc.is_private = 1
         file_doc.save(ignore_permissions=True)
@@ -4680,11 +4695,13 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
                 #media_url =frappe.utils.get_site_path(media_url.lstrip('/'))
                 site_name = frappe.local.site
                 media_url = convert_to_ogg( os.path.join(".", site_name, "public", media_url.lstrip("/")))
+                frappe.log_error("media_url",media_url)
                 if media_url.startswith("./"):
                     media_url = media_url[2:]
 
                 if media_url.startswith(site_name):
                     media_url = media_url[len(site_name+"/public"):]
+                frappe.log_error("media_url",media_url)
                  # --- Create Frappe File doc ---
                 file_doc = frappe.get_doc({
                 "doctype": "File",
@@ -4700,7 +4717,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
             
             media_url=site_url+media_url
             media_url = urllib.parse.quote(media_url, safe=':/')
-            
+            frappe.log_error("media_url",media_url)
             msg = client.messages.create(
                 from_=f'whatsapp:{twilio_whatsapp_number}',
                 body=message if message_type != 'image' else None,
@@ -4708,19 +4725,27 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
                 to=f'whatsapp:{receiver}'
             )
             frappe.log_error("Dsdsdsaa",[vars(msg),media_url])
-            
+            from datetime import datetime, timedelta
             # Reset file to private if applicable
             if was_private:
+                run_at = frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=60)
+
                 # frappe.enqueue(
-                #     "clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
-                #     public_url=public_url,
-                #     enqueue_after_commit=True,
-                #     queue='default',
-                #     timeout=300,
-                #     job_name=f"reset_file_{frappe.generate_hash(length=8)}",
-                #     scheduled_at=frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=1)
-                # )
-                 reset_file_to_private(public_url)
+                #         "frappe.utils.background_jobs.enqueue_one",
+                #         job_name=f"reset_file_{frappe.generate_hash()}",  
+                #         method="clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
+                #         kwargs={"file_path": public_url},
+                #         wait=60
+                #     )
+                frappe.enqueue(
+                       "clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
+                        file_path=public_url,
+                        time_delay=60,
+                        queue='default',
+                        timeout=600,
+                    
+                    )
+                # reset_file_to_private(public_url)
         else:  # text
             
             msg = client.messages.create(
@@ -4856,8 +4881,9 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         content_sid=template.whatsapp_template_id,
         content_variables=json.dumps(variables)
     )
-    content = client.content.v1.contents(template.whatsapp_template_id).fetch()
     
+    content = client.content.v1.contents(template.whatsapp_template_id).fetch()
+    frappe.log_error(" Sent WhatsApp template",vars(message))
    
     html = generate_whatsapp_html_preview(
     body=BeautifulSoup(template.body, 'html.parser').get_text(separator='\n'),
@@ -5337,7 +5363,7 @@ def is_reference_doctype_Template_empty(docname,template_type):
   
     if not docname:
         frappe.throw("Docname is required")
-    if template_type=="Twilio":
+    if template_type=="Twilio Template":
             doc = frappe.get_doc("Twilio Template", docname)
             value = doc.reference_doctype
 
@@ -5345,7 +5371,7 @@ def is_reference_doctype_Template_empty(docname,template_type):
                 "empty": not bool(value),
                 "value": value
             }
-    if template_type=="Chat":
+    if template_type=="Clefincode Chat Template":
           doc = frappe.get_doc("Clefincode Chat Template", docname)
           value = doc.reference_doctype
 
@@ -5353,10 +5379,22 @@ def is_reference_doctype_Template_empty(docname,template_type):
                 "empty": not bool(value),
                 "value": value
             }
-def send_clefincode_chat_template(template_name,docname):
-     template = frappe.get_doc("Clefincode Chat Template", template_name)
-     vars=extract_varibale_from_template(template,docname)
-     frappe.log_error("ClefinCode template Chat variables",[vars])
+def send_clefincode_chat_template(new_message):
+    template = None
+    docname = None
+    content = new_message.content
+    messages = content.split(',')
+
+    if len(messages) < 2:
+        template_name = content.strip()
+        docname = ""
+    else:
+        template_name = messages[0].strip()
+        docname = messages[1].strip()
+            
+    template = frappe.get_doc("Clefincode Chat Template", template_name)
+    vars=extract_varibale_from_template(template,docname)
+    frappe.log_error("ClefinCode template Chat variables",[vars])
      
      
 def extract_varibale_from_template(template,docname):

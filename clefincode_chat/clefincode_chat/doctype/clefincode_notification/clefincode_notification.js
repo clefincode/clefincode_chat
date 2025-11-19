@@ -208,3 +208,33 @@ frappe.ui.form.on('Twilio Template Variable Mapping', {
         }
     }
 });
+frappe.ui.form.on('Clefincode Notification Recipient list', {
+    clefincode_notification_recipient_list_add: function(frm, cdt, cdn) {
+        // Triggered when a new row is added to the "variables" table
+        let row = locals[cdt][cdn];
+        // Set source_doctype = parent reference_doctype
+       
+
+			console.log(row.source_doctype);
+            const meta_fields = frappe.meta.get_docfields(frm.doc.reference_doctype);
+
+            const no_value_fields = frappe.model.no_value_fields || [
+                'Section Break', 'Column Break', 'HTML', 'Table', 'Button', 'Image', 'Fold'
+            ];
+
+            const fields = meta_fields
+                .filter(df => !no_value_fields.includes(df.fieldtype))
+                .map(df => `${df.fieldname}`);
+
+            
+            frm.fields_dict.clefincode_notification_recipient_list.grid.update_docfield_property(
+				"rcevier_by_filed",
+				"options",
+				fields
+			);
+
+         
+            
+        }
+    
+});

@@ -176,12 +176,27 @@
 
 
 frappe.ui.form.on("Twilio Template", {
+  
     onload(frm) {
     update_link_field_options(frm);
   },
 
   refresh(frm) {
     update_link_field_options(frm);
+    console.log("dsds");
+        frm.add_custom_button("Check Status", () => {
+            frappe.call({
+                method: "clefincode_chat.clefincode_chat.doctype.twilio_template.twilio_template.check_status",
+                args: {
+                    docname: frm.doc.name
+                },
+                callback(r) {
+                    if (r.message) {
+                        frappe.msgprint(r.message);
+                    }
+                }
+            });
+        });
   },
 
   reference_doctype(frm) {

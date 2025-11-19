@@ -3060,7 +3060,7 @@ def process_message_template(template_html):
 def send_whatsapp_message(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
     try:
         access_token = get_access_token()
-        api_base = "https://graph.facebook.com/v17.0"
+        api_base = "https://graph.facebook.com/v23.0"
         phone_number_id = frappe.db.get_value("ClefinCode WhatsApp Profile", sender, "phone_number_id")
         endpoint = f"{api_base}/{phone_number_id}/messages"
 
@@ -3107,7 +3107,7 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
 def send_message_confirm_template(platform_gateway, whatsapp_customer_number, channel, message_template):
     try:       
         access_token = get_access_token()
-        api_base = "https://graph.facebook.com/v17.0"
+        api_base = "https://graph.facebook.com/v23.0"
         phone_number_id = frappe.db.get_value("ClefinCode WhatsApp Profile", platform_gateway, "phone_number_id")
         endpoint = f"{api_base}/{phone_number_id}/messages"
 
@@ -3166,7 +3166,7 @@ def create_document_payload(receiver, media_id, file_path):
 # ==========================================================================================
 def upload_media(message, phone_number_id, access_token, is_voice_clip=False):
     try:
-        api_base = "https://graph.facebook.com/v17.0"
+        api_base = "https://graph.facebook.com/v23.0"
         endpoint = f"{api_base}/{phone_number_id}/media"
         file_path = frappe.utils.get_site_path(message.lstrip('/'))
         result_file_path = file_path
@@ -3546,8 +3546,10 @@ def get_names_for_mentions(search_term, room = None):
         doctype_name_or_abbr = search_term.split(":")[0]
         shortcuts = frappe.db.get_all("ClefinCode DocType Shortcut" , filters = {"parent" : "ClefinCode Chat Settings"}, fields =["shortcut" , "doctype_name"], order_by = "`idx` DESC")
         shorcut_exist = None
+        
         if shortcuts:
             for item in shortcuts:
+               
                 if item.shortcut.lower() == doctype_name_or_abbr.lower():
                     doctype_name = item.doctype_name
                     shorcut_exist = True
@@ -3558,6 +3560,7 @@ def get_names_for_mentions(search_term, room = None):
             doctype_name = doctype_name_or_abbr     
         
         doctype_list = frappe.get_all("DocType" , "name")
+        
         if any(doctype['name'] == doctype_name.title() for doctype in doctype_list):
             doc_name = search_term.split(":")[1].lower().strip()
             reocrds_list = []

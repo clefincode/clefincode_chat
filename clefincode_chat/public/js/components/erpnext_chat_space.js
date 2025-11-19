@@ -2996,6 +2996,7 @@ async setupTypingIndicator(textValue) {
     }
   }
 showTemplateSuggestions(res) {
+  console.log(res);
     const chatWindow = $(`.chat-window[data-room="${res.room}"]`);
   if (!chatWindow.length) {
     console.warn("Chat window not found for room:", res.room);
@@ -3030,6 +3031,7 @@ showTemplateSuggestions(res) {
   
   res.template.forEach((t) => {
     const name = t.name || "Unnamed Template";
+    const doctype_type=t.doctype
 
    const item = $(`
   <div style="padding:8px; cursor:pointer; border-bottom:1px solid #eee;">
@@ -3055,7 +3057,7 @@ showTemplateSuggestions(res) {
     item.on("click", async function () {
       editor.text("/" + name);
       container.fadeOut(200, () => container.remove());
-      const check = await check_reference_doctype_empty(name,"Twilio"); 
+      const check = await check_reference_doctype_empty(name,doctype_type); 
       if (check.empty) {
 
       const message_info = {

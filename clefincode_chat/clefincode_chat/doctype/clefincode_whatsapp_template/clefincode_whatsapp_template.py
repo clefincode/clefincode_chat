@@ -48,7 +48,7 @@ class ClefinCodeWhatsAppTemplate(Document):
     def post_whatsapp_template(self):
         try:
             access_token = get_access_token()
-            api_base = "https://graph.facebook.com/v17.0"
+            api_base = "https://graph.facebook.com/v23.0"
             endpoint = f"{api_base}/{self.whatsapp_business_account_id}/message_templates"
 
             headers = {

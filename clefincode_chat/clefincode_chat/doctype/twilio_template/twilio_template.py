@@ -4,6 +4,7 @@ import frappe
 from frappe.model.document import Document
 
 from bs4 import BeautifulSoup
+import re
 import requests
 from requests.auth import HTTPBasicAuth
 import json
@@ -18,6 +19,7 @@ class TwilioTemplate(Document):
 
     def post_whatsapp_template_twilio(self):
         try:
+            import re
             # read Twilio creds from Integration doctype
             doc = frappe.get_doc("ClefinCode Twilio Integration")
             
@@ -29,9 +31,28 @@ class TwilioTemplate(Document):
             # prepare content payload
             # use safe name for twilio approval (lowercase underscores)
             types = {}
-            body=BeautifulSoup(self.body, 'html.parser').get_text(separator='\n') if self.body else ""
+            # body=BeautifulSoup(self.body, 'html.parser').get_text(separator='\n') if self.body else ""
+            html = self.body
+
+            # Convert <p><br/></p> into a single newline **before BeautifulSoup parses it**
+            html = re.sub(r"<p>\s*(<br\s*/?>)\s*</p>", "\n", html, flags=re.I)
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Add ONE newline before each paragraph/div manually
+            for tag in soup.find_all(["p", "div"]):
+                tag.insert_before("\n")
+
+            text = soup.get_text(strip=False)
+
+           
+           
+
+            # Clean leading newline if needed
+            body = text.lstrip("\n")
+            # body = "\n".join(body.split('\n'))
             if self.template_type == 'twilio/text':
-                types['twilio/text'] = {'body': BeautifulSoup(self.body, 'html.parser').get_text(separator='\n')}
+                types['twilio/text'] = {'body': body}
 
             elif self.template_type == 'twilio/media':
                 media = [ self.media_url] if self.media_url else []
@@ -262,7 +283,7 @@ class TwilioTemplate(Document):
                     )
 
         except Exception as e:
-            frappe.log_error("post_whatsapp_template_twilio",f"post_whatsapp_template_twilio exception: {str(e)}")
+            frappe.log_error("post_whatsapp_template_twilio",frappe.get_traceback())
        #     frappe.throw(str(e))
     def get_cards_data(self):
         cards = []
@@ -308,3 +329,60 @@ class TwilioTemplate(Document):
 # Voice Call
 # Voice Call Request
 # Coupon Code
+@frappe.whitelist()
+def check_status(docname):
+    try:
+        frappe.log_error(f"🔍 Checking status for template: {docname}")
+
+        # Load the document
+        template = frappe.get_doc("Twilio Template", docname)
+
+        sid = template.whatsapp_template_id
+        if not sid:
+            return " No WhatsApp Template ID found."
+
+        # Get Twilio credentials
+        integration_doc = frappe.get_doc("ClefinCode Twilio Integration")
+        account_sid = integration_doc.get("account_sid")
+        auth_token = get_auth_token_twillio()
+
+        if not account_sid or not auth_token:
+            frappe.throw(" Twilio credentials not found in ClefinCode WhatsApp Integration")
+
+        # Call Twilio API
+        url = f"https://content.twilio.com/v1/Content/{sid}/ApprovalRequests"
+        resp = requests.get(url, auth=HTTPBasicAuth(account_sid, auth_token), timeout=30)
+
+        try:
+            data = resp.json()
+        except Exception:
+            frappe.log_error(resp.text, "Twilio JSON Parse Error")
+            return " Failed to parse Twilio response."
+
+        if resp.status_code != 200:
+            frappe.log_error(resp.text, f"Twilio status check failed ({sid})")
+            return f" Failed to check status: {resp.text}"
+
+        # Extract status
+        if "whatsapp" in data:
+            status = data["whatsapp"].get("status", "").upper()
+            rejection_reason = data["whatsapp"].get("rejection_reason", "")
+
+            # Update the template status
+            frappe.db.set_value(
+                "Twilio Template",
+                docname,
+                {
+                    "template_status": status
+                }
+            )
+
+            frappe.db.commit()
+
+            return f" Status updated to: <b>{status}</b><br>Reason: {rejection_reason}"
+
+        return " Invalid response from Twilio."
+
+    except Exception as e:
+        frappe.log_error(f"check_single_twilio_template_status error: {str(e)}", "Twilio Template Checker")
+        return f" Error: {str(e)}"
