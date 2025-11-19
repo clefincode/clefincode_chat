@@ -278,13 +278,12 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
     frappe.log_error("create_direct_channel",messages)
     channel_name = get_profile_full_name(receiver_user_email)   
-    message_type = messages[0]["type"] if "type" in messages[0] else None
+    message_type = messages[0]["type"] if "type" in messages[0] else "text"
     
     recipients_list = [
         build_chat_recipients(get_profile_id(receiver_user_email)),
         build_whatsapp_recipient_gateway(chat_profile, whatsapp_profile_doc, sender_number)
     ]
-    
     if message_type == "text":
         return create_channel(
             get_profile_full_name(sender_number) ,
