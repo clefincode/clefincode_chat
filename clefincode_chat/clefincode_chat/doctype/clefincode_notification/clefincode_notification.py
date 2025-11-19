@@ -92,7 +92,7 @@ class ClefincodeNotification(Document):
     def send_template_message(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
         doc_data = doc.as_dict()
         frappe.log_error("doc_data",[doc_data])
-        frappe.log_error("doc_profile",[doc.profile_id])
+        #frappe.log_error("doc_profile",[doc.profile_id])
        
         recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
             {"parent": self.name},
