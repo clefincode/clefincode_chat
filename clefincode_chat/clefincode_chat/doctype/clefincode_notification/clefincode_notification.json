@@ -227,6 +227,7 @@
   },
   {
    "depends_on": "eval:doc.message_type=='Template';",
+   "hidden": 1,
    "fieldname": "create_template",
    "fieldtype": "Button",
    "label": "Create Template"

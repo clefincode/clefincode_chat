@@ -179,6 +179,24 @@ frappe.ui.form.on("Twilio Template", {
   
     onload(frm) {
     update_link_field_options(frm);
+    
+		frm.set_query("reference_doctype", function () {
+			return {
+				filters: {
+					istable: 0,
+				},
+			};
+		});
+		frm.set_query("print_format", function () {
+			return {
+				filters: {
+					doc_type: frm.doc.reference_doctype,
+				},
+			};
+		});
+			
+
+    
   },
 
   refresh(frm) {

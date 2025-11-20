@@ -34,6 +34,7 @@ from moviepy.editor import VideoFileClip
 import tempfile
 from frappe.utils import now_datetime
 from frappe.utils import get_files_path, get_url
+from frappe.utils.file_manager import save_file
 
 
 
@@ -3188,6 +3189,75 @@ def convert_to_ogg(input_file):
     except subprocess.CalledProcessError as e:
         frappe.log_error(title="convert_to_ogg Failed", message=str(e))
         raise e
+def convert_to_ogg_twilio(input_file):
+    """
+    Convert any audio file (wav, m4a, mp3, etc.) to a clean Ogg Opus file
+    while keeping the original filename (only extension changes to .ogg).
+    """
+    try:
+        folder = os.path.dirname(input_file)
+        # Get filename without its current extension
+        base_name = os.path.splitext(os.path.basename(input_file))[0]
+        output_file = os.path.join(folder, base_name + ".ogg")
+
+        # If file already exists, append a short random 4-digit suffix to avoid overwrite
+        if os.path.exists(output_file):
+            suffix = ''.join(random.choices(string.digits, k=4))
+            output_file = os.path.join(folder, f"{base_name}_{suffix}.ogg")
+
+        # FFmpeg command with best practices for clean Ogg/Opus output
+        command = [
+            'ffmpeg',
+            '-i', input_file,
+
+            # Critical: strip ALL old metadata (removes mp42, com.android.version, etc.)
+            '-map_metadata', '-1',
+
+            # Opus settings optimized for speech/voice messages
+            '-c:a', 'libopus',             # Use Opus codec
+            '-ac', '1',                    # Force mono (most voice notes are mono)
+            '-ar', '48000',                # 48 kHz – official Opus recommendation
+            '-b:a', '48k',                 # Excellent quality / tiny size for speech
+            '-vbr', 'on',                  # Variable bitrate (better quality)
+            '-compression_level', '10',    # Maximum compression efficiency
+
+            # Additional cleanup
+            '-fflags', '+genpts',          # Regenerate timestamps cleanly
+            '-map', '0:a',                 # Copy only audio stream
+            '-ignore_unknown',             # Ignore non-audio streams (metadata, etc.)
+
+            # Output format and safety
+            '-f', 'ogg',
+            '-avoid_negative_ts', 'make_zero',
+
+            # Final output path
+            output_file
+        ]
+
+        # Run FFmpeg silently (no output unless error occurs)
+        subprocess.run(
+            command,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        return output_file
+
+    except subprocess.CalledProcessError as e:
+        # Log detailed error if FFmpeg fails
+        error_msg = (e.stderr or b'').decode('utf-8', errors='ignore')
+        frappe.log_error(
+            title="Audio to OGG conversion failed",
+            message=f"File: {input_file}\n"
+                    f"Command: {' '.join(command)}\n"
+                    f"Error: {error_msg}"
+        )
+        raise frappe.ValidationError("Failed to convert audio file to OGG. Make sure FFmpeg is installed.")
+
+    except Exception as e:
+        frappe.log_error(title="Unexpected error in convert_to_ogg_twilio", message=str(e))
+        raise
 # ==========================================================================================
 @frappe.whitelist()
 def get_whatsapp_numbers_for_sender(user_email):
@@ -3414,17 +3484,24 @@ def get_file_as_base64(file_name):
     :param file_name: The name of the File doctype record (usually the file name or file ID).
     :return: Base64-encoded string of the file contents.
     """
+   
     try:
         # Fetch the File document
         file_doc = frappe.get_doc("File", file_name)
 
         # Ensure the file URL exists
+        
         if not file_doc.file_url:
             frappe.throw("File URL is missing in the File document.")
 
         # Get the absolute file path on the server
-        file_path = frappe.utils.get_site_path( file_doc.file_url.strip("/"))
-
+        # file_path = frappe.utils.get_site_path( file_doc.file_url.strip("/"))
+        
+        relative_path = file_doc.file_url.strip("/")
+        file_path = os.path.abspath(frappe.utils.get_site_path(relative_path))
+        
+        
+      
         # Check if the file exists
         if not os.path.exists(file_path):
             frappe.throw(f"File not found at path: {file_path}")
@@ -3676,6 +3753,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 "Twilio Template",
                 filters={
                     "whatsapp_template_id": ["is", "set"],
+                    "template_status": "APPROVED",
                     
                 },
                 fields=["name", "friendly_name as meta_template_name"]
@@ -3688,17 +3766,17 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
             results["realtime_type"]= "show_template"
             results["template"]= templates
             frappe.publish_realtime(event=room, message=results ,user= user)  
-        if member.is_removed == 0 and member.platform == "Chat" and template_option:
-            templates = frappe.get_all(
-                    "Clefincode Chat Template",
-                     fields=["name", "template_name as meta_template_name"]
-            )
-            for t in templates:
-                  t["doctype"] = "Clefincode Chat Template"
-            results["realtime_type"]= "show_template"
-            results["template"]= templates
-            frappe.publish_realtime(event=room, message=results ,user= user)  
-            pass
+        # if member.is_removed == 0 and member.platform == "Chat" and template_option:
+        #     templates = frappe.get_all(
+        #             "Clefincode Chat Template",
+        #              fields=["name", "template_name as meta_template_name"]
+        #     )
+        #     for t in templates:
+        #           t["doctype"] = "Clefincode Chat Template"
+        #     results["realtime_type"]= "show_template"
+        #     results["template"]= templates
+        #     frappe.publish_realtime(event=room, message=results ,user= user)  
+        #     pass
               
     if parent_channel_doc.contributors:
         for contributor in parent_channel_doc.contributors:
@@ -4694,7 +4772,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
                 
                 #media_url =frappe.utils.get_site_path(media_url.lstrip('/'))
                 site_name = frappe.local.site
-                media_url = convert_to_ogg( os.path.join(".", site_name, "public", media_url.lstrip("/")))
+                media_url = convert_to_ogg_twilio( os.path.join(".", site_name, "public", media_url.lstrip("/")))
                 frappe.log_error("media_url",media_url)
                 if media_url.startswith("./"):
                     media_url = media_url[2:]
@@ -4857,12 +4935,30 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
        
        
     #     body_preview = json.dumps(variables, indent=2)
+  
     media_url=None
     if template.media_url:
          attach_var= extract_placeholder(template.media_url)
          if attach_var in variables:
              media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
-    
+    if template.attach_document_print:
+                frappe.log_error("dsd5555555",[template.reference_doctype, docname])
+                doc = frappe.get_doc(template.reference_doctype, docname)
+                # frappe.db.begin()
+                key = doc.get_document_share_key()  # noqa
+                frappe.db.commit()
+               
+                res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format)
+                frappe.log_error("attach_document_print",[res])
+                link_attach=res['file_url']
+                if template.media_url:
+                    attach_var= extract_placeholder(template.media_url)
+                    if attach_var:
+                        link=link_attach.lstrip('/')
+                        variables[attach_var] = urllib.parse.quote(link, safe=':/')
+                        if attach_var in variables:
+                            media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
+                
     if attachment:
         if template.media_url:
            attach_var= extract_placeholder(template.media_url)
@@ -4895,11 +4991,11 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
     
     
 )
-    new_message.content=html
-    new_message.save(ignore_permissions = True)
-    room=new_message.chat_channel
-    results['content']=html
-    results['last_message']=html
+    # new_message.content=html
+    # new_message.save(ignore_permissions = True)
+    # room=new_message.chat_channel
+    # results['content']=html
+    # results['last_message']=html
     # frappe.publish_realtime(event=room, message=results, user=new_message.sender_email)
     # frappe.publish_realtime(event="update_room", message=results, user= new_message.sender_email)
     #send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type) 
@@ -5477,4 +5573,46 @@ def get_documents_by_doctype(doctype):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Get Documents by DocType API Error")
         raise e
-       
+    #====================================================
+def pdf(doctype, name, key, format=None,lang=None):
+        from frappe.utils.pdf import get_pdf
+        frappe.log_error("pdf0",[doctype, name, key, format,lang])
+        try:
+            # Get the document
+            from packaging import version
+            frappe_version = frappe.__version__
+            doc = frappe.get_doc(doctype, name)
+            frappe.logger().info(f"PDF generation started for {doctype} {name}")
+            
+            if version.parse(frappe_version) >= version.parse("15.0.0"):
+                html = frappe.get_print(doctype, name, print_format=format,lang=lang, doc=doc, no_letterhead=0)
+            else:
+                frappe.local.lang = lang or "en"
+                html = frappe.get_print(doctype, name, print_format=format, doc=doc, no_letterhead=0)
+
+            # Generate HTML and PDF
+            
+            pdf_data = get_pdf(html)
+
+            # Save PDF to File DocType (auto-handles public/private path)
+            file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
+            _file = save_file(file_name, pdf_data, doctype, name, is_private=False)
+
+            # Return the URL for download
+            return {
+                "status": "success",
+                "file_url": _file.file_url,
+                "file_name":file_name,
+                "file_id": _file.name   
+            }
+
+        except Exception:
+            frappe.log_error(
+                message=frappe.get_traceback(),
+                title=f"PDF error: {doctype} {name}"
+            )
+            return {
+                "status": "error",
+                "message": "Failed to generate PDF. Check logs for details."
+            }
+            

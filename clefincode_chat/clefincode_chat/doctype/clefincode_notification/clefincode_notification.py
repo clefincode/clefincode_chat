@@ -260,7 +260,18 @@ def pdf(doctype, name, key, format=None,lang=None):
         frappe.logger().info(f"PDF generation started for {doctype} {name}")
         
         if version.parse(frappe_version) >= version.parse("15.0.0"):
-             html = frappe.get_print(doctype, name, print_format=format,lang=lang, doc=doc, no_letterhead=0)
+             from frappe.translate import set_default_language
+             
+             set_default_language(lang)
+             html = frappe.get_print(
+                    doctype,
+                    name,
+                    print_format=format,
+                    doc=doc,
+                    no_letterhead=0
+                )
+             
+            #  html = frappe.get_print(doctype, name, print_format=format,lang=lang, doc=doc, no_letterhead=0)
         else:
             frappe.local.lang = lang or "en"
             html = frappe.get_print(doctype, name, print_format=format, doc=doc, no_letterhead=0)

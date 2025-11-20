@@ -50,6 +50,10 @@
   "variables",
   "call_to_action",
   "items",
+  "section_break_44",
+  "attach_document_print",
+  "print_format",
+  "language_format",
   "amended_from"
  ],
  "fields": [
@@ -312,12 +316,34 @@
    "fieldtype": "Link",
    "label": "Reference Doctype",
    "options": "DocType"
+  },
+  {
+   "fieldname": "section_break_44",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "attach_document_print",
+   "fieldtype": "Check",
+   "label": " Attach Document Print"
+  },
+  {
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "language_format",
+   "fieldtype": "Link",
+   "label": "Language format",
+   "options": "Language"
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-11-11 13:59:19.944910",
+ "modified": "2025-11-20 13:14:39.739317",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Twilio Template",
@@ -340,7 +366,10 @@
    "write": 1
   }
  ],
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "friendly_name",
+ "translated_doctype": 1
 }

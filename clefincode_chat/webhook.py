@@ -122,7 +122,7 @@ def handle():
 
 def handle_attachment(file_url, file_name, message_type):
     if message_type == 'image':
-        return f"""<a href="{file_url}" target="_blank"><img src="{file_url}" class="img-responsive chat-image"><span class="hidden">{file_name}</span></a>"""
+        return f'''<a href='{file_url}' target='_blank'><img src='{file_url}' class='img-responsive chat-image'><span class='hidden'>{file_name}</span></a>'''
 
     elif message_type == 'video':
         return f"""<div><video src="{file_url}" controls="controls" style="width:235px"></video><span class="hidden">{file_name}</span></div>"""
@@ -1596,7 +1596,7 @@ def whatsapp_twillio_webhook():
             media_type = form_dict.get("MediaContentType0", "").split("/")[0]
             mime_type = form_dict.get("MediaContentType0", "").split("/")[1]
             media_url = form_dict.get("MediaUrl0")
-            file_url = download_media_twilio(media_url, mime_type=mime_type, message_type=media_type)
+            file_url,file_id = download_media_twilio(media_url, mime_type=mime_type, message_type=media_type)
             message_type = media_type
 
         if not validate_receiver_profile(str(receiver_number)):
@@ -1615,7 +1615,7 @@ def whatsapp_twillio_webhook():
             send(content="<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel)
         else:
             content = handle_attachment(file_url, form_dict.get("MediaFilename0", "attachment"), message_type)
-            send(content=content, user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media=1)
+            send(content=content+"<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media=1,file_id=file_id)
 
       
     except Exception as e:
@@ -1648,7 +1648,8 @@ def download_media_twilio(media_url, mime_type=None, message_type="media", filen
             })
             file_doc.insert(ignore_permissions=True)
             frappe.db.commit()
-            return file_doc.file_url  
+            frappe.log_error("webhook",vars(file_doc))
+            return file_doc.file_url, file_doc.name
         else:
             frappe.log_error(title="Twilio Media Download Failed", message=f"Status: {response.status_code}, URL: {media_url}")
             return None

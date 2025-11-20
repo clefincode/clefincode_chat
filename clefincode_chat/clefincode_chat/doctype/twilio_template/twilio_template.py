@@ -14,8 +14,186 @@ from frappe import enqueue
 from time import time
 
 class TwilioTemplate(Document):
+    VAR_PATTERN = re.compile(r"{{\s*([a-zA-Z0-9_]+)\s*}}")
+    NEWLINE_VAR_PATTERN = re.compile(r"{{[^}]*\n[^}]*}}")
+    
     def on_submit(self):
         self.post_whatsapp_template_twilio()
+    
+    def validate(self):
+            
+            self.validate_name_rules()
+            self.validate_whatsapp_rules()
+        
+    
+    
+    def validate_whatsapp_rules(self):
+
+            html = self.body or ""
+
+            # Convert <p><br/></p> into a single newline BEFORE parsing
+            html = re.sub(r"<p>\s*(<br\s*/?>)\s*</p>", "\n", html, flags=re.I)
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Add a newline before every <p> or <div>
+            for tag in soup.find_all(["p", "div"]):
+                tag.insert_before("\n")
+
+            text = soup.get_text(strip=False)
+
+            # Remove leading newline
+            body = text.lstrip("\n")
+
+            frappe.log_error("TwilioTemplate validate body", body)
+            frappe.log_error("TwilioTemplate validate self.body", self.body)
+
+            if not body:
+                return
+
+            # ---------------------------------------------------
+            # Extract variables {{ ... }} including raw content
+            # ---------------------------------------------------
+            raw_vars = re.findall(r"{{\s*(.*?)\s*}}", body)
+            vars_in_body = self.VAR_PATTERN.findall(body)  # numeric + alpha identifiers
+            total_vars = len(vars_in_body)
+
+            # ---------------------------------------------------
+            # Rule 0 — Variable name format (NEW)
+            # ---------------------------------------------------
+            for raw in raw_vars:
+                var = raw.strip()
+
+                # ❌ Case: variable contains space: {{id name}}
+                if " " in var:
+                    frappe.throw(
+                        f"Variable '{{{{ {raw} }}}}' is invalid. "
+                        "Variable names cannot contain spaces."
+                    )
+
+                # ❌ Case: variable contains invalid characters (only letters/numbers/_ allowed)
+                if not re.match(r"^[A-Za-z0-9_]+$", var):
+                    frappe.throw(
+                        f"Variable '{{{{ {raw} }}}}' is invalid. "
+                        "Allowed characters: letters, numbers, underscore only."
+                    )
+
+            # ---------------------------------------------------
+            # Rule 1 — No newlines inside variables
+            # ---------------------------------------------------
+            if self.NEWLINE_VAR_PATTERN.search(body):
+                frappe.throw("WhatsApp templates cannot contain variables spanning multiple lines.")
+
+            # ---------------------------------------------------
+            # Rule 2 — Sequential numeric variables
+            # ---------------------------------------------------
+            numeric_vars = [int(v) for v in vars_in_body if v.isdigit()]
+
+            if numeric_vars:
+                sorted_vars = sorted(numeric_vars)
+                for i, v in enumerate(sorted_vars, start=1):
+                    if v != i:
+                        frappe.throw(
+                            f"Numeric variables must be sequential. Expected {{ {{ {i} }} }} but found {{ {{ {v} }} }}."
+                        )
+
+            # ---------------------------------------------------
+            # Rule 3 — No adjacent variables
+            # ---------------------------------------------------
+            if re.search(r"}}\s*{{", body):
+                frappe.throw(
+                    "Variables cannot appear next to each other in WhatsApp templates. "
+                    "Add text between variables."
+                )
+
+            # ---------------------------------------------------
+            # Rule 4 — Cannot start or end message with a variable
+            # ---------------------------------------------------
+            if body.startswith("{{"):
+                frappe.throw("WhatsApp templates cannot start with a variable.")
+
+            if re.search(r"{{\s*[A-Za-z0-9_]+\s*}}[\.\!\?]?$", body):
+                frappe.throw(
+                    "WhatsApp templates cannot end directly with a variable. "
+                    "Add non-variable text after the final variable."
+                )
+
+            # ---------------------------------------------------
+            # Rule 5 — Word-to-variable ratio (2x+1 rule)
+            # ---------------------------------------------------
+            non_variable_words = len([w for w in re.split(r"\s+", body) if "{{" not in w])
+            if total_vars > 0 and non_variable_words < (2 * total_vars + 1):
+                frappe.throw(
+                    f"Message too short for {total_vars} variables. "
+                    f"WhatsApp requires at least {2 * total_vars + 1} non-variable words."
+                )
+
+            # ---------------------------------------------------
+            # Rule 6 — Maximum 100 variables
+            # ---------------------------------------------------
+            if total_vars > 100:
+                frappe.throw("WhatsApp templates cannot include more than 100 variables.")
+            self.validate_variable_table( body, vars_in_body)
+            
+    def validate_variable_table(self, body, vars_in_body):
+                """
+                Ensure variables in body match variables child table.
+                """
+
+                # List of variables from body (unique)
+                body_vars = list(set(vars_in_body))
+
+                # Variables defined in child table
+                table_vars = []
+                for row in self.variables:
+                    if row.variable_key:
+                        table_vars.append(row.variable_key.strip())
+
+                # -----------------------------------------
+                # Rule A — Every body variable must appear in variables table
+                # -----------------------------------------
+                missing = set(body_vars) - set(table_vars)
+                if missing:
+                    missing_list = ", ".join(missing)
+                    frappe.throw(
+                        f"Missing variables in Variables table: {missing_list}. "
+                        "Every variable used in body must be defined in Variables child table."
+                    )
+
+              
+              
+    
+    def validate_name_rules(self):
+            # Block empty or None names
+            if not self.friendly_name:
+                frappe.throw("Document name cannot be empty.")
+            
+            if " " in self.friendly_name:
+                 frappe.throw("Name cannot contain spaces.")
+
+            # Allowed characters only
+            import re
+            if not re.match(r"^[A-Za-z0-9_.-]+$", self.friendly_name):
+                frappe.throw(
+                    "Invalid characters in name. Allowed: letters, numbers, dot, hyphen, underscore."
+                )
+
+            # Force lowercase (optional)
+            safe_name = self.friendly_name.lower()
+            if self.friendly_name != safe_name:
+                self.friendly_name = safe_name
+
+            # Prevent names that are purely numeric
+            if self.friendly_name.isdigit():
+                frappe.throw("Name cannot be only numbers. Please add letters.")
+
+            # Prevent names shorter than 3 chars
+            if len(self.friendly_name) < 3:
+                frappe.throw("Name must be at least 3 characters long.")
+
+            # Prevent double punctuation like -- or __
+            if "--" in self.friendly_name or "__" in self.friendly_name:
+                frappe.throw("Name cannot contain repeated punctuation such as '--' or '__'.")
 
     def post_whatsapp_template_twilio(self):
         try:

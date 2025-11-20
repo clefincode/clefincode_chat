@@ -19,7 +19,9 @@ def run_server_script_for_doc_event(doc, event):
     # --- CUSTOM EVENT HANDLER: on_value_change ---
     if event == "validate" and not doc.is_new():
         try:
+          
             old_doc = frappe.get_doc(doc.doctype, doc.name)
+            
 
             # Fetch notifications mapped for this DocType and "Value Change" event
             vc_notifications = get_notifications_map().get(doc.doctype, {}).get("Value Change", [])

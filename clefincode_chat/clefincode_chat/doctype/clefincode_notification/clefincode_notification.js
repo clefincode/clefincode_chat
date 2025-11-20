@@ -41,24 +41,24 @@ frappe.notification = {
 		});
 	},
 
-	setup_alerts_button: function (frm) {
-		frm.add_custom_button(__('Get Alerts for Today'), function () {
-			frappe.call({
-				method: 'clefincode_chat.clefincode_chat.doctype.clefincode_notification.clefincode_notification.call_trigger_notifications',
-				args: { method: 'daily' },
-				callback: function (response) {
-					if (response.message && response.message.length > 0) {
-						frappe.msgprint(__('Alerts triggered successfully'));
-					} else {
-						frappe.msgprint(__('No alerts for today'));
-					}
-				},
-				error: function () {
-					frappe.msgprint(__('Failed to trigger notifications'));
-				}
-			});
-		});
-	}
+	// setup_alerts_button: function (frm) {
+	// 	frm.add_custom_button(__('Get Alerts for Today'), function () {
+	// 		frappe.call({
+	// 			method: 'clefincode_chat.clefincode_chat.doctype.clefincode_notification.clefincode_notification.call_trigger_notifications',
+	// 			args: { method: 'daily' },
+	// 			callback: function (response) {
+	// 				if (response.message && response.message.length > 0) {
+	// 					frappe.msgprint(__('Alerts triggered successfully'));
+	// 				} else {
+	// 					frappe.msgprint(__('No alerts for today'));
+	// 				}
+	// 			},
+	// 			error: function () {
+	// 				frappe.msgprint(__('Failed to trigger notifications'));
+	// 			}
+	// 		});
+	// 	});
+	// }
 };
 
 frappe.ui.form.on('Clefincode Notification', {
@@ -88,7 +88,7 @@ frappe.ui.form.on('Clefincode Notification', {
 	refresh: function (frm) {
 		frm.trigger("load_template");
 		frappe.notification.setup_fieldname_select(frm);
-		frappe.notification.setup_alerts_button(frm);
+		// frappe.notification.setup_alerts_button(frm);
 	},
 
 	template: function (frm) {
