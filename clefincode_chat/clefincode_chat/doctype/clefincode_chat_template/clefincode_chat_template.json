@@ -29,7 +29,7 @@
   "attach_from_field",
   "variables",
   "clefincode_notification_recipient_list",
-  "property_section",
+  "section_break_22",
   "set_property_after_alert",
   "property_value",
   "template_name",
@@ -115,12 +115,6 @@
    "fieldname": "attach_from_field",
    "fieldtype": "Data",
    "label": "Attach from field "
-  },
-  {
-   "fieldname": "property_section",
-   "fieldtype": "Section Break",
-   "hidden": 1,
-   "label": "Set Property After Alert"
   },
   {
    "fieldname": "set_property_after_alert",
@@ -211,11 +205,15 @@
    "label": "Template Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "fieldname": "section_break_22",
+   "fieldtype": "Section Break"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-19 10:45:30.158651",
+ "modified": "2025-11-23 13:29:05.263693",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Chat Template",

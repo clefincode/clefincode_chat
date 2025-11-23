@@ -1008,6 +1008,7 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 @frappe.whitelist()
 def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
     try:
+        frappe.log_error("send function")
         from packaging import version
         # Get current Frappe version
         frappe_version = frappe.__version__
@@ -1210,9 +1211,9 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
                     # frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
-                    # if new_message.message_template_type=="Send Template":
-                    #     send_clefincode_chat_template(new_message)
-                   
+                    frappe.log_error("smembere",vars(new_message))
+                    
+                       
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
                     process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results)
@@ -1246,6 +1247,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user)
                     frappe.publish_realtime(event="msg", message=results, user= contributor.user)
                     send_notification(contributor.user , results, "send_message", results["room_name"], message_template_type)
+            if new_message.message_type == "information" and new_message.message_template_type=="Send Template":
+                        send_clefincode_chat_template(new_message)
         
         return  {"results" : [{"new_message_name" : new_message.name}]}
     except Exception as e:
@@ -3766,17 +3769,17 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
             results["realtime_type"]= "show_template"
             results["template"]= templates
             frappe.publish_realtime(event=room, message=results ,user= user)  
-        # if member.is_removed == 0 and member.platform == "Chat" and template_option:
-        #     templates = frappe.get_all(
-        #             "Clefincode Chat Template",
-        #              fields=["name", "template_name as meta_template_name"]
-        #     )
-        #     for t in templates:
-        #           t["doctype"] = "Clefincode Chat Template"
-        #     results["realtime_type"]= "show_template"
-        #     results["template"]= templates
-        #     frappe.publish_realtime(event=room, message=results ,user= user)  
-        #     pass
+        if member.is_removed == 0 and member.platform == "Chat" and template_option:
+            templates = frappe.get_all(
+                    "Clefincode Chat Template",
+                     fields=["name", "template_name as meta_template_name"]
+            )
+            for t in templates:
+                  t["doctype"] = "Clefincode Chat Template"
+            results["realtime_type"]= "show_template"
+            results["template"]= templates
+            frappe.publish_realtime(event=room, message=results ,user= user)  
+            pass
               
     if parent_channel_doc.contributors:
         for contributor in parent_channel_doc.contributors:
@@ -3810,7 +3813,7 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                         push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type)                       
                     else:
                         push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type)    
-            frappe.log_error("resrers",results)                                          
+            # frappe.log_error("resrers",results)                                          
     except Exception as e:
         frappe.publish_realtime("console" , message = e)
 #=====================================================================================
@@ -4941,15 +4944,13 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
          attach_var= extract_placeholder(template.media_url)
          if attach_var in variables:
              media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
-    if template.attach_document_print:
-                frappe.log_error("dsd5555555",[template.reference_doctype, docname])
+    if template.attach_document_print:                
                 doc = frappe.get_doc(template.reference_doctype, docname)
                 # frappe.db.begin()
                 key = doc.get_document_share_key()  # noqa
-                frappe.db.commit()
-               
+                frappe.db.commit()               
                 res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format)
-                frappe.log_error("attach_document_print",[res])
+                
                 link_attach=res['file_url']
                 if template.media_url:
                     attach_var= extract_placeholder(template.media_url)
@@ -5475,9 +5476,85 @@ def is_reference_doctype_Template_empty(docname,template_type):
                 "empty": not bool(value),
                 "value": value
             }
+# def send_clefincode_chat_template(new_message):
+#     template = None
+#     docname = None
+#     content = new_message.content
+#     messages = content.split(',')
+
+#     if len(messages) < 2:
+#         template_name = content.strip()
+#         docname = ""
+#     else:
+#         template_name = messages[0].strip()
+#         docname = messages[1].strip()
+            
+#     template = frappe.get_doc("Clefincode Chat Template", template_name)
+#     vars=extract_varibale_from_template(template,docname)
+#     frappe.log_error("ClefinCode template Chat variables",[vars])
+#     final_body = template.message_content
+#     for k, v in vars.items():
+#         final_body = final_body.replace("{{" + k + "}}", str(v))
+#     send(final_body, new_message.sender, new_message.chat_channel ,new_message.sender_email )
+    
+#     if template.attach_document_print:
+#                 # frappe.db.begin()
+#                 frappe.log_error("dsds")
+#                 doc = frappe.get_doc(template.reference_doctype, docname)
+#                 key = doc.get_document_share_key()  # noqa
+#                 frappe.db.commit()
+               
+#                 res=pdf(doc.doctype, doc.name,key,template.print_format,template.language)
+              
+                
+#                 #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
+#                 send( handle_pdf_attachment(res['file_url'], res['file_name']),new_message.sender, new_message.chat_channel , template.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+import re
+import frappe
+
+
+# ============================================================
+# Helper: Check if value is an image URL or internal file path
+# ============================================================
+def detect_image_url(value):
+    if not value:
+        return None
+
+    value = str(value).strip().lower()
+    image_extensions = (".jpg", ".jpeg", ".png", ".gif", ".webp")
+
+    # External full URL
+    if value.startswith(("http://", "https://")) and value.endswith(image_extensions):
+        return value
+
+    # Internal file path
+    if value.startswith("files/") and value.endswith(image_extensions):
+        return frappe.utils.get_url(value)
+
+    return None
+
+
+# ============================================================
+# Helper: Find first image inside vars
+# ============================================================
+def find_image_in_vars(vars_dict):
+    for k, v in vars_dict.items():
+        img = detect_image_url(v)
+        if img:
+            return img
+    return None
+
+
+# ============================================================
+# MAIN FUNCTION
+# ============================================================
 def send_clefincode_chat_template(new_message):
-    template = None
-    docname = None
+
+    # -----------------------------
+    # Parse template name + docname
+    # -----------------------------
     content = new_message.content
     messages = content.split(',')
 
@@ -5487,10 +5564,114 @@ def send_clefincode_chat_template(new_message):
     else:
         template_name = messages[0].strip()
         docname = messages[1].strip()
-            
+
     template = frappe.get_doc("Clefincode Chat Template", template_name)
-    vars=extract_varibale_from_template(template,docname)
-    frappe.log_error("ClefinCode template Chat variables",[vars])
+
+    # --------------------------------------------
+    # Extract variables from the template
+    # --------------------------------------------
+    vars_values = extract_varibale_from_template(template, docname)
+    frappe.log_error("Template Vars", vars_values)
+
+    # --------------------------------------------
+    # Apply vars to message_content
+    # --------------------------------------------
+    final_body = template.message_content
+    for k, v in vars_values.items():
+        final_body = final_body.replace("{{" + k + "}}", str(v))
+
+    # --------------------------------------------
+    # Detect image in the vars values
+    # --------------------------------------------
+    detected_image_url = find_image_in_vars(vars_values)
+
+    if detected_image_url:
+        image_html = f"""
+            <div style="text-align:center;">
+                <img src="{detected_image_url}" 
+                     style="max-width:200px; margin-bottom:15px; border-radius:6px;" />
+            </div>
+        """
+    else:
+        image_html = ""
+
+    # --------------------------------------------
+    # Build final HTML message
+    # --------------------------------------------
+    html_message = f"""
+        <div style="font-family: Arial; border:1px solid #ddd; padding:20px; border-radius:8px;">
+            {image_html}
+            <div style="font-size:15px; line-height:1.6; color:#333;">
+                {final_body}
+            </div>
+        </div>
+    """
+
+    # --------------------------------------------
+    # Send the HTML message first
+    # --------------------------------------------
+    send(
+        html_message,
+        new_message.sender,
+        new_message.chat_channel,
+        new_message.sender_email,
+     
+    )
+
+    # ===============================================================
+    # If template is set to attach the document print → generate PDF
+    # ===============================================================
+    if template.attach_document_print and docname:
+
+        frappe.log_error("PDF Generation", f"Generating PDF for {docname}")
+
+        # Get document
+        doc = frappe.get_doc(template.reference_doctype, docname)
+
+        # Share key
+        key = doc.get_document_share_key()
+        frappe.db.commit()
+
+        # Generate PDF
+        pdf_result = pdf(
+            doc.doctype,
+            doc.name,
+            key,
+            template.print_format,
+            template.language
+        )
+
+        # Build download link
+        pdf_url = frappe.utils.get_url(pdf_result['file_url'])
+
+        # pdf_html = f"""
+        #     <div style="font-family: Arial; font-size:14px; padding:10px;">
+        #         Document is ready for download:
+        #         <br><br>
+        #         <a href="{pdf_url}" 
+        #            style="background:#0275d8; color:white; padding:10px 15px; 
+        #            text-decoration:none; border-radius:5px;">
+        #            Download PDF
+        #         </a>
+        #     </div>
+        # """
+        send( handle_pdf_attachment(pdf_result['file_url'], pdf_result['file_name']),new_message.sender, new_message.chat_channel , template.owner,  attachment = pdf_result['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=pdf_result['file_id'])
+        # Send PDF as attachment
+        # send(
+        #     pdf_html,
+        #     new_message.sender,
+        #     new_message.chat_channel,
+        #     template.owner,
+        #     attachment=pdf_result['file_url'],
+        #     is_document=1,
+         
+        #     file_id=pdf_result['file_id']
+        # )
+
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++     
+    
+
      
      
 def extract_varibale_from_template(template,docname):
@@ -5616,3 +5797,22 @@ def pdf(doctype, name, key, format=None,lang=None):
                 "message": "Failed to generate PDF. Check logs for details."
             }
             
+def handle_pdf_attachment(file_url, file_name):
+    """Return HTML content for a PDF file attachment, similar to the JS handle_attachment function."""
+    from frappe.utils import get_url
+
+    # Ensure file_url is absolute (convert to full site URL if it's relative)
+    if not file_url.startswith("http"):
+        file_url = get_url(file_url)
+
+    # Path to the same PDF icon used in frontend
+    icon_path = "/assets/clefincode_chat/images/pdf-red.png"
+
+    # Generate HTML for displaying the PDF attachment
+    html = f"""
+    <div class="document-container d-flex flex-row justify-content-start align-items-center" style="width:235px;">
+        <img src="{icon_path}" style="height:32px; margin-right:8px;">
+        <a href="{file_url}" target="_blank" style="white-space: pre-wrap; word-break: break-word;">{file_name}</a>
+    </div>
+    """
+    return html.strip()

@@ -259,7 +259,7 @@ frappe.ui.form.on("Twilio Template Variable Mapping2", {
 
     let doctype_name = row.source;
 
-    // ✅ If the name contains parentheses, extract what's inside
+    //  If the name contains parentheses, extract what's inside
     const match = doctype_name.match(/\(([^)]+)\)/);
     if (match) {
       doctype_name = match[1].trim(); // take only the text inside ()
@@ -301,7 +301,7 @@ function update_link_field_options(frm) {
   const ref = frm.doc.reference_doctype;
 
   if (!ref) {
-    console.log("ℹ️ No Reference Doctype selected yet.");
+    console.log(" No Reference Doctype selected yet.");
     return;
   }
 
