@@ -8,6 +8,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "friendly_name",
   "reference_doctype",
   "column_break_3",
   "channel",
@@ -209,11 +210,17 @@
   {
    "fieldname": "section_break_22",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "friendly_name",
+   "fieldtype": "Data",
+   "label": "Friendly Name",
+   "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-23 13:29:05.263693",
+ "modified": "2025-11-23 17:11:01.769423",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Chat Template",
@@ -233,7 +240,10 @@
    "write": 1
   }
  ],
+ "show_title_field_in_link": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "title_field": "friendly_name",
+ "translated_doctype": 1
 }

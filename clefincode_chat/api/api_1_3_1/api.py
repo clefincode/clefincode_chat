@@ -1211,7 +1211,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
                     # frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
-                    frappe.log_error("smembere",vars(new_message))
+                    
                     
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
@@ -1247,7 +1247,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user)
                     frappe.publish_realtime(event="msg", message=results, user= contributor.user)
                     send_notification(contributor.user , results, "send_message", results["room_name"], message_template_type)
-            if new_message.message_type == "information" and new_message.message_template_type=="Send Template":
+            if new_message.message_type == "information" and new_message.message_template_type=="Send Template Public":
                         send_clefincode_chat_template(new_message)
         
         return  {"results" : [{"new_message_name" : new_message.name}]}
@@ -3772,7 +3772,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
         if member.is_removed == 0 and member.platform == "Chat" and template_option:
             templates = frappe.get_all(
                     "Clefincode Chat Template",
-                     fields=["name", "template_name as meta_template_name"]
+                     fields=["name", "friendly_name as meta_template_name"]
             )
             for t in templates:
                   t["doctype"] = "Clefincode Chat Template"

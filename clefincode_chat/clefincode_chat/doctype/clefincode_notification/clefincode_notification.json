@@ -65,12 +65,15 @@
    "options": "All\nHourly\nDaily\nWeekly\nMonthly\nYearly\nHourly Long\nDaily Long\nWeekly Long\nMonthly Long"
   },
   {
-   "depends_on": "eval:doc.notification_type==='DocType Event'",
-   "fieldname": "doctype_event",
-   "fieldtype": "Select",
-   "label": "DocType Event",
-   "options": "Before Insert\nBefore Validate\nBefore Save\nAfter Insert\nAfter Save\nBefore Submit\nAfter Submit\nBefore Cancel\nAfter Cancel\nBefore Delete\nAfter Delete\nBefore Save (Submitted Document)\nAfter Save (Submitted Document)\nDays After\nDays Before\nValue Change"
-  },
+    "depends_on": "eval: doc.notification_type == 'DocType Event'",
+    "fieldname": "doctype_event",
+    "fieldtype": "Select",
+    "label": "DocType Event",
+    "options": "\nNew\nSave\nSubmit\nCancel\nDays After\nDays Before\nValue Change",
+    "reqd": 1,
+    "search_index": 1,
+    "in_list_view": 1
+},
   {
    "fieldname": "column_break_3",
    "fieldtype": "Column Break"

@@ -3054,65 +3054,64 @@ showTemplateSuggestions(res) {
       }
     );
 
-    item.on("click", async function () {
-      editor.text("/" + name);
-      container.fadeOut(200, () => container.remove());
-      const check = await check_reference_doctype_empty(name,doctype_type); 
-      if (check.empty) {
+   item.on("click", async function () {
+    editor.text("/" + name);
+    container.fadeOut(200, () => container.remove());
 
-      const message_info = {
-        content: name,
-        user: res.user,
-        room: res.room,
-        email: res.user,
-        message_type: "information",
-        message_template_type: "Send Template",
-      };
+    const check = await check_reference_doctype_empty(name, doctype_type);
 
-      send_message(message_info);
-      editor.html("");
+    // Determine template type based on the doctype
+    let template_type = (doctype_type === "Clefincode Chat Template")
+        ? "Send Template Public"
+        : "Send Template";
+
+    if (check.empty) {
+        const message_info = {
+            content: name,
+            user: res.user,
+            room: res.room,
+            email: res.user,
+            message_type: "information",
+            message_template_type: template_type
+        };
+
+        send_message(message_info);
+        editor.html("");
     }
     else {
-            let topic_info = await get_topic_info(res.room);
+        let topic_info = await get_topic_info(res.room);
 
-          console.log("topic_info", topic_info);
+        if (!topic_info || !topic_info.length) {
+            console.error("topic_info is empty", topic_info);
+            return;
+        }
 
-          if (!topic_info || !topic_info.length) {
-              console.error("topic_info is empty", topic_info);
-              return;
-          }
+        let topic = topic_info[0];
+        let reference_doctypes = topic.reference_doctypes;
 
-          let topic = topic_info[0];
+        // If doctype exists in reference list
+        if (reference_doctypes.some(d => d.doctype === check.value)) {
+            console.log("Value exists in reference_doctypes");
+        }
 
-          let chat_topic = topic.chat_topic;
-          let chat_topic_subject = topic.chat_topic_subject;
-          let chat_topic_status = topic.chat_topic_status;
-          let reference_doctypes = topic.reference_doctypes;
+        // Select docname
+        show_doctype_selector(check.value, function (selected_docname) {
 
-          // reference_doctypes is array of objects like:
-          // [{doctype: "Sales Invoice", docname: "..."}]
+            const message_info = {
+                content: name + "," + selected_docname,
+                user: res.user,
+                room: res.room,
+                email: res.user,
+                message_type: "information",
+                message_template_type: template_type
+            };
 
-          if (reference_doctypes.some(d => d.doctype === check.value)) {
-              console.log("Value exists in reference_doctypes");
-          }
-    // else
-    {show_doctype_selector(check.value, function (selected_docname) {
-      
-    const message_info = {
-      content: name + "," + selected_docname,
-       user: res.user,
-        room: res.room,
-        email: res.user,
-        message_type: "information",
-        message_template_type: "Send Template",
-    };
-
-    send_message(message_info);
-    editor.html("");
-  });}
-      
+            send_message(message_info);
+            editor.html("");
+        });
     }
-    });
+});
+
 
     container.append(item);
   });

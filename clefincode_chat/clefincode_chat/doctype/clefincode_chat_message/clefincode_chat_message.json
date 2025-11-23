@@ -85,7 +85,7 @@
    "fieldname": "message_template_type",
    "fieldtype": "Select",
    "label": "Message Template type",
-   "options": "Create Group\nRename Group\nAdd User\nRemove User\nUser Left\nSet Admin\nSet Avatar\nSet Topic\nRename Topic\nRemove Topic\nAdd Doctype\nRemove Doctype\nSet Topic Status\nRemove Contributor\nApprove Button WhatsApp\nHandle Error Whatsapp\nSend Confirmation\nSend Template"
+   "options": "Create Group\nRename Group\nAdd User\nRemove User\nUser Left\nSet Admin\nSet Avatar\nSet Topic\nRename Topic\nRemove Topic\nAdd Doctype\nRemove Doctype\nSet Topic Status\nRemove Contributor\nApprove Button WhatsApp\nHandle Error Whatsapp\nSend Confirmation\nSend Template\nSend Template Public"
   },
   {
    "fieldname": "only_receive_by",
