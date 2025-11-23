@@ -5143,6 +5143,24 @@ def get_all_whatsapp_templates():
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Get WhatsApp Templates API Error")
         raise e
+    
+@frappe.whitelist()
+def get_chat_templates():
+    """Return all WhatsApp templates from ClefinCode and Twilio."""
+    try:
+            templates = frappe.get_all(
+                    "Clefincode Chat Template",
+                     fields=["name", "friendly_name as meta_template_name"]
+            )
+            for t in templates:
+                  t["doctype"] = "Clefincode Chat Template"
+           
+
+            return {"results": templates}
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Get WhatsApp Templates API Error")
+        raise e
 #====================================================================================
 import frappe
 import requests
