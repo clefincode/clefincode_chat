@@ -1614,8 +1614,16 @@ def whatsapp_twillio_webhook():
         if message_type == "text":
             send(content="<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel)
         else:
+          
             content = handle_attachment(file_url, form_dict.get("MediaFilename0", "attachment"), message_type)
-            send(content=content+"<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media=1,file_id=file_id)
+            is_media , is_document , is_voice_clip = 0 , 0 , 0
+            if message_type in ['image' , 'sticker' , 'video']:
+                is_media=1
+            elif message_type == "document":
+                is_document=1
+            else:
+                is_voice_clip=1
+            send(content=content+"<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media = is_media, is_document = is_document ,file_id=file_id)
 
       
     except Exception as e:
