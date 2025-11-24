@@ -1008,7 +1008,7 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 @frappe.whitelist()
 def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
     try:
-        
+        frappe.log_error("send_dd",[content, user, room , email,message_type , message_template_type])
         from packaging import version
         # Get current Frappe version
         frappe_version = frappe.__version__
@@ -1209,7 +1209,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     frappe.publish_realtime(event=room, message=results, user=member.user)  # listner in chat space      
                     frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user) # listner when initilizing app 
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
-                    # frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
+                    frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
                     
                     
@@ -3483,42 +3483,43 @@ def get_time_now(user_email, formatted = None):
 @frappe.whitelist()
 def get_file_as_base64(file_name):
     """
-    Convert a file stored in the ERPNext File doctype to a Base64 string.
-    :param file_name: The name of the File doctype record (usually the file name or file ID).
-    :return: Base64-encoded string of the file contents.
+    Convert a File (public or private) into Base64.
+    Detects correct file path automatically.
     """
-   
     try:
-        # Fetch the File document
         file_doc = frappe.get_doc("File", file_name)
 
-        # Ensure the file URL exists
-        
         if not file_doc.file_url:
-            frappe.throw("File URL is missing in the File document.")
+            frappe.throw("File URL is missing in File document.")
 
-        # Get the absolute file path on the server
-        # file_path = frappe.utils.get_site_path( file_doc.file_url.strip("/"))
-        
-        relative_path = file_doc.file_url.strip("/")
-        file_path = os.path.abspath(frappe.utils.get_site_path(relative_path))
-        
-        
-      
-        # Check if the file exists
+        file_url = file_doc.file_url.strip("/")
+
+        # Determine if public or private
+        if file_url.startswith("files/"):
+            # PUBLIC file
+            file_path = os.path.join(frappe.get_site_path(), "public", file_url)
+        elif file_url.startswith("private/files/"):
+            # PRIVATE file
+            file_path = os.path.join(frappe.get_site_path(), file_url)
+        else:
+            # Unknown or external path
+            frappe.throw(f"Unknown file path format: {file_doc.file_url}")
+
+        # Ensure absolute path
+        file_path = os.path.abspath(file_path)
+
+        # Check existence
         if not os.path.exists(file_path):
-            frappe.throw(f"File not found at path: {file_path}")
+            frappe.throw(f"File not found at: {file_path}")
 
-        # Read the file in binary mode and encode as Base64
-        with open(file_path, 'rb') as file:
-            encoded_string = base64.b64encode(file.read()).decode('utf-8')
-        
-        
-        return {"results": {"compressed_base64": encoded_string}}
+        # Read file
+        with open(file_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
 
+        return {"results": {"compressed_base64": encoded}}
 
     except Exception as e:
-        frappe.log_error(message=str(e), title="Error in get_file_as_base64")
+        frappe.log_error(f"get_file_as_base64 failed: {str(e)}")
         return None
 # ==========================================================================================
 def sync_with_chat_profile(doc , method):    
@@ -3744,6 +3745,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                             filters={
                                 "docstatus": 1,
                                 "whatsapp_profile": ["=", whatsapp_profile_name],  
+                                "template_status":"APPROVED"
                             },
                             fields=["name", "meta_template_name"]
                         )
@@ -4754,93 +4756,258 @@ def upload_media_to_server(file_path):
     site_url = frappe.utils.get_url()
     return f"{site_url}/files/{file_name}"
 
+# def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
+#     try:
+#         # Retrieve Twilio credentials from Frappe database
+#         doc = frappe.get_doc("ClefinCode Twilio Integration")
+#         account_sid =doc.get("account_sid")
+#         auth_token = get_auth_token_twillio()
+#         twilio_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", sender, "whatsapp_number")
+
+#         client = Client(account_sid, auth_token)
+
+#         if message_type in ['image', 'video', 'audio', 'document']:
+#             media_url = message
+#             media_url, was_private = make_file_public(media_url)
+#             public_url=media_url
+#             site_url = frappe.utils.get_url()  
+            
+#             if is_voice_clip:
+             
+                
+#                 #media_url =frappe.utils.get_site_path(media_url.lstrip('/'))
+#                 site_name = frappe.local.site
+#                 media_url = convert_to_ogg_twilio( os.path.join(".", site_name, "public", media_url.lstrip("/")))
+               
+#                 if media_url.startswith("./"):
+#                     media_url = media_url[2:]
+
+#                 if media_url.startswith(site_name):
+#                     media_url = media_url[len(site_name+"/public"):]
+                
+#                  # --- Create Frappe File doc ---
+#                 file_doc = frappe.get_doc({
+#                 "doctype": "File",
+#                 "file_url": media_url,
+#                 "file_name": os.path.basename(media_url),
+#                 "attached_to_doctype": new_message_doc.doctype,
+#                 "attached_to_name": new_message_doc.name,
+#                 "is_private": 0  # Public
+#             })
+#                 file_doc.insert(ignore_permissions=True)
+#                 frappe.db.commit()
+
+            
+#             media_url=site_url+media_url
+#             media_url = urllib.parse.quote(media_url, safe=':/')
+           
+#             msg = client.messages.create(
+#                 from_=f'whatsapp:{twilio_whatsapp_number}',
+#                 body=message if message_type != 'image' else None,
+#                 media_url=[media_url],   # must be a list of URLs
+#                 to=f'whatsapp:{receiver}'
+#             )
+           
+#             from datetime import datetime, timedelta
+#             # Reset file to private if applicable
+#             if was_private:
+#                 run_at = frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=60)
+
+#                 # frappe.enqueue(
+#                 #         "frappe.utils.background_jobs.enqueue_one",
+#                 #         job_name=f"reset_file_{frappe.generate_hash()}",  
+#                 #         method="clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
+#                 #         kwargs={"file_path": public_url},
+#                 #         wait=60
+#                 #     )
+#                 frappe.enqueue(
+#                        "clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
+#                         file_path=public_url,
+#                         time_delay=60,
+#                         queue='default',
+#                         timeout=600,
+                    
+#                     )
+#                 # reset_file_to_private(public_url)
+#         else:  # text
+            
+#             msg = client.messages.create(
+#                 from_=f'whatsapp:{twilio_whatsapp_number}',
+#                 body=message,
+#                 to=f'whatsapp:{receiver}'
+#             )
+
+#         new_message_doc.whatsapp_message_id = msg.sid
+#         new_message_doc.save(ignore_permissions=True)
+#         frappe.db.commit()
+
+#     except Exception as e:
+#         frappe.log_error(title="send whatsapp message Exception", message=str(e))
+
+
 def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
     try:
-        # Retrieve Twilio credentials from Frappe database
+        # ------------------------------------------
+        # Retrieve Twilio credentials from Frappe
+        # ------------------------------------------
         doc = frappe.get_doc("ClefinCode Twilio Integration")
-        account_sid =doc.get("account_sid")
+        account_sid = doc.get("account_sid")
         auth_token = get_auth_token_twillio()
-        twilio_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", sender, "whatsapp_number")
+        twilio_whatsapp_number = frappe.db.get_value(
+            "ClefinCode WhatsApp Profile", sender, "whatsapp_number"
+        )
 
         client = Client(account_sid, auth_token)
 
+        # ------------------------------------------
+        # MEDIA MESSAGE LOGIC (image / video / audio / document)
+        # ------------------------------------------
         if message_type in ['image', 'video', 'audio', 'document']:
-            media_url = message
-            media_url, was_private = make_file_public(media_url)
-            public_url=media_url
-            site_url = frappe.utils.get_url()  
-            
-            if is_voice_clip:
-             
-                
-                #media_url =frappe.utils.get_site_path(media_url.lstrip('/'))
-                site_name = frappe.local.site
-                media_url = convert_to_ogg_twilio( os.path.join(".", site_name, "public", media_url.lstrip("/")))
-               
-                if media_url.startswith("./"):
-                    media_url = media_url[2:]
 
-                if media_url.startswith(site_name):
-                    media_url = media_url[len(site_name+"/public"):]
-                
-                 # --- Create Frappe File doc ---
-                file_doc = frappe.get_doc({
-                "doctype": "File",
-                "file_url": media_url,
-                "file_name": os.path.basename(media_url),
-                "attached_to_doctype": new_message_doc.doctype,
-                "attached_to_name": new_message_doc.name,
-                "is_private": 0  # Public
-            })
-                file_doc.insert(ignore_permissions=True)
+            original_url = message
+            site_url = frappe.utils.get_url()
+
+            # ------------------------------------------
+            # 1️ Fetch the original file
+            # ------------------------------------------
+            file_info = frappe.db.get_value(
+                "File", {"file_url": original_url},
+                ["name", "is_private", "file_url"], as_dict=True
+            )
+
+            if not file_info:
+                frappe.throw("File not found!")
+
+            was_private = file_info.is_private
+
+            # ------------------------------------------
+            # 2️ If the file is private → create a new public copy
+            # ------------------------------------------
+            if was_private:
+                # Load original file content
+                file_path = frappe.get_site_path(file_info.file_url.lstrip("/"))
+                with open(file_path, "rb") as f:
+                    content = f.read()
+
+                # Create a new public file
+                new_public_file = frappe.get_doc({
+                    "doctype": "File",
+                    "file_name": os.path.basename(file_info.file_url),
+                    "content": content,
+                    "is_private": 0,  # Public
+                    "attached_to_doctype": new_message_doc.doctype,
+                    "attached_to_name": new_message_doc.name
+                })
+
+                new_public_file.insert(ignore_permissions=True)
                 frappe.db.commit()
 
-            
-            media_url=site_url+media_url
-            media_url = urllib.parse.quote(media_url, safe=':/')
-           
+                public_url = new_public_file.file_url  # New public copy URL
+
+            else:
+                # File is already public
+                public_url = file_info.file_url
+
+            # ------------------------------------------
+            # 3️ Special case: Voice clip → convert to OGG
+            # ------------------------------------------
+            if is_voice_clip:
+                site_name = frappe.local.site
+
+                converted_path = convert_to_ogg_twilio(
+                    os.path.join(".", site_name, "public", public_url.lstrip("/"))
+                )
+
+                # Normalize returned path
+                if converted_path.startswith("./"):
+                    converted_path = converted_path[2:]
+
+                if converted_path.startswith(site_name):
+                    converted_path = converted_path[len(site_name + "/public"):]
+
+                # Save converted file as a new public File doc
+                new_public_file = frappe.get_doc({
+                    "doctype": "File",
+                    "file_url": converted_path,
+                    "file_name": os.path.basename(converted_path),
+                    "attached_to_doctype": new_message_doc.doctype,
+                    "attached_to_name": new_message_doc.name,
+                    "is_private": 0
+                })
+                new_public_file.insert(ignore_permissions=True)
+                frappe.db.commit()
+
+                public_url = new_public_file.file_url
+
+            # ------------------------------------------
+            # 4️ Prepare Twilio-compatible media URL
+            # ------------------------------------------
+            full_media_url = site_url + public_url
+            full_media_url = urllib.parse.quote(full_media_url, safe=':/')
+
+            # ------------------------------------------
+            # 5️ Send media message through Twilio WhatsApp
+            # ------------------------------------------
             msg = client.messages.create(
                 from_=f'whatsapp:{twilio_whatsapp_number}',
-                body=message if message_type != 'image' else None,
-                media_url=[media_url],   # must be a list of URLs
+                body=message if message_type != "image" else None,
+                media_url=[full_media_url],
                 to=f'whatsapp:{receiver}'
             )
-           
-            from datetime import datetime, timedelta
-            # Reset file to private if applicable
-            if was_private:
-                run_at = frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=60)
 
-                # frappe.enqueue(
-                #         "frappe.utils.background_jobs.enqueue_one",
-                #         job_name=f"reset_file_{frappe.generate_hash()}",  
-                #         method="clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
-                #         kwargs={"file_path": public_url},
-                #         wait=60
-                #     )
+            # ------------------------------------------
+            # 6️ Schedule deletion of temporary public file
+
+            # ------------------------------------------
+            if was_private:
                 frappe.enqueue(
-                       "clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
-                        file_path=public_url,
-                        time_delay=60,
-                        queue='default',
-                        timeout=600,
-                    
-                    )
-                # reset_file_to_private(public_url)
-        else:  # text
-            
+                    "clefincode_chat.api.api_1_3_1.api.delete_temp_public_file",
+                    file_url=public_url,
+                    time_delay=60,
+                    queue='default',
+                    timeout=600,
+                    at=frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=60)
+                )
+
+        else:
+            # ------------------------------------------
+            # TEXT MESSAGE ONLY
+            # ------------------------------------------
             msg = client.messages.create(
                 from_=f'whatsapp:{twilio_whatsapp_number}',
                 body=message,
                 to=f'whatsapp:{receiver}'
             )
 
+        # Save Twilio SID
         new_message_doc.whatsapp_message_id = msg.sid
         new_message_doc.save(ignore_permissions=True)
         frappe.db.commit()
 
     except Exception as e:
         frappe.log_error(title="send whatsapp message Exception", message=str(e))
+@frappe.whitelist()
+
+
+def delete_temp_public_file(file_url,time_delay=None):
+    """
+    Deletes the temporary public copy created for WhatsApp media sending.
+    This keeps the original file untouched (if private).
+    """
+    try:
+        if time_delay:
+            import time
+            time.sleep(int(time_delay))
+        file_info = frappe.db.get_value(
+            "File", {"file_url": file_url}, ["name"], as_dict=True
+        )
+
+        if file_info:
+            frappe.delete_doc("File", file_info.name, ignore_permissions=True)
+            frappe.db.commit()
+
+    except Exception as e:
+        frappe.log_error("Error deleting temp public file", str(e))
 
 # ==========================================================================================
 @frappe.whitelist()
@@ -4892,6 +5059,12 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         body_preview = template.body or ""
         for k, v in variables.items():
             body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
+        html =generate_whatsapp_html_preview(
+                body=body_preview,
+                template_name="",
+                template_type="twilio/text",
+               
+            )
 
     elif doctype == "Twilio Template":
         for var in template.variables:
@@ -4939,41 +5112,50 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
        
     #     body_preview = json.dumps(variables, indent=2)
   
-    media_url=None
-    if template.media_url:
-         attach_var= extract_placeholder(template.media_url)
-         if attach_var in variables:
-             media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
-    if template.attach_document_print:                
-                doc = frappe.get_doc(template.reference_doctype, docname)
-                # frappe.db.begin()
-                key = doc.get_document_share_key()  # noqa
-                frappe.db.commit()               
-                res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format)
-                
-                link_attach=res['file_url']
-                if template.media_url:
-                    attach_var= extract_placeholder(template.media_url)
-                    if attach_var:
-                        link=link_attach.lstrip('/')
-                        variables[attach_var] = urllib.parse.quote(link, safe=':/')
-                        if attach_var in variables:
-                            media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
-                
-    if attachment:
+        media_url=None
         if template.media_url:
-           attach_var= extract_placeholder(template.media_url)
-           if attach_var:
-               link=attachment.lstrip('/')
-               variables[attach_var] = urllib.parse.quote(link, safe=':/')
-               if attach_var in variables:
-                 media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
-    location={}         
-    if template.template_type == "twilio/location": 
-        location['lable']=template.lable
-        location['latitude']=template.latitude
-        location['longitude']=template.longitude         
-        
+            attach_var= extract_placeholder(template.media_url)
+            if attach_var in variables:
+                media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
+        if template.attach_document_print:                
+                    doc = frappe.get_doc(template.reference_doctype, docname)
+                    # frappe.db.begin()
+                    key = doc.get_document_share_key()  # noqa
+                    frappe.db.commit()               
+                    res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format)
+                    
+                    link_attach=res['file_url']
+                    if template.media_url:
+                        attach_var= extract_placeholder(template.media_url)
+                        if attach_var:
+                            link=link_attach.lstrip('/')
+                            variables[attach_var] = urllib.parse.quote(link, safe=':/')
+                            if attach_var in variables:
+                                media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
+                    
+        if attachment:
+            if template.media_url:
+                attach_var= extract_placeholder(template.media_url)
+                if attach_var:
+                    link=attachment.lstrip('/')
+                    variables[attach_var] = urllib.parse.quote(link, safe=':/')
+                    if attach_var in variables:
+                        media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
+        location={}         
+        if template.template_type == "twilio/location": 
+            location['lable']=template.lable
+            location['latitude']=template.latitude
+            location['longitude']=template.longitude         
+        html = generate_whatsapp_html_preview(
+        body=BeautifulSoup(template.body, 'html.parser').get_text(separator='\n'),
+        template_name=template.name,
+        template_type=template.template_type,
+        variables=variables,
+        media_url=media_url,
+        items=template.items,
+        location=location
+                
+    )
     
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
@@ -4982,20 +5164,9 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         content_variables=json.dumps(variables)
     )
     
-    content = client.content.v1.contents(template.whatsapp_template_id).fetch()
    
    
-    html = generate_whatsapp_html_preview(
-    body=BeautifulSoup(template.body, 'html.parser').get_text(separator='\n'),
-    template_name=template.name,
-    template_type=template.template_type,
-    variables=variables,
-    media_url=media_url,
-    items=template.items,
-    location=location
     
-    
-)
     # new_message.content=html
     # new_message.save(ignore_permissions = True)
     # room=new_message.chat_channel
@@ -5118,9 +5289,14 @@ def get_all_whatsapp_templates():
 
         # ClefinCode templates (force reference_doctype = None)
         templates_clefin_raw = frappe.get_all(
-            "ClefinCode WhatsApp Template",
-            fields=["name", "meta_template_name"]
-        )
+             "ClefinCode WhatsApp Template",
+                            filters={
+                                "docstatus": 1,
+                                "whatsapp_profile": ["=", whatsapp_profile_name],  
+                                "template_status":"APPROVED"
+                            },
+                            fields=["name", "meta_template_name"]
+                        )
 
         # Add reference_doctype = None
         templates_clefin = [
@@ -5135,7 +5311,7 @@ def get_all_whatsapp_templates():
         # Twilio templates
         templates_twilio = frappe.get_all(
             "Twilio Template",
-            filters={"whatsapp_template_id": ["is", "set"]},
+            filters={"whatsapp_template_id": ["is", "set"],"template_status": "APPROVED"},
             fields=["name", "friendly_name as meta_template_name", "reference_doctype"]
         )
 
@@ -5728,41 +5904,61 @@ def extract_varibale_from_template(template,docname):
     return variables
 #=================================================================
 @frappe.whitelist()
-def get_documents_by_doctype(doctype):
-    """
-    Fetch documents for a given DocType while respecting user permissions.
-
-    Args:
-        doctype (str): The DocType name to retrieve records from.
-        filters (dict or str, optional): Filtering conditions. 
-                                         Can be a dict or a JSON string.
-
-    Returns:
-        dict: A response containing the document count and list of results.
-    """
+def get_documents_by_doctype(doctype, page=1, search=None):
     try:
-        # Check if the current user has read permission for this DocType
         if not frappe.has_permission(doctype, "read"):
-            frappe.throw(f"You do not have permission to access {doctype}", frappe.PermissionError)
+            frappe.throw("No Permission", frappe.PermissionError)
 
-       
+        meta = frappe.get_meta(doctype)
 
-        # Fetch documents; Frappe automatically enforces field-level permissions
-       
+        title_field = meta.title_field or "name"
+
+        # Build search fields (remove spaces)
+        search_fields = []
+        if meta.search_fields:
+            search_fields = [f.strip() for f in meta.search_fields.split(",")]
+
+        # Remove any Date/Datetime fields
+        valid_fields = ["name"]  # Always return name
+        for f in [title_field] + search_fields:
+            df = meta.get_field(f)
+            if df and df.fieldtype not in ["Date", "Datetime"]:
+                valid_fields.append(f)
+
+        all_fields = list(set(valid_fields))
+
+        page = int(page)
+        page_length = 10
+        start = (page - 1) * page_length
+
+        or_filters = []
+        if search:
+            for f in all_fields:
+                or_filters.append([doctype, f, "like", f"%{search}%"])
+
         docs = frappe.get_list(
-            str(doctype)          
+            doctype,
+            fields=all_fields,
+            or_filters=or_filters,
+            start=start,
+            page_length=page_length,
+            order_by="modified desc"
         )
-       
 
         return {
-          
+            "doctype": doctype,
+            "page": page,
+            "page_length": page_length,
+            "fields_returned": all_fields,
             "results": docs
         }
 
     except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Get Documents by DocType API Error")
+        frappe.log_error(frappe.get_traceback(), "Link Search API Error")
         raise e
-    #====================================================
+
+
+#====================================================
 def pdf(doctype, name, key, format=None,lang=None):
         from frappe.utils.pdf import get_pdf
        

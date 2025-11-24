@@ -1623,7 +1623,7 @@ def whatsapp_twillio_webhook():
                 is_document=1
             else:
                 is_voice_clip=1
-            send(content=content+"<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media = is_media, is_document = is_document ,file_id=file_id)
+            send(content=content+"<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media = is_media, is_document = is_document,is_voice_clip=is_voice_clip ,file_id=file_id)
 
       
     except Exception as e:
