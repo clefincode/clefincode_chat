@@ -5913,13 +5913,13 @@ def get_documents_by_doctype(doctype, page=1, search=None):
 
         title_field = meta.title_field or "name"
 
-        # Build search fields (remove spaces)
+        
         search_fields = []
         if meta.search_fields:
             search_fields = [f.strip() for f in meta.search_fields.split(",")]
 
-        # Remove any Date/Datetime fields
-        valid_fields = ["name"]  # Always return name
+        
+        valid_fields = ["name"]
         for f in [title_field] + search_fields:
             df = meta.get_field(f)
             if df and df.fieldtype not in ["Date", "Datetime"]:

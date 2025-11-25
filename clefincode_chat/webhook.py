@@ -1575,92 +1575,386 @@ def download_telegram_media(file_id, mime_type, message_type, file_name = None):
 @frappe.whitelist(allow_guest=True)
 def whatsapp_twillio_webhook():
 
-    """
-    Handle incoming Twilio WhatsApp messages and integrate with ClefinCode Chat system
-    """
     try:
         form_dict = frappe.local.form_dict
-        log_webhook(form_dict)  
-         #Helper function to normalize numbers
+        log_webhook(form_dict)
+
+        # =============================
+        # Helper: Normalize WhatsApp numbers
+        # =============================
         def normalize_number(number: str) -> str:
             return number.replace("whatsapp:+", "") if number and number.startswith("whatsapp:+") else number
 
         message_body = form_dict.get("Body")
         sender_number = normalize_number(form_dict.get("From"))
-        receiver_number = normalize_number(form_dict.get("To"))            
+        receiver_number = normalize_number(form_dict.get("To"))
         message_type = "text"
-        
+
+        # =============================
+        # MEDIA CHECK (Images, Videos, Audio, Documents, vCard)
+        # =============================
         media_count = int(form_dict.get("NumMedia", "0"))
-        media_url, mime_type, file_url = None, None, None
+        media_url, mime_type, file_url, file_id, vcard_text = None, None, None, None, None
+
         if media_count > 0:
+            # Example: "image/jpeg" → media_type=image , mime_type=jpeg
             media_type = form_dict.get("MediaContentType0", "").split("/")[0]
             mime_type = form_dict.get("MediaContentType0", "").split("/")[1]
             media_url = form_dict.get("MediaUrl0")
-            file_url,file_id = download_media_twilio(media_url, mime_type=mime_type, message_type=media_type)
+
+            # Download the media (including vCard if MIME is text/vcard)
+            file_url, file_id, vcard_text = download_media_twilio(
+                media_url,
+                mime_type=mime_type,
+                message_type=media_type
+            )
+
             message_type = media_type
 
+
+        # =============================
+        # LOCATION CHECK
+        # =============================
+        latitude = longitude = None
+        if form_dict.get("MessageType") == "location":
+            message_type = "location"
+            latitude = form_dict.get("Latitude")
+            longitude = form_dict.get("Longitude")
+
+
+        # =============================
+        # CONTACT CHECK (vCard)
+        # =============================
+        if form_dict.get("MessageType") == "contacts":
+            message_type = "contacts"
+
+
+        # Validate receiving WhatsApp profile
         if not validate_receiver_profile(str(receiver_number)):
             return
-        
-       
-        chat_profile = get_or_create_chat_profile(sender_number, sender_number)  
 
+        # Retrieve or create chat profile
+        chat_profile = get_or_create_chat_profile(sender_number, sender_number)
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
-        chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages=[{"text":{"type": message_type, "body": message_body}}])
+
+        # Register message inside chat channel
+        chat_channel_info = handle_chat_channel(
+            sender_number,
+            receiver_number,
+            chat_profile,
+            whatsapp_profile_doc,
+            messages=[{"text": {"type": message_type, "body": message_body}}]
+        )
+
         chat_channel, _ = chat_channel_info
         last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
-       
-        if message_type == "text":
-            send(content="<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel)
-        else:
-          
-            content = handle_attachment(file_url, form_dict.get("MediaFilename0", "attachment"), message_type)
-            is_media , is_document , is_voice_clip = 0 , 0 , 0
-            if message_type in ['image' , 'sticker' , 'video']:
-                is_media=1
-            elif message_type == "document":
-                is_document=1
-            else:
-                is_voice_clip=1
-            send(content=content+"<p>"+message_body+ "</p>", user=sender_number, room=chat_channel, email=sender_number, sub_channel=last_sub_channel, attachment=file_url,is_media = is_media, is_document = is_document,is_voice_clip=is_voice_clip ,file_id=file_id)
 
-      
-    except Exception as e:
+        # =============================
+        # TEXT MESSAGE
+        # =============================
+        if message_type == "text":
+            send(
+                content=f"<p>{message_body}</p>",
+                user=sender_number,
+                room=chat_channel,
+                email=sender_number,
+                sub_channel=last_sub_channel
+            )
+            return
+
+
+        # =============================
+        # LOCATION MESSAGE
+        # =============================
+        if message_type == "location":
+            content = handle_attachment_twilio(
+                file_url="",
+                file_name="",
+                message_type="location",
+                latitude=latitude,
+                longitude=longitude
+            )
+
+            send(
+                content=content,
+                user=sender_number,
+                room=chat_channel,
+                email=sender_number,
+                sub_channel=last_sub_channel
+            )
+            return
+
+
+        # =============================
+        # CONTACT CARD (vCard)
+        # =============================
+        if message_type == "contacts":
+
+            file_name = form_dict.get("MediaFilename0", "contact.vcf")
+
+            # Parse vCard text extracted earlier
+            name, phone = parse_vcard(vcard_text or "")
+
+            # Generate WhatsApp-style preview card
+            content = handle_attachment_twilio(
+                file_url=file_url,
+                file_name=file_name,
+                message_type="contacts",
+                extra_data={"name": name, "phone": phone}
+            )
+
+            send(
+                content=content,
+                user=sender_number,
+                room=chat_channel,
+                email=sender_number,
+                sub_channel=last_sub_channel,
+                attachment=file_url,
+                is_document=1,
+                file_id=file_id
+            )
+            return
+
+
+        # =============================
+        # OTHER MEDIA (Image, Video, Audio, Document)
+        # =============================
+        file_name = form_dict.get("MediaFilename0", "attachment")
+
+        content = handle_attachment_twilio(
+            file_url=file_url,
+            file_name=file_name,
+            message_type=message_type
+        )
+
+        is_media = 1 if message_type in ["image", "video", "sticker"] else 0
+        is_document = 1 if message_type == "document" else 0
+        is_voice_clip = 1 if message_type not in ["image", "video", "document"] else 0
+
+        send(
+            content=content + f"<p>{message_body}</p>",
+            user=sender_number,
+            room=chat_channel,
+            email=sender_number,
+            sub_channel=last_sub_channel,
+            attachment=file_url,
+            is_media=is_media,
+            is_document=is_document,
+            is_voice_clip=is_voice_clip,
+            file_id=file_id
+        )
+
+    except Exception:
         frappe.log_error(title="Twilio WhatsApp Webhook Error", message=frappe.get_traceback())
 
 
 def download_media_twilio(media_url, mime_type=None, message_type="media", filename=None, folder="Home/Attachments"):
-   
+
     doc = frappe.get_doc("ClefinCode Twilio Integration")
-    account_sid =doc.get("account_sid")
-    
-    auth_token= get_auth_token_twillio()
+    account_sid = doc.get("account_sid")
+    auth_token = get_auth_token_twillio()
 
     if not media_url:
-        return None
+        return None, None, None
 
+    # Build filename
     if not filename:
         ext = mime_type.split("/")[-1] if mime_type else "bin"
         filename = f"{message_type}_{int(frappe.utils.now_datetime().timestamp())}.{ext}"
 
     try:
         response = requests.get(media_url, auth=HTTPBasicAuth(account_sid, auth_token))
-        if response.status_code == 200:
+
+        if response.status_code != 200:
+            frappe.log_error(
+                title="Twilio Media Download Failed",
+                message=f"Status: {response.status_code}, URL: {media_url}"
+            )
+            return None, None, None
+
+        # =====================================================
+        # SPECIAL CASE: VCARD (Return text content)
+        # =====================================================
+        if mime_type == "vcard" or mime_type == "x-vcard" or message_type == "contacts":
+            vcard_text = response.text
+            # Save also as file (optional but useful)
             file_doc = frappe.get_doc({
                 "doctype": "File",
                 "file_name": filename,
                 "folder": folder,
-                "is_private": 1,  
+                "is_private": 1,
                 "content": response.content
             })
             file_doc.insert(ignore_permissions=True)
             frappe.db.commit()
-            frappe.log_error("webhook",vars(file_doc))
-            return file_doc.file_url, file_doc.name
-        else:
-            frappe.log_error(title="Twilio Media Download Failed", message=f"Status: {response.status_code}, URL: {media_url}")
-            return None
+
+            return file_doc.file_url, file_doc.name, vcard_text
+
+        # =====================================================
+        # NORMAL MEDIA (image, video, audio, pdf, etc...)
+        # =====================================================
+        file_doc = frappe.get_doc({
+            "doctype": "File",
+            "file_name": filename,
+            "folder": folder,
+            "is_private": 1,
+            "content": response.content
+        })
+        file_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        return file_doc.file_url, file_doc.name, None
+
     except Exception as e:
         frappe.log_error(title="Twilio Media Download Error", message=str(e))
-        return None
+        return None, None, None
+
+#=====================================================================================
+
+def handle_attachment_twilio(file_url, file_name, message_type,
+                      latitude=None, longitude=None, extra_data=None):
+
+    """
+    Generates HTML display for attachments (images, audio, videos, vCards, locations, documents).
+    extra_data is used for passing parsed vCard info.
+    """
+
+    extra_data = extra_data or {}
+
+    # =============== CONTACT CARD (vCard) ===============
+    if message_type == "contacts":
+        name = extra_data.get("name", "Contact")
+        phone = extra_data.get("phone", "")
+
+        # WhatsApp-style contact preview card
+        return f"""
+        <div style="width: 240px; background: #fff; border-radius: 12px;
+                    padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    font-family: sans-serif;">
+
+            <!-- Avatar -->
+            <div style="display:flex; align-items:center;">
+                <div style="width:45px; height:45px; background:#dfe5e7;
+                            border-radius:50%; display:flex;
+                            justify-content:center; align-items:center;
+                            font-size:20px; color:#444;">
+                    {name[0] if name else "?"}
+                </div>
+
+                <!-- Name + Phone -->
+                <div style="margin-left:10px;">
+                    <div style="font-size:15px; font-weight:bold;">{name}</div>
+                    <div style="font-size:13px; color:#777;">{phone}</div>
+                </div>
+            </div>
+
+            <!-- Download vCard link -->
+            <div style="margin-top:10px;">
+                <a href="{file_url}" target="_blank"
+                   style="color:#027eb5; font-size:13px;">Download Contact Card</a>
+            </div>
+        </div>
+        """
+
+    # =============== LOCATION MESSAGE ===============
+    elif message_type == 'location':
+        lat = latitude or ""
+        lon = longitude or ""
+
+        # Google Maps link
+        map_url = f"https://www.google.com/maps?q={lat},{lon}"
+
+        # Static map (Yandex — works without API key)
+        map_image = f"https://static-maps.yandex.ru/1.x/?ll={lon},{lat}&size=450,250&z=15&l=map&pt={lon},{lat},pm2rdm"
+
+        return f"""
+        <div class="location-container" style="width: 235px;">
+            <a href="{map_url}" target="_blank">
+                <img src="{map_image}" style="width: 235px; border-radius: 8px;">
+            </a>
+            <div style="font-size: 12px; margin-top: 5px;">
+                <a href="{map_url}" target="_blank" style="color: #027eb5;">
+                    Location: {lat}, {lon}
+                </a>
+            </div>
+        </div>
+        """
+
+    # =============== IMAGE ===============
+    elif message_type == 'image':
+        return f"""
+        <a href='{file_url}' target='_blank'>
+            <img src='{file_url}' class='img-responsive chat-image'>
+        </a>
+        """
+
+    # =============== VIDEO ===============
+    elif message_type == 'video':
+        return f"""
+        <div>
+            <video src="{file_url}" controls="controls" style="width:235px"></video>
+        </div>
+        """
+
+    # =============== AUDIO ===============
+    elif message_type == 'audio':
+        return f"""
+        <audio src="{file_url}" controls="controls" class="voice-clip" style="width: 235px;"></audio>
+        """
+
+    # =============== DOCUMENT ===============
+    elif message_type == 'document':
+        file_extension = file_name.split('.')[-1].lower()
+
+        # Map file extensions to icons
+        icon_url = {
+            'pdf': '/assets/clefincode_chat/images/pdf-red.png',
+            'doc': '/assets/clefincode_chat/images/docx.png',
+            'docx': '/assets/clefincode_chat/images/docx.png',
+            'xls': '/assets/clefincode_chat/images/xlsx.png',
+            'xlsx': '/assets/clefincode_chat/images/xlsx.png',
+            'csv': '/assets/clefincode_chat/images/xlsx.png',
+            'ppt': '/assets/clefincode_chat/images/ppt.png',
+            'pptx': '/assets/clefincode_chat/images/ppt.png',
+            'zip': '/assets/clefincode_chat/images/rar.png',
+            'rar': '/assets/clefincode_chat/images/rar.png'
+        }.get(file_extension, '/assets/clefincode_chat/images/txt.png')
+
+        return f"""
+        <div class="document-container d-flex flex-row justify-content-start align-items-center" style="width: 235px;">
+            <img style="height: 32px;margin-right: 8px;" src="{icon_url}">
+            <a href="{file_url}" target="_blank">{file_name}</a>
+        </div>
+        """
+
+    # =============== DEFAULT FALLBACK ===============
+    else:
+        return f"""
+        <a href="{file_url}" target="_blank" style="color: #027eb5;">{file_name}</a>
+        """
+    
+    
+
+def parse_vcard(vcard_text):
+    """
+    Extracts contact name and phone number from a vCard (.vcf) text file.
+    """
+    name = None
+    phone = None
+
+    # Loop through each line in the vCard file
+    for line in vcard_text.splitlines():
+        line = line.strip()
+
+        # Extract full name field: FN:John Doe
+        if line.startswith("FN:"):
+            name = line.replace("FN:", "").strip()
+
+        # Extract phone number field: TEL;CELL:+12345
+        if line.startswith("TEL"):
+            parts = line.split(":")
+            if len(parts) > 1:
+                phone = parts[-1].strip()
+
+    return name, phone
