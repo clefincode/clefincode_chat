@@ -1668,12 +1668,18 @@ def whatsapp_twillio_webhook():
         # LOCATION MESSAGE
         # =============================
         if message_type == "location":
+
+            # Download static map + save inside ERPNext
+            map_file_url, map_file_id = save_location_map(latitude, longitude)
+
+            # Generate HTML using the saved map URL
             content = handle_attachment_twilio(
-                file_url="",
-                file_name="",
+                file_url=map_file_url,
+                file_name=f"location_{latitude}_{longitude}.png",
                 message_type="location",
                 latitude=latitude,
-                longitude=longitude
+                longitude=longitude,
+                extra_data={"file_id": map_file_id}
             )
 
             send(
@@ -1681,7 +1687,10 @@ def whatsapp_twillio_webhook():
                 user=sender_number,
                 room=chat_channel,
                 email=sender_number,
-                sub_channel=last_sub_channel
+                sub_channel=last_sub_channel,
+                attachment=map_file_url,
+                is_media=1,
+                file_id=map_file_id
             )
             return
 
@@ -1859,33 +1868,35 @@ def handle_attachment_twilio(file_url, file_name, message_type,
 
     # =============== LOCATION MESSAGE ===============
     elif message_type == 'location':
-        lat = latitude or ""
-        lon = longitude or ""
+            lat = latitude or ""
+            lon = longitude or ""
 
-        # Google Maps link
-        map_url = f"https://www.google.com/maps?q={lat},{lon}"
+            map_url = f"https://www.google.com/maps?q={lat},{lon}"
 
-        # Static map (Yandex — works without API key)
-        map_image = f"https://static-maps.yandex.ru/1.x/?ll={lon},{lat}&size=450,250&z=15&l=map&pt={lon},{lat},pm2rdm"
+            # Location icon
+            icon_url = "/assets/clefincode_chat/images/location.png"
 
-        return f"""
-        <div class="location-container" style="width: 235px;">
-            <a href="{map_url}" target="_blank">
-                <img src="{map_image}" style="width: 235px; border-radius: 8px;">
-            </a>
-            <div style="font-size: 12px; margin-top: 5px;">
-                <a href="{map_url}" target="_blank" style="color: #027eb5;">
+            return f""" <div class="document-container d-flex flex-column justify-content-start align-items-start" 
+         style="width:235px;">
+
+        <!-- BIG MAP IMAGE -->
+        <a href="{map_url}" target="_blank" style="width:100%;">
+            <img src="{file_url}" 
+                 style="width:235px; border-radius:8px; display:block;">
+        </a>
+          </div>
+        <p>
+                <a href="{map_url}" target="_blank">
                     Location: {lat}, {lon}
                 </a>
-            </div>
-        </div>
-        """
+            </p>
+             """
 
     # =============== IMAGE ===============
     elif message_type == 'image':
         return f"""
-        <a href='{file_url}' target='_blank'>
-            <img src='{file_url}' class='img-responsive chat-image'>
+        <a href="{file_url}" target="_blank">
+            <img src="{file_url}" class="img-responsive chat-image">
         </a>
         """
 
@@ -1899,9 +1910,24 @@ def handle_attachment_twilio(file_url, file_name, message_type,
 
     # =============== AUDIO ===============
     elif message_type == 'audio':
-        return f"""
-        <audio src="{file_url}" controls="controls" class="voice-clip" style="width: 235px;"></audio>
-        """
+          
+            return f"""<div><div class="voice-clip-container" data-audio="{file_url.split("/")[-1]}"><div class="record-sec"><div class="record-line"><canvas class="record-canvas"></canvas></div></div>
+                    <button class="audio-btn" aria-label="Play voice message">
+                    <span data-icon="audio-play">
+                        <svg viewBox="0 0 45 34" height="34" width="34" preserveAspectRatio="xMidYMid meet">
+                            <path fill="currentColor"
+                                d="M8.5,8.7c0-1.7,1.2-2.4,2.6-1.5l14.4,8.3c1.4,0.8,1.4,2.2,0,3l-14.4,8.3
+                                c-1.4,0.8-2.6,0.2-2.6-1.5V8.7z">
+                            </path>
+                        </svg>
+                    </span><span data-icon="audio-pause" class="stop-btn" style="display:none;">
+                        <svg viewBox="0 0 45 34" height="34" width="34" preserveAspectRatio="xMidYMid meet">
+                            <path fill="currentColor"
+                                d="M9.2,25c0,0.5,0.4,1,0.9,1h3.6c0.5,0,0.9-0.4,0.9-1V9c0-0.5-0.4-0.9-0.9-0.9h-3.6
+                                C9.7,8,9.2,8.4,9.2,9V25z M20.2,8c-0.5,0-1,0.4-1,0.9V25c0,0.5,0.4,1,1,1h3.6c0.5,0,1-0.4,1-1V9
+                                c0-0.5-0.4-0.9-1-0.9C23.8,8,20.2,8,20.2,8z">
+                            </path></svg></span></button></div></div>"""
+
 
     # =============== DOCUMENT ===============
     elif message_type == 'document':
@@ -1958,3 +1984,35 @@ def parse_vcard(vcard_text):
                 phone = parts[-1].strip()
 
     return name, phone
+def save_location_map(lat, lon, folder="Home/Attachments"):
+    """
+    Download static location map image from Yandex
+    and save it as a File in ERPNext.
+    Returns (file_url, file_id)
+    """
+
+    import requests
+
+    # Yandex static map (no API key required)
+    map_url = f"https://static-maps.yandex.ru/1.x/?ll={lon},{lat}&size=450,250&z=15&l=map&pt={lon},{lat},pm2rdm"
+
+    response = requests.get(map_url)
+
+    if response.status_code != 200:
+        frappe.log_error("Map Download Error", f"Failed to download map image: {map_url}")
+        return None, None
+
+    filename = f"location_{lat}_{lon}.png"
+
+    # Save as ERPNext File
+    file_doc = frappe.get_doc({
+        "doctype": "File",
+        "file_name": filename,
+        "folder": folder,
+        "is_private": 1,
+        "content": response.content
+    })
+    file_doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    return file_doc.file_url, file_doc.name

@@ -5015,8 +5015,13 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
  
     template = None
     doctype = None
+    from bs4 import BeautifulSoup
+
     content = new_message.content
-    messages = content.split(',')
+    soup = BeautifulSoup(content, 'html.parser')
+
+    text = soup.get_text()       # convert HTML → plain text
+    messages = text.split(',')   # now you can split safely
 
     if len(messages) < 2:
         template_name = content.strip()
@@ -5191,89 +5196,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         "doctype": doctype
     }
     
-# @frappe.whitelist()
-# def send_whatsapp_message_from_template_notification(docname, receive_profile, whatsapp_profile,doc):
- 
-#     template = None
-#     doctype = "Twilio Template"
-   
 
-
-#     if frappe.db.exists("ClefinCode WhatsApp Template", docname):
-#         template = frappe.get_doc("ClefinCode WhatsApp Template", docname)
-#         doctype = "ClefinCode WhatsApp Template"
-#     elif frappe.db.exists("Twilio Template", docname):
-#         template = frappe.get_doc("Twilio Template", docname)
-#         doctype = "Twilio Template"
-#     else:
-#         frappe.throw(f"No template found with name '{docname}' in known doctypes.")
-
-#     if not template.whatsapp_template_id:
-#         frappe.throw(" No 'WhatsApp Template ID' found in this template.")
-    
-   
-#     to_number = frappe.db.get_value(
-#     "ClefinCode Chat Profile Contact Details",
-#     {"parent": receive_profile, "type": "WhatsApp"},
-#     "contact_info"
-#       )
-    
-    
-#     profile = frappe.get_doc("ClefinCode WhatsApp Profile", whatsapp_profile)
-#     from_number = profile.whatsapp_number
-
-#     integration_doc = frappe.get_doc("ClefinCode Twilio Integration")
-#     account_sid = integration_doc.get("account_sid")
-#     auth_token = get_auth_token_twillio()
-#     client = Client(account_sid, auth_token)
-
-#     variables = {}
-#     body_preview = ""
-#     frappe.log_error("send_whatsapp_message_from_template_notification",doctype)
-    
-#     if doctype == "ClefinCode WhatsApp Template":
-#         for idx, btn in enumerate(template.buttons, start=1):
-#             text = str(getattr(btn, "button_text", "")).strip()
-#             if text:
-#                 variables[str(idx)] = text
-
-#         body_preview = template.body or ""
-#         # for k, v in variables.items():
-#         #     body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
-
-#     elif doctype == "Twilio Template":
-#         for var in template.variables:
-#             key = str(var.variable_key).strip()
-#             source_doctype = str(var.source_doctype)
-#             source_field=str(var.source_field)
-#             value= frappe.db.get_value(
-#                             source_doctype,doc.name,source_field
-#                             )
-#             if key and value:
-#                 variables[key] = value
-
-#         body_preview = json.dumps(variables, indent=2)
-#         frappe.log_error("notification3433",variables)
-#     message = client.messages.create(
-#         from_=f"whatsapp:{from_number}",
-#         to=f"whatsapp:{to_number}",
-#         content_sid=template.whatsapp_template_id,
-#         content_variables=json.dumps(variables)
-#     )
-   
-    
-
-#     frappe.logger("whatsapp").info(
-#         f"Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
-#     )
-
-#     return {
-#         "sid": message.sid,
-#         "status": message.status,
-#         "variables": variables,
-#         "body_preview": body_preview,
-#         "doctype": doctype
-#     }
 
 #========================================================================================
 @frappe.whitelist()
@@ -5733,14 +5656,33 @@ def find_image_in_vars(vars_dict):
 
 # ============================================================
 # MAIN FUNCTION
+
+def get_file_id_from_url(url):
+    # Extract file name
+    file_name = url.split("/")[-1]
+    frappe.log_error("get_file_id_from_url",file_name)
+
+    # Try public
+    file_id = frappe.db.get_value("File", {"file_url": "/files/" + file_name}, "name")
+    if file_id:
+        return file_id
+    
+    # Try private
+    file_id = frappe.db.get_value("File", {"file_url": "/private/files/" + file_name}, "name")
+    return file_id
 # ============================================================
 def send_clefincode_chat_template(new_message):
 
     # -----------------------------
     # Parse template name + docname
     # -----------------------------
+    from bs4 import BeautifulSoup
+    base_url = frappe.utils.get_url()
     content = new_message.content
-    messages = content.split(',')
+    soup = BeautifulSoup(content, 'html.parser')
+    file_id=""
+    text = soup.get_text()       # convert HTML → plain text
+    messages = text.split(',')   # now you can split safely
 
     if len(messages) < 2:
         template_name = content.strip()
@@ -5768,29 +5710,27 @@ def send_clefincode_chat_template(new_message):
     # Detect image in the vars values
     # --------------------------------------------
     detected_image_url = find_image_in_vars(vars_values)
-
+    is_media=0
     if detected_image_url:
+        file_id=get_file_id_from_url(detected_image_url)
+        is_media=1
+        attachment = detected_image_url.replace(base_url, "")
         image_html = f"""
-            <div style="text-align:center;">
-                <img src="{detected_image_url}" 
-                     style="max-width:200px; margin-bottom:15px; border-radius:6px;" />
-            </div>
+        <a href="{detected_image_url}" target="_blank">
+            <img src="{detected_image_url}" class="img-responsive chat-image">
+        </a>
         """
     else:
         image_html = ""
+        attachment=""
 
     # --------------------------------------------
     # Build final HTML message
     # --------------------------------------------
-    html_message = f"""
-        <div style="font-family: Arial; border:1px solid #ddd; padding:20px; border-radius:8px;">
-            {image_html}
-            <div style="font-size:15px; line-height:1.6; color:#333;">
-                {final_body}
-            </div>
-        </div>
-    """
-
+    html_message =image_html+f"<p>{final_body}</p>"
+    
+   
+    
     # --------------------------------------------
     # Send the HTML message first
     # --------------------------------------------
@@ -5799,6 +5739,9 @@ def send_clefincode_chat_template(new_message):
         new_message.sender,
         new_message.chat_channel,
         new_message.sender_email,
+        is_media=is_media,
+        attachment=attachment,
+        file_id=file_id,
      
     )
 
