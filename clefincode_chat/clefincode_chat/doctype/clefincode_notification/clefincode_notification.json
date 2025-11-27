@@ -145,7 +145,8 @@
    "default": "0",
    "fieldname": "attach_document_print",
    "fieldtype": "Check",
-   "label": " Attach Document Print"
+   "label": " Attach Document Print",
+   "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
    "default": "0",
@@ -279,14 +280,16 @@
    "fieldname": "print_format",
    "fieldtype": "Link",
    "label": "Print Format",
-   "options": "Print Format"
+   "options": "Print Format",
+   "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
    "depends_on": "attach_document_print",
    "fieldname": "language",
    "fieldtype": "Link",
    "label": "Language",
-   "options": "Language"
+   "options": "Language",
+   "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
    "depends_on": "eval:doc.doctype_event==\"Value Change\";",

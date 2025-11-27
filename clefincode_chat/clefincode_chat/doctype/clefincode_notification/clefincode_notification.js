@@ -258,6 +258,9 @@ frappe.ui.form.on('Clefincode Notification', {
                         if (allow_attachment) {
                             frm.set_value("attach_document_print", 1);
                         }
+						else {
+							frm.set_value("attach_document_print", 0);
+						}
                     }
                 }
             });
