@@ -146,6 +146,7 @@ doc_events = {
         "after_insert": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "before_validate": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "validate": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "after_save": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "on_update": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "before_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "on_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
@@ -157,6 +158,7 @@ doc_events = {
         "on_update_after_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event"
     }
 }
+
 
 
 # Scheduled Tasks

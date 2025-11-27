@@ -238,3 +238,29 @@ frappe.ui.form.on('Clefincode Notification Recipient list', {
         }
     
 });
+
+
+frappe.ui.form.on('Clefincode Notification', {
+    template(frm) {
+        if (frm.doc.template) {
+            frappe.call({
+                method: "frappe.client.get",
+                args: {
+                    doctype: "Twilio Template",
+                    name: frm.doc.template
+                },
+                callback: function(r) {
+                    if (r.message) {
+                      console.log(r);
+                        let allow_attachment = r.message.attach_document_print;
+
+                       
+                        if (allow_attachment) {
+                            frm.set_value("attach_document_print", 0);
+                        }
+                    }
+                }
+            });
+        }
+    }
+	});

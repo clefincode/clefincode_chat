@@ -111,7 +111,7 @@ from frappe.core.doctype.server_script.server_script_utils import EVENT_MAP
 # ---------------------------------------------------------------------------
 HIGH_LEVEL_EVENT_MAP = {
     "New": ["after_insert"],
-    "Save": ["validate", "after_save"],
+    "Save": ["on_update"],
     "Submit": ["before_submit", "after_submit"],
     "Cancel": ["after_cancel"],
     "Value Change": ["on_value_change"],
