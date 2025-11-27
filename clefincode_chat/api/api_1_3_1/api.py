@@ -5902,47 +5902,53 @@ def get_documents_by_doctype(doctype, page=1, search=None):
 
 
 #====================================================
-def pdf(doctype, name, key, format=None,lang=None):
-        from frappe.utils.pdf import get_pdf
-       
-        try:
-            # Get the document
-            from packaging import version
-            frappe_version = frappe.__version__
-            doc = frappe.get_doc(doctype, name)
-            frappe.logger().info(f"PDF generation started for {doctype} {name}")
-            
-            if version.parse(frappe_version) >= version.parse("15.0.0"):
-                html = frappe.get_print(doctype, name, print_format=format,lang=lang, doc=doc, no_letterhead=0)
-            else:
-                frappe.local.lang = lang or "en"
-                html = frappe.get_print(doctype, name, print_format=format, doc=doc, no_letterhead=0)
+def pdf(doctype, name, key, format=None, lang=None):
+    from frappe.utils.pdf import get_pdf
 
-            # Generate HTML and PDF
-            
-            pdf_data = get_pdf(html)
+    try:
+        from packaging import version
+        frappe_version = frappe.__version__
 
-            # Save PDF to File DocType (auto-handles public/private path)
-            file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
-            _file = save_file(file_name, pdf_data, doctype, name, is_private=False)
+        doc = frappe.get_doc(doctype, name)
+        frappe.logger().info(f"PDF generation started for {doctype} {name}")
 
-            # Return the URL for download
-            return {
-                "status": "success",
-                "file_url": _file.file_url,
-                "file_name":file_name,
-                "file_id": _file.name   
-            }
+        # Set language ONLY for older versions (Frappe < 15)
+        if version.parse(frappe_version) < version.parse("15.0.0"):
+            frappe.local.lang = lang or "en"
 
-        except Exception:
-            frappe.log_error(
-                message=frappe.get_traceback(),
-                title=f"PDF error: {doctype} {name}"
-            )
-            return {
-                "status": "error",
-                "message": "Failed to generate PDF. Check logs for details."
-            }
+        # Correct get_print call - NEVER pass `lang`
+        html = frappe.get_print(
+            doctype,
+            name,
+            print_format=format,
+            doc=doc,
+            no_letterhead=0
+        )
+
+        # Generate PDF
+        pdf_data = get_pdf(html)
+
+        # Save the file
+        file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
+        _file = save_file(file_name, pdf_data, doctype, name, is_private=False)
+
+        return {
+            "status": "success",
+            "file_url": _file.file_url,
+            "file_name": file_name,
+            "file_id": _file.name
+        }
+
+    except Exception:
+        frappe.log_error(
+            message=frappe.get_traceback(),
+            title=f"PDF error: {doctype} {name}"
+        )
+        return {
+            "status": "error",
+            "message": "Failed to generate PDF. Check logs for details."
+        }
+
             
 def handle_pdf_attachment(file_url, file_name):
     """Return HTML content for a PDF file attachment, similar to the JS handle_attachment function."""

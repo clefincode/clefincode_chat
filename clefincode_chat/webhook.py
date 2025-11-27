@@ -1871,7 +1871,7 @@ def handle_attachment_twilio(file_url, file_name, message_type,
             lat = latitude or ""
             lon = longitude or ""
 
-            map_url = f"https://www.google.com/maps?q={lat},{lon}"
+            map_url = f"https://www.google.com/maps?q={lat},{lon}&hl=en"
 
             # Location icon
             icon_url = "/assets/clefincode_chat/images/location.png"
