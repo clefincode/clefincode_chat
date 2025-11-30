@@ -113,7 +113,7 @@ HIGH_LEVEL_EVENT_MAP = {
     "New": ["after_insert"],
     "Save": ["on_update"],
     "Submit": ["before_submit", "after_submit"],
-    "Cancel": ["after_cancel"],
+    "Cancel": ["on_cancel"],
     "Value Change": ["on_value_change"],
     "Method": ["method"],
     "Custom": ["custom"],
