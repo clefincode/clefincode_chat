@@ -5015,6 +5015,9 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
  
     template = None
     doctype = None
+    file_id=None
+    is_media=None
+    is_document = None
     from bs4 import BeautifulSoup
 
     content = new_message.content
@@ -5130,6 +5133,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format)
                     
                     link_attach=res['file_url']
+                    file_id=res['file_id']
                     if template.media_url:
                         attach_var= extract_placeholder(template.media_url)
                         if attach_var:
@@ -5151,7 +5155,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
             location['lable']=template.lable
             location['latitude']=template.latitude
             location['longitude']=template.longitude         
-        html = generate_whatsapp_html_preview(
+        html,file_type= generate_whatsapp_html_preview(
         body=BeautifulSoup(template.body, 'html.parser').get_text(separator='\n'),
         template_name=template.name,
         template_type=template.template_type,
@@ -5161,7 +5165,13 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         location=location
                 
     )
-    
+   
+    if file_type in ("image", "video"):
+        is_media = 1
+    if file_type=="pdf":
+        is_document = 1
+    if file_id is None:
+         file_id = get_file_id_from_url(media_url)
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
         to=f"whatsapp:{to_number}",
@@ -5181,8 +5191,8 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
     # frappe.publish_realtime(event="update_room", message=results, user= new_message.sender_email)
     #send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type) 
     
-    
-    send(content=html, user=to_number, room=new_message.chat_channel, email=to_number)
+   
+    send(content=html, user=to_number, room=new_message.chat_channel, email=to_number,is_media=is_media,is_document=is_document,file_id=file_id)
    
     frappe.logger("whatsapp").info(
         f"✅ Sent WhatsApp template '{template.name}' ({doctype}) to {to_number} | SID={message.sid}"
@@ -5496,6 +5506,8 @@ def generate_whatsapp_html_preview(
     actions = actions or []
     items = items or []
     location = location or {}
+    file_id=None
+    file_type=None
 
     # --- Replace variables ---
     final_body = body
@@ -5507,19 +5519,20 @@ def generate_whatsapp_html_preview(
     # --- Helper bubble ---
     def msg_block(text):
         safe_text = text.replace("\n", "<br>")
-        return (
-            "<div class='wa-msg-row in'>"
-            "<div class='wa-msg'>"
-            "<div class='wa-msg-text'>" + safe_text + "</div>"
-            "</div></div>"
-        )
+        return f"""
+                    <div class='wa-msg-row in'>
+                    <div class='wa-msg'>
+                        <div class='wa-msg-text'>{safe_text}</div>
+                    </div>
+                    </div>
+                    """
 
     # --- START HTML ---
-    html = (
-        "<div class='whatsapp-card'>"
-        "<header class='wa-chat-header'>" + template_name + "</header>"
-        "<div class='wa-chat-body'>"
-    )
+    html = f"""
+                    <div class='whatsapp-card'>
+                    <header class='wa-chat-header'>{template_name}</header>
+                    <div class='wa-chat-body'>
+                    """
 
     # BODY message
     html += msg_block(final_body)
@@ -5547,7 +5560,7 @@ def generate_whatsapp_html_preview(
             html += (
                 "<div class='wa-msg-row in'><div class='wa-msg'>"
                 "<div class='wa-msg-text'>"
-                "<strong>📍 Location</strong><br>"
+                "<strong> Location</strong><br>"
                 + (name + "<br>" if name else "")
                 + (address + "<br>" if address else "")
                 + f"<a href='{google_maps_url}' target='_blank'>View on Google Maps</a>"
@@ -5558,11 +5571,16 @@ def generate_whatsapp_html_preview(
 
             if ext in ["jpg", "jpeg", "png", "gif", "webp"]:
                 # IMAGE
-                html += (
-                    "<div class='wa-msg-row in'><div class='wa-msg'>"
-                    "<img src='" + media_url + "' style='max-width:100%;'>"
-                    "</div></div>"
-                )
+                html += f"""
+                        <div class='wa-msg-row in'>
+                        <div class='wa-msg'>
+                            <img src="{media_url}" style="max-width:100%;">
+                        </div>
+                        </div>
+                        """
+                file_type="image"
+                
+                
 
             elif ext in ["mp4", "mov", "webm", "m4v"]:
                 # VIDEO
@@ -5573,14 +5591,22 @@ def generate_whatsapp_html_preview(
                     "</video>"
                     "</div></div>"
                 )
+                file_type="video"
+                
 
             elif ext == "pdf":
                 # PDF
-                html += (
-                    "<div class='wa-msg-row in'><div class='wa-msg'>"
-                    "<embed src='" + media_url + "' type='application/pdf' width='100%' height='300px' />"
-                    "</div></div>"
-                )
+                html += f"""
+                                    <div class='wa-msg-row in'>
+                                    <div class='wa-msg'>
+                                        <object data="{media_url}" type="application/pdf" width="100%" height="300px">
+                                            <a href="{media_url}">View PDF</a>
+                                        </object>
+                                    </div>
+                                    </div>
+                                    """
+
+                file_type="pdf"
 
             else:
                 # UNKNOWN FILE
@@ -5591,9 +5617,9 @@ def generate_whatsapp_html_preview(
                 )
 
     # END WRAPPERS
-    html += "</div></div>"
+    html += """</div></div>"""
 
-    return html
+    return html,file_type
 #==========================================================
 @frappe.whitelist()
 def is_reference_doctype_Template_empty(docname,template_type):
