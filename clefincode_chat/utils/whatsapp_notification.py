@@ -9,7 +9,7 @@ import frappe
 HIGH_LEVEL_EVENT_MAP = {
     "New": ["after_insert"],
     "Save": ["on_update"],
-    "Submit": ["before_submit", "on_submit"],
+    "Submit": [ "on_submit"],
     "Cancel": ["on_cancel"],
    
     "Method": ["method"],

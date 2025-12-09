@@ -215,7 +215,14 @@ class ClefincodeNotification(Document):
                 key = doc.get_document_share_key()  # noqa
                 frappe.db.commit()
                
-                res=pdf(doc_data['doctype'], doc.name,key,self.print_format,self.language)
+                res = pdf(
+                            doctype=doc_data['doctype'],
+                            name=doc.name,
+                            key=key,
+                            format=self.print_format,
+                            lang=self.language,
+                            letterhead=self.letter_head   
+                        )
               
                 # frappe.log_error("dsds",[self.print_format,variables])
                 #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
