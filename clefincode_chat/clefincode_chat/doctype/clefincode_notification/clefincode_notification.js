@@ -152,7 +152,7 @@ frappe.ui.form.on('Clefincode Notification', {
                 },
                 function() {
                     // User cancelled → uncheck the box
-                    frm.set_value('attach_print', 0);
+                    frm.set_value('attach_document_print', 0);
                     frappe.msgprint(__('Operation cancelled. The media variable remains unchanged.'));
                 }
             );

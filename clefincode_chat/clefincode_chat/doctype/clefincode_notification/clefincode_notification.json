@@ -31,6 +31,7 @@
   "code",
   "attach_document_print",
   "print_format",
+  "letter_head",
   "language",
   "custom_attachment",
   "attach",
@@ -87,6 +88,7 @@
   {
    "fieldname": "help_section",
    "fieldtype": "Section Break",
+   "hidden": 1,
    "label": "Help"
   },
   {
@@ -124,6 +126,7 @@
    "description": "Mobile number field",
    "fieldname": "field_name",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Field Name",
    "mandatory_depends_on": "//eval:['DocType Event'].includes(doc.notification_type)"
   },
@@ -296,11 +299,17 @@
    "fieldname": "value_changed",
    "fieldtype": "Select",
    "label": "Value Changed"
+  },
+  {
+   "fieldname": "letter_head",
+   "fieldtype": "Link",
+   "label": "Letter Head",
+   "options": "Letter Head"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-27 14:55:26.419974",
+ "modified": "2025-12-09 16:01:41.950345",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification",

@@ -1008,7 +1008,7 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 @frappe.whitelist()
 def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0):
     try:
-        frappe.log_error("send_dd",[content, user, room , email,message_type , message_template_type])
+        # frappe.log_error("send_dd",[content, user, room , email,message_type , message_template_type])
         from packaging import version
         # Get current Frappe version
         frappe_version = frappe.__version__
@@ -1143,6 +1143,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             "utc_message_date" : send_date,
             "platform": platform 
         }
+        # frappe.log_error("test send result",content)
 
         frappe.db.set_value("ClefinCode Chat Profile", get_profile_id(email), "last_active", send_date)
         frappe.publish_realtime(event= "update_last_active", message=results)
@@ -3763,7 +3764,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 },
                 fields=["name", "friendly_name as meta_template_name"]
             )
-            # "template_status": "APPROVED"   # ✅ Added condition
+           
             for t in templates_twilio:
                   t["doctype"] = "Twilio Template"
             templates=templates_clefin + templates_twilio
@@ -5130,7 +5131,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     # frappe.db.begin()
                     key = doc.get_document_share_key()  # noqa
                     frappe.db.commit()               
-                    res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format)
+                    res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format,letterhead=template.letter_head)
                     
                     link_attach=res['file_url']
                     file_id=res['file_id']
@@ -5144,6 +5145,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     
         if attachment:
             if template.media_url:
+               
                 attach_var= extract_placeholder(template.media_url)
                 if attach_var:
                     link=attachment.lstrip('/')
@@ -5170,8 +5172,8 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         is_media = 1
     if file_type=="pdf":
         is_document = 1
-    if file_id is None:
-         file_id = get_file_id_from_url(media_url)
+    if file_id is None and media_url:
+       file_id = get_file_id_from_url(media_url)
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
         to=f"whatsapp:{to_number}",
@@ -5928,21 +5930,32 @@ def get_documents_by_doctype(doctype, page=1, search=None):
 
 
 #====================================================
-def pdf(doctype, name, key, format=None, lang=None):
-    from frappe.utils.pdf import get_pdf
+def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
+    import subprocess
+    import tempfile
+    import shutil
+    import frappe
+    from frappe.utils.file_manager import save_file
+
+    wkhtml_path = shutil.which("wkhtmltopdf")
+    if not wkhtml_path:
+        frappe.throw("wkhtmltopdf is not installed on this server.")
+
+    created_letterhead_flag = False
 
     try:
         from packaging import version
         frappe_version = frappe.__version__
 
         doc = frappe.get_doc(doctype, name)
-        frappe.logger().info(f"PDF generation started for {doctype} {name}")
 
-        # Set language ONLY for older versions (Frappe < 15)
         if version.parse(frappe_version) < version.parse("15.0.0"):
             frappe.local.lang = lang or "en"
 
-        # Correct get_print call - NEVER pass `lang`
+        if letterhead:
+            frappe.flags.current_letterhead = letterhead
+            created_letterhead_flag = True
+
         html = frappe.get_print(
             doctype,
             name,
@@ -5950,11 +5963,49 @@ def pdf(doctype, name, key, format=None, lang=None):
             doc=doc,
             no_letterhead=0
         )
+        site_url = frappe.utils.get_url()
 
-        # Generate PDF
-        pdf_data = get_pdf(html)
+        # Convert all src="/..." to src="https://your-site.com/..."
+        html = html.replace('src="/', f'src="{site_url}/')
+        html = html.replace("href=\"/", f"href=\"{site_url}/")
 
-        # Save the file
+        html_file = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+        pdf_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+
+        with open(html_file.name, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        command = [
+            wkhtml_path,
+            "--print-media-type",
+            "--margin-top", "20mm",
+            "--margin-bottom", "20mm",
+            "--margin-left", "10mm",
+            "--margin-right", "10mm",
+            "--enable-local-file-access",
+            html_file.name,
+            pdf_file.name
+        ]
+
+        # Run the command and CAPTURE STDERR/STDOUT
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        if result.returncode != 0:
+            frappe.log_error(
+                title="wkhtmltopdf error",
+                message=f"Command: {command}\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+            )
+            raise Exception("wkhtmltopdf failed. Check error log.")
+
+        # Read PDF
+        with open(pdf_file.name, "rb") as f:
+            pdf_data = f.read()
+
         file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
         _file = save_file(file_name, pdf_data, doctype, name, is_private=False)
 
@@ -5966,15 +6017,14 @@ def pdf(doctype, name, key, format=None, lang=None):
         }
 
     except Exception:
-        frappe.log_error(
-            message=frappe.get_traceback(),
-            title=f"PDF error: {doctype} {name}"
-        )
-        return {
-            "status": "error",
-            "message": "Failed to generate PDF. Check logs for details."
-        }
+        frappe.log_error(frappe.get_traceback(), f"wkhtmltopdf PDF error: {doctype} {name}")
+        return {"status": "error", "message": "PDF generation failed. Check logs."}
 
+    finally:
+        if created_letterhead_flag and hasattr(frappe.flags, "current_letterhead"):
+            del frappe.flags.current_letterhead        
+            
+            
             
 def handle_pdf_attachment(file_url, file_name):
     """Return HTML content for a PDF file attachment, similar to the JS handle_attachment function."""
@@ -5995,3 +6045,36 @@ def handle_pdf_attachment(file_url, file_name):
     </div>
     """
     return html.strip()
+import subprocess
+import tempfile
+import frappe
+
+def generate_pdf_with_wkhtml(html, options=None):
+    if options is None:
+        options = {
+            '--margin-top': '25mm',
+            '--margin-bottom': '25mm',
+            '--header-spacing': '5',
+            '--footer-spacing': '5',
+            '--enable-local-file-access': None
+        }
+
+    pdf_out = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    html_in = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+
+    with open(html_in.name, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    command = ["wkhtmltopdf"]
+
+    for k, v in options.items():
+        if v is None:
+            command.append(k)
+        else:
+            command.extend([k, v])
+
+    command.extend([html_in.name, pdf_out.name])
+
+    subprocess.run(command, check=True)
+
+    return pdf_out.name

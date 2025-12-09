@@ -146,17 +146,25 @@ doc_events = {
         "after_insert": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "before_validate": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "validate": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "before_save": "clefincode_chat.utils.whatsapp_notification.capture_old_snapshot",
         "after_save": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+
         "on_update": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+        "on_update_after_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+
+        "on_change": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+
         "before_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "on_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+
         "before_cancel": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "on_cancel": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
+
         "on_trash": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "after_delete": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "before_update_after_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
-        "on_update_after_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event"
     }
+
 }
 
 

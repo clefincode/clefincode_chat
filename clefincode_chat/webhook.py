@@ -1589,7 +1589,7 @@ def whatsapp_twillio_webhook():
         sender_number = normalize_number(form_dict.get("From"))
         receiver_number = normalize_number(form_dict.get("To"))
         message_type = "text"
-
+        sender_profile_name=form_dict.get("ProfileName")
         # =============================
         # MEDIA CHECK (Images, Videos, Audio, Documents, vCard)
         # =============================
@@ -1634,7 +1634,7 @@ def whatsapp_twillio_webhook():
             return
 
         # Retrieve or create chat profile
-        chat_profile = get_or_create_chat_profile(sender_number, sender_number)
+        chat_profile = get_or_create_chat_profile(sender_number, sender_profile_name)
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
 
         # Register message inside chat channel
