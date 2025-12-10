@@ -150,12 +150,12 @@ _patchexecuted = False
 
 
 def _patch_db_set_value_for_value_change():
-    def wrapped_set_value(doctype, name, fieldname=None, value=None, *args, **kwargs):
+    def wrapped_set_value(doctype, name, field=None, val=None, *args, **kwargs):
         
-        if isinstance(fieldname, dict):
-            values_dict = fieldname
+        if isinstance(field, dict):
+            values_dict = field
         else:
-            values_dict = {fieldname: value}
+            values_dict = {field: val}
 
         fields = list(values_dict.keys())
 
@@ -166,7 +166,7 @@ def _patch_db_set_value_for_value_change():
 
       
         if not vc_notifications:
-            return _ORIGINAL_DB_SET_VALUE(doctype, name, fieldname, value, *args, **kwargs)
+            return _ORIGINAL_DB_SET_VALUE(doctype, name, field, val, *args, **kwargs)
 
   
         try:
@@ -175,7 +175,7 @@ def _patch_db_set_value_for_value_change():
             old_values = {}
 
      
-        result = _ORIGINAL_DB_SET_VALUE(doctype, name, fieldname, value, *args, **kwargs)
+        result = _ORIGINAL_DB_SET_VALUE(doctype, name, field, val, *args, **kwargs)
 
   
         changed_fields = []
