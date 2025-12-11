@@ -3655,7 +3655,8 @@ def get_users_for_mentions(room = None):
     excepted_users_list = []
     excepted_users_list.append("Administrator")
     excepted_users_list.append("Guest")
-
+    excepted_users_list.append(frappe.session.user)
+    
     chat_members_and_contributors = []
 
     if room and get_user_type() == "website_user":
@@ -3681,6 +3682,7 @@ def get_users_for_mentions(room = None):
 
     if get_user_type() == "system_user" and is_limited_user(frappe.session.user):
         filtered_system_users = []
+     
         system_users = frappe.get_all(
             "User",
             fields=["name as id", "full_name as value" , "full_name as name"],
@@ -3692,8 +3694,10 @@ def get_users_for_mentions(room = None):
             },
             )  
         for user in system_users:
-            if not is_limited_user(user.id):
-                filtered_system_users.append(user)
+            if user.id != frappe.session.user:
+                frappe.log_error(" user.id",[user.id , frappe.session.user])
+                if not is_limited_user(user.id):
+                    filtered_system_users.append(user)
 
         return filtered_system_users
     
