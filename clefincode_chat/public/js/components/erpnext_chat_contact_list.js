@@ -154,55 +154,69 @@ export default class ChatContactList {
   }
 
   setup_contacts() {
-    this.$chat_contacts_container = $(document.createElement("div")).addClass(
-      "chat-contacts-container"
-    );
-    if (this.new_group == 0) {
-      const new_group_html = `    
+  this.$chat_contacts_container = $(document.createElement("div")).addClass(
+    "chat-contacts-container"
+  );
+
+  // New Contact button
+  if (frappe.model.can_create("ClefinCode Chat Profile")){
+  this.$chat_contacts_container.append(`
+      <div class="new-contact" style="
+          display:flex;
+          align-items:center;
+          cursor:pointer;
+          padding:10px;
+      ">
+          ${frappe.get_avatar("avatar-medium", "C")}
+          <div class="chat-profile-info" style="margin-left:10px;">
+              <div class="chat-name">New Contact</div>
+          </div>
+      </div>
+  `);
+  }
+  // New Group button (only when not already inside "new_group" mode)
+  if (this.new_group == 0) {
+    const new_group_html = `    
       <div class='chat-profile-info'>
           <div class='chat-name'>
             New group
           </div>
         </div>
       `;
-      this.$chat_contacts_container.html(
-        `<div class="new-group" style="align-items:center">${frappe.get_avatar(
-          "avatar-medium",
-          "G"
-        )} ${new_group_html}</div>`
-      );
-    }
-
-    this.chat_contacts = [];
-    
-    this.contacts.forEach((element) => {
-      // if (this.new_group == 1 && !element.user_id) {
-      //   return;
-      // }
-
-      let profile = {
-        user: this.profile.user,
-        user_email: this.profile.user_email,
-        is_admin: this.profile.is_admin,
-        time_zone: this.profile.time_zone,
-        profile_id: element.profile_id,
-        contact_name: element.full_name,
-        contact_details: element.contact_details,
-        add_member: this.add_member,
-      };
-
-      this.chat_contacts.push(
-        new ChatContact({
-          $wrapper: this.$wrapper,
-          $chat_contacts_container: this.$chat_contacts_container,
-          chat_contact_list: this,
-          profile: profile,
-        })
-      );
-    });
-    this.copy_chat_contacts = this.chat_contacts;
-    this.$chat_contact_list.append(this.$chat_contacts_container);
+    this.$chat_contacts_container.append(
+      `<div class="new-group" style="display:flex; align-items:center; cursor:pointer; padding:10px;">
+          ${frappe.get_avatar("avatar-medium","G")} 
+          ${new_group_html}
+       </div>`
+    );
   }
+
+  this.chat_contacts = [];
+  
+  this.contacts.forEach((element) => {
+    let profile = {
+      user: this.profile.user,
+      user_email: this.profile.user_email,
+      is_admin: this.profile.is_admin,
+      time_zone: this.profile.time_zone,
+      profile_id: element.profile_id,
+      contact_name: element.full_name,
+      contact_details: element.contact_details,
+      add_member: this.add_member,
+    };
+
+    this.chat_contacts.push(
+      new ChatContact({
+        $wrapper: this.$wrapper,
+        $chat_contacts_container: this.$chat_contacts_container,
+        chat_contact_list: this,
+        profile: profile,
+      })
+    );
+  });
+  this.copy_chat_contacts = this.chat_contacts;
+  this.$chat_contact_list.append(this.$chat_contacts_container);
+}
 
   fitler_contacts(query) {
     if (query && query != "") {
@@ -402,6 +416,9 @@ export default class ChatContactList {
     this.$chat_contact_list.find(".close-chat-list").on("click", function () {
       erpnext_chat_app.hide_chat_widget();
     });
+ $(document).on("click", ".new-contact", () => {
+    frappe.new_doc("ClefinCode Chat Profile");
+});
   }
 
   render() {
@@ -468,7 +485,7 @@ export default class ChatContactList {
 async function get_contacts(user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_contacts",
+    method: "clefincode_chat.api.api_1_3_1.api.get_contacts",
     args: {
       user_email: user_email,
     },

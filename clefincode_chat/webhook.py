@@ -1837,34 +1837,69 @@ def handle_attachment_twilio(file_url, file_name, message_type,
         phone = extra_data.get("phone", "")
 
         # WhatsApp-style contact preview card
-        return f"""
-        <div style="width: 240px; background: #fff; border-radius: 12px;
-                    padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    font-family: sans-serif;">
+        return  f"""
+<div style="width: 240px; background: #fff; border-radius: 12px;
+            padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-family: sans-serif;">
 
-            <!-- Avatar -->
-            <div style="display:flex; align-items:center;">
-                <div style="width:45px; height:45px; background:#dfe5e7;
-                            border-radius:50%; display:flex;
-                            justify-content:center; align-items:center;
-                            font-size:20px; color:#444;">
-                    {name[0] if name else "?"}
-                </div>
-
-                <!-- Name + Phone -->
-                <div style="margin-left:10px;">
-                    <div style="font-size:15px; font-weight:bold;">{name}</div>
-                    <div style="font-size:13px; color:#777;">{phone}</div>
-                </div>
-            </div>
-
-            <!-- Download vCard link -->
-            <div style="margin-top:10px;">
-                <a href="{file_url}" target="_blank"
-                   style="color:#027eb5; font-size:13px;">Download Contact Card</a>
-            </div>
+    <!-- Avatar -->
+    <div style="display:flex; align-items:center;">
+        <div style="width:45px; height:45px; background:#dfe5e7;
+                    border-radius:50%; display:flex;
+                    justify-content:center; align-items:center;
+                    font-size:20px; color:#444;">
+            {name[0] if name else "?"}
         </div>
-        """
+
+        <div style="margin-left:10px;">
+            <div style="font-size:15px; font-weight:bold;">{name}</div>
+            <div style="font-size:13px; color:#777;">{phone}</div>
+        </div>
+    </div>
+
+    <!-- Buttons -->
+    <div style="margin-top:15px; display:flex; flex-direction:column; gap:8px;">
+
+        <!-- Download vCard -->
+        <button onclick="window.open('{file_url}', '_blank')"
+                style="background:#00A884; color:#fff; border:none;
+                       padding:8px 12px; border-radius:8px;
+                       font-size:13px; cursor:pointer; width:100%;">
+            Download vCard
+        </button>
+
+        <!-- Create Contact -->
+        <button onclick="createFrappeContact('{phone}', 'phone', '{name}')"
+                style="background:#027eb5; color:#fff; border:none;
+                       padding:8px 12px; border-radius:8px;
+                       font-size:13px; cursor:pointer; width:100%;">
+            Create Contact
+        </button>
+
+    </div>
+</div>
+
+<script>
+function createFrappeContact(contact_info, contact_type, profile_id) {{
+    frappe.call({{
+        method: "clefincode_chat.api.api_1_3_1.api.create_contact",
+        args: {{
+            contact_info: contact_info,
+            contact_type: contact_type,
+            profile_id: profile_id
+        }},
+        callback: function(r) {{
+            if (r.message) {{
+                alert("Contact created successfully: " + r.message);
+            }} else {{
+                alert("Error creating contact");
+            }}
+        }}
+    }});
+}}
+</script>
+"""
+
 
     # =============== LOCATION MESSAGE ===============
     elif message_type == 'location':

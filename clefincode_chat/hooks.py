@@ -130,11 +130,11 @@ after_migrate  = "clefincode_chat.setup.after_migrate.after_migrate"
 doc_events = {
     "Contact": {
         "after_insert": [
-            "clefincode_chat.api.api_1_2_1.api.sync_with_chat_profile",
-            "clefincode_chat.api.api_1_2_1.api.auto_fill_contact_platform"
+            "clefincode_chat.api.api_1_3_1.api.sync_with_chat_profile",
+            "clefincode_chat.api.api_1_3_1.api.auto_fill_contact_platform"
         ],
         "on_update": [
-            "clefincode_chat.api.api_1_2_1.api.sync_with_chat_profile",
+            "clefincode_chat.api.api_1_3_1.api.sync_with_chat_profile",
         ]
     },
     "Notification Log": {

@@ -17,7 +17,204 @@ export default class ChatContact {
     this.number_of_numbers = this.get_phone_numbers().length;
     this.get_contact_details();
     this.setup();
+     window.open_manage_popup = this.open_manage_popup.bind(this);
   }
+//---------------------------------------------
+
+//---------------------------------------------
+
+open_manage_popup() {
+    const me = this;
+
+    const d = new frappe.ui.Dialog({
+        title: "Manage Contact Details",
+        fields: [
+            {
+                fieldtype: "HTML",
+                fieldname: "contacts_table_html"
+            },
+            {
+                fieldtype: "Section Break"
+            },
+            {
+                label: "Add New Row",
+                fieldname: "add_row",
+                fieldtype: "Button",
+                click: () => me.add_new_row(d)
+            }
+        ],
+        primary_action_label: "Save",
+        primary_action: () => {
+            me.save_all_contacts(d);
+            d.hide();
+        }
+    });
+
+    this.render_contacts_table(d);
+    d.show();
+}
+
+//---------------------------------------------
+// Render Contact Table
+//---------------------------------------------
+
+render_contacts_table(dialog) {
+    const me = this;
+
+    let rows = "";
+    this.profile.contact_details.forEach((cd, index) => {
+        rows += `
+            <tr data-index="${index}">
+                <td>${cd.contact_type}</td>
+                <td>${cd.contact_info}</td>
+                <td><button class="btn btn-xs btn-secondary edit-row">Edit</button></td>
+                <td><button class="btn btn-xs btn-danger delete-row">Delete</button></td>
+            </tr>
+        `;
+    });
+
+    const html = `
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Contact Info</th>
+                    <th>Edit</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+
+    dialog.fields_dict.contacts_table_html.$wrapper.html(html);
+    this.bind_row_events(dialog);
+}
+
+//---------------------------------------------
+// Bind Table Buttons (Edit/Delete)
+//---------------------------------------------
+
+bind_row_events(dialog) {
+    const me = this;
+
+    dialog.$wrapper.find(".edit-row").on("click", function () {
+        const index = $(this).closest("tr").data("index");
+        me.edit_row(dialog, index);
+    });
+
+    dialog.$wrapper.find(".delete-row").on("click", function () {
+        const index = $(this).closest("tr").data("index");
+        me.delete_row(dialog, index);
+    });
+}
+
+//---------------------------------------------
+// Edit Row Popup
+//---------------------------------------------
+
+edit_row(dialog, index) {
+    const me = this;
+    const row = me.profile.contact_details[index];
+
+    const d = new frappe.ui.Dialog({
+        title: "Edit Contact Row",
+        fields: [
+            {
+                label: "Contact Type",
+                fieldname: "contact_type",
+                fieldtype: "Select",
+                options: ["Email", "Chat", "WhatsApp", "Messenger", "Instagram", "Telegram"],
+                default: row.contact_type
+            },
+            {
+                label: "Contact Info",
+                fieldname: "contact_info",
+                fieldtype: "Data",
+                default: row.contact_info
+            }
+        ],
+        primary_action_label: "Update",
+        primary_action(values) {
+            row.contact_type = values.contact_type;
+            row.contact_info = values.contact_info;
+
+            d.hide();
+            me.render_contacts_table(); 
+            dialog.hide();
+        }
+    });
+
+    d.show();
+}
+
+//---------------------------------------------
+// Delete Row
+//---------------------------------------------
+
+delete_row(dialog, index) {
+    this.profile.contact_details.splice(index, 1);
+    this.render_contacts_table(dialog);
+}
+
+//---------------------------------------------
+// Add New Row Popup
+//---------------------------------------------
+
+add_new_row(dialog) {
+    const me = this;
+
+    const d = new frappe.ui.Dialog({
+        title: "Add New Contact Row",
+        fields: [
+            {
+                label: "Contact Type",
+                fieldname: "contact_type",
+                fieldtype: "Select",
+                options: ["Email", "Chat","Phone" ,"WhatsApp", "Messenger", "Instagram", "Telegram"]
+            },
+            {
+                label: "Contact Info",
+                fieldname: "contact_info",
+                fieldtype: "Data"
+            }
+        ],
+        primary_action_label: "Add",
+        primary_action(values) {
+            me.profile.contact_details.push(values);
+            d.hide();
+            me.render_contacts_table(dialog);
+        }
+    });
+
+    d.show();
+}
+
+//---------------------------------------------
+// Save All Contacts to Backend
+//---------------------------------------------
+
+save_all_contacts(dialog) {
+    frappe.call({
+        method: "clefincode_chat.api.api_1_3_1.api.update_profile_contacts",
+        args: {
+            profile_id: this.profile.profile_id,   // your correct ID field
+            contact_details: this.profile.contact_details
+        },
+        callback: () => {
+            frappe.show_alert("Contact details updated successfully");
+
+            this.get_contact_details(); 
+            //this.$chat_contact.remove();
+            this.setup(); 
+
+            dialog.hide();
+              if (this.chat_contact_list) {
+                this.chat_contact_list.fetch_and_setup_contacts();
+            }
+        }
+    });
+}
 
   get_contact_details() {
     const me = this;
@@ -130,7 +327,8 @@ export default class ChatContact {
     </div>
     <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">`;
     const contact_details = this.profile.contact_details;
-
+    
+    
     if(this.no_default == 1){
       for(let i = 1; i<contact_details.length; i++){
         if (contact_details[i].contact_type != "Instagram" && contact_details[i].contact_type != "Messenger" && contact_details[i].contact_type != "Telegram"){
@@ -145,7 +343,25 @@ export default class ChatContact {
         
       }
     }   
-  
+          const isUserContact = contact_details.some(cd => cd.contact_info === frappe.session.user);
+      const isAdmin = frappe.session.user === "Administrator";
+      const isSystemManager = frappe.user_roles.includes("System Manager");
+
+      // Show Manage Contact if user owns contact OR is admin OR system manager
+      if (isUserContact || isAdmin || isSystemManager) {
+      console.log("Profile");
+      console.log(this.profile);
+      const user_contact = contact_details.find(cd => cd.contact_info === frappe.session.user);
+      console.log(user_contact);
+
+        html_options += `
+            <div class="dropdown-divider"></div>
+            <a class="dropdown-item manage-contact" id="manageContactBtn">
+                <div style="margin-right:6px">⚙️</div>
+                <div>Manage Contact</div>
+            </a>
+        `;
+    }
     html_options += `</div></div>`;
 
     return html_options
@@ -159,6 +375,12 @@ export default class ChatContact {
       } else {
         this.select_contact(e.target);
       }
+    });
+     this.$chat_contact.on("click", "#manageContactBtn", () => {
+        const user_contact = me.profile.contact_details.find(cd => cd.contact_info === frappe.session.user);
+        
+        console.log("Current contact_details:", me.profile.contact_details);
+        me.open_manage_popup(user_contact);
     });
   }
 
@@ -190,6 +412,8 @@ export default class ChatContact {
           this.handle_telegram_icon_click(contact_element);
         }     
     }
+
+
 }
 
 
@@ -243,6 +467,8 @@ handle_mail_icon_click(contact_element) {
 }
 
 handle_whatsapp_icon_click() {
+   console.log("erpnext_chat_app")
+    console.log(erpnext_chat_app)
     const default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number;
     const default_whatsapp_type = erpnext_chat_app.res.default_whatsapp_type;
 
@@ -264,6 +490,14 @@ handle_whatsapp_icon_click() {
 handle_chat_contact_click() {
   const contact = this.profile.default_contact;
   const platform = this.profile.default_platform;
+  if (platform === "WhatsApp") {
+        const default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number;
+
+        if (!default_whatsapp_number) {
+            frappe.throw("You don't have a WhatsApp number");
+            return; 
+        }
+    }
 
 
   if (!contact || !platform) {
@@ -575,4 +809,5 @@ export async function check_if_contact_has_whatsapp_chat(default_whatsapp_number
     },
   });
   return await res.message.results[0];
-}
+};
+

@@ -8,7 +8,8 @@ from frappe.model.naming import make_autoname
 class ClefinCodeChatProfile(Document):
     def before_save(self):
         if self.is_guest == 1 or self.is_support == 1:
-            self.token = frappe.generate_hash()   
+            self.token = frappe.generate_hash()  
+        self.update_contact_from_details() 
     
     def before_insert(self):
         if self.is_guest == 1:
@@ -16,4 +17,89 @@ class ClefinCodeChatProfile(Document):
         elif self.is_support == 1:
             self.name = make_autoname("Support .######")
         else:
+            if not self.contact:
+                self.create_contact()
             self.name = self.contact
+    def create_contact(self):
+
+            # Create base Contact document
+            frappe.flags.skip_profile_sync = True
+            
+
+            contact = frappe.get_doc({
+                "doctype": "Contact",
+                "first_name": self.full_name or "Unknown",
+                "platform": None
+            })
+            contact.insert(ignore_permissions=True)
+
+            # Map child table (contact_details) into Contact fields
+            for detail in self.contact_details:
+
+                info = detail.contact_info
+                t = detail.type
+
+                # Email + Chat → email_ids
+                # Chat is treated like Email as requested
+                if t in ["Email", "Chat"]:
+                    contact.append("email_ids", {
+                        "email_id": info,
+                        "is_primary": detail.default
+                    })
+
+                # WhatsApp + Social networks → social_contact table
+                elif t in ["WhatsApp", "Instagram", "Messenger", "Telegram"]:
+                    contact.append("social_contact", {
+                        "platform": t,
+                        "social_id": info,
+                       
+                    })
+
+                # If marked as default, set Contact.platform
+                if detail.default:
+                    contact.platform = t
+
+            
+            contact.save(ignore_permissions=True)
+
+            # Link the created Contact back to the profile
+            self.contact = contact.name
+            frappe.flags.skip_profile_sync = False
+    def update_contact_from_details(self):
+        frappe.flags.skip_profile_sync = True
+        if not self.contact:
+            return  # No contact to update
+
+        contact = frappe.get_doc("Contact", self.contact)
+
+        # Clear existing data to rebuild it
+        contact.email_ids = []
+        contact.phone_nos = []
+        contact.social_contact = []
+        contact.platform = None
+
+        for detail in self.contact_details:
+            info = detail.contact_info
+            t = detail.type
+
+            # Email + Chat → email_ids
+            if t in ["Email", "Chat"]:
+                contact.append("email_ids", {
+                    "email_id": info,
+                    "is_primary": detail.default
+                })
+
+            # WhatsApp + other socials → social_contact
+            elif t in ["WhatsApp", "Instagram", "Messenger", "Telegram"]:
+                contact.append("social_contact", {
+                    "platform": t,
+                    "social_id": info,
+                    "is_default": detail.default
+                })
+
+            # Set platform if default
+            if detail.default:
+                contact.platform = t
+
+        contact.save(ignore_permissions=True)
+        frappe.flags.skip_profile_sync = False

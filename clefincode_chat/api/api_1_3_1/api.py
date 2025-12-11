@@ -2633,7 +2633,7 @@ def get_contacts(user_email):
     for contact in filtered_contacts:
         # Fetch contact details
         contact['contact_details'] = frappe.db.sql("""
-            SELECT contact_info, type AS contact_type, `default`
+            SELECT contact_info, type AS contact_type,verified, `default`
             FROM `tabClefinCode Chat Profile Contact Details`
             WHERE parent = %s
         """, (contact['profile_id'],), as_dict=True)
@@ -3524,6 +3524,9 @@ def get_file_as_base64(file_name):
         return None
 # ==========================================================================================
 def sync_with_chat_profile(doc , method):    
+    
+    if frappe.flags.skip_profile_sync:
+        return
     user_id = doc.user
     full_name = (doc.first_name if doc.first_name else "") + \
                 (" " + doc.middle_name if doc.middle_name else "") + \
@@ -4458,7 +4461,11 @@ def process_messenger_message(platform_gateway, messenger_customer_id , email, c
             message = BeautifulSoup(content, 'html.parser').get_text()
     send_messenger_message(new_message, platform_gateway, messenger_customer_id , message, file_type if file_type in ["image", "video", "audio", "document"] else "text", is_voice_clip, channel_doc, email)
 # ==========================================================================================
-def auto_fill_contact_platform(doc, method):        
+def auto_fill_contact_platform(doc, method):   
+    frappe.log_error("flags.skip_profile_sync",frappe.flags.skip_profile_sync)
+    if frappe.flags.skip_profile_sync:
+        return
+         
     if doc.social_contact and doc.social_contact[0].platform:
         doc.platform = doc.social_contact[0].platform
 
@@ -5019,6 +5026,8 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
     file_id=None
     is_media=None
     is_document = None
+    file_type = None
+    media_url = None
     from bs4 import BeautifulSoup
 
     content = new_message.content
@@ -5624,26 +5633,47 @@ def generate_whatsapp_html_preview(
     return html,file_type
 #==========================================================
 @frappe.whitelist()
-def is_reference_doctype_Template_empty(docname,template_type):
-  
-    if not docname:
-        frappe.throw("Docname is required")
-    if template_type=="Twilio Template":
+def is_reference_doctype_Template_empty(docname, template_type):
+
+    try:
+        # Validate input
+        if not docname:
+            frappe.throw("Docname is required")
+
+        if template_type == "Twilio Template":
             doc = frappe.get_doc("Twilio Template", docname)
             value = doc.reference_doctype
 
             return {
-                "empty": not bool(value),
-                "value": value
+                "empty": 0 if value else 1,
+                "value": value or ""
             }
-    if template_type=="Clefincode Chat Template":
-          doc = frappe.get_doc("Clefincode Chat Template", docname)
-          value = doc.reference_doctype
 
-          return {
-                "empty": not bool(value),
-                "value": value
+        if template_type == "ClefinCode WhatsApp Template":
+            # Always empty for this template
+            return {
+                "empty": 1,
+                "value": ""
             }
+
+        # Unsupported template type
+        return {
+            "error": 1,
+            "message": f"Unsupported template_type: {template_type}"
+        }
+
+    except Exception as e:
+        # Log full traceback in error log
+        frappe.log_error(
+            title="Error in is_reference_doctype_Template_empty",
+            message=frappe.get_traceback()
+        )
+
+        # Return safe error response
+        return {
+            "error": 1,
+            "message": str(e)
+        }
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 import re
@@ -6045,6 +6075,219 @@ def handle_pdf_attachment(file_url, file_name):
     </div>
     """
     return html.strip()
+########################################################################################################################
+
+@frappe.whitelist()
+def update_profile_contacts(profile_id, contact_details):
+    frappe.log_error("contact_details",contact_details)
+    import json
+
+    # Convert JSON string
+    if isinstance(contact_details, str):
+        contact_details = json.loads(contact_details)
+
+    # Load profile
+    doc = frappe.get_doc("ClefinCode Chat Profile", profile_id)
+
+    # Old list
+    old_list = [row.contact_info for row in doc.contact_details]
+
+    # New list
+    new_list = [row.get("contact_info") for row in contact_details]
+
+    # Detect NEW contacts
+    new_contacts = [c for c in new_list if c not in old_list]
+
+    # Validate new contacts
+    for new_contact in new_contacts:
+        validate_contact_unique(new_contact, profile_id)
+
+    # Detect deleted contacts
+    deleted_contacts = [c for c in old_list if c not in new_list]
+
+    # Process deleted contacts (rooms, etc.)
+    process_deleted_contacts(deleted_contacts, profile_id)
+
+    # -----------------------------------------
+    # ❗ Delete removed child table rows
+    # -----------------------------------------
+    doc.contact_details = [
+        row for row in doc.contact_details
+        if row.contact_info not in deleted_contacts
+    ]
+
+    # -----------------------------------------
+    # Add only NEW contacts to child table
+    # -----------------------------------------
+    for row in contact_details:
+        contact_info = row.get("contact_info")
+        contact_type = row.get("contact_type")
+       
+
+        if contact_info in new_contacts:
+            # Add row
+            frappe.log_error("new_contacts",new_contacts)
+            doc.append("contact_details", {
+                "contact_info": contact_info,
+                "type": contact_type,
+                "default": row.get("default", 0),
+                "verified": row.get("verified", 0),
+                "user": row.get("user", frappe.session.user)
+            })
+
+            # Create ERPNext Contact
+           # create_contact(contact_info, contact_type, profile_id)
+
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "message": "Contact details updated, new contacts created, deleted contacts removed."
+    }
+
+def validate_contact_unique(contact_info, current_profile_id):
+    """
+    Checks if the contact exists in another profile.
+    Only new contacts are validated.
+    """
+    result = frappe.db.sql("""
+        SELECT parent
+        FROM `tabClefinCode Chat Profile Contact Details`
+        WHERE contact_info = %s
+        AND parent != %s
+        LIMIT 1
+    """, (contact_info, current_profile_id), as_dict=True)
+
+    if result:
+        profile = result[0].parent
+        frappe.throw(
+            f"This contact ({contact_info}) already exists in another profile ({profile}). You cannot add it again."
+        )
+def process_deleted_contacts(deleted_list, profile_id):
+    """
+    For each deleted contact:
+    - Find all chat rooms that include this user inside Chat Channel User child table
+    - Close every chat room by setting chat_status = 'Closed'
+    """
+
+    if not deleted_list:
+        return
+
+    for deleted_contact in deleted_list:
+
+        # 1) Find all rooms that contain this contact
+        rooms = frappe.db.get_all(
+            "ClefinCode Chat Channel User",
+            filters={"user": deleted_contact},
+            fields=["parent"]
+        )
+
+        if not rooms:
+            frappe.logger().info(f"No chat rooms found for deleted contact: {deleted_contact}")
+            continue
+
+        # 2) Close each room
+        for r in rooms:
+            room_name = r.get("parent")
+
+            frappe.logger().info(
+                f"Closing chat room {room_name} because contact {deleted_contact} was removed."
+            )
+
+            frappe.db.set_value(
+                "ClefinCode Chat Channel",
+                room_name,
+                "chat_status",
+                "Closed"
+            )
+
+        frappe.db.commit()
+@frappe.whitelist()
+def create_contact(contact_info, contact_type, profile_id):
+    """
+    Update the Contact linked to this profile (via Profile.contact field)
+    without creating a new Contact.
+    Always update the existing Contact instead of creating a new one.
+    """
+
+    # 1) Load the Chat Profile document
+    profile = frappe.get_doc("ClefinCode Chat Profile", profile_id)
+
+    # 2) Ensure the profile already has a linked Contact
+    if not profile.contact:
+        frappe.throw("This profile does not have a Contact linked to it.")
+
+    contact_name = profile.contact
+
+    # 3) Load the linked Contact document
+    doc = frappe.get_doc("Contact", contact_name)
+
+    # 4) Update fields based on the contact type
+    ctype = contact_type.lower()
+
+    if ctype == "phone":
+        if doc.phone_nos:
+            doc.phone_nos[0].phone = contact_info
+        else:
+            doc.append("phone_nos", {"phone": contact_info})
+
+    elif ctype == "email":
+        if doc.email_ids:
+            doc.email_ids[0].email_id = contact_info
+        else:
+            doc.append("email_ids", {"email_id": contact_info})
+
+    else:
+        if doc.social_contact:
+            doc.social_contact[0].social_id = contact_info
+            doc.social_contact[0].platform = contact_type
+        else:
+            doc.append("social_contact", {
+                "platform": contact_type,
+                "social_id": contact_info
+            })
+
+    # 5) Save Contact document with updated data
+    doc.save(ignore_permissions=True)
+
+    return doc.name
+
+
+
+@frappe.whitelist()
+def get_contact_by_profile(profile_id):
+    # Fetch the main contact record
+    contact = frappe.db.sql("""
+        SELECT 
+            ChatProfile.name AS profile_id,
+            ChatProfile.full_name,
+            Contact.user AS user_id,
+            User.enabled
+        FROM `tabClefinCode Chat Profile` AS ChatProfile
+        INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
+        LEFT JOIN `tabUser` AS User ON User.name = Contact.user
+        WHERE ChatProfile.name = %s
+        LIMIT 1
+    """, (profile_id,), as_dict=True)
+
+    if not contact:
+        return {"results": {}}
+
+    contact = contact[0]
+
+    # Fetch contact details
+    contact["contact_details"] = frappe.db.sql("""
+        SELECT 
+            contact_info, 
+            type AS contact_type, 
+            verified, 
+            `default`
+        FROM `tabClefinCode Chat Profile Contact Details`
+        WHERE parent = %s
+    """, (profile_id,), as_dict=True)
+
+    return {"results": contact}
 import subprocess
 import tempfile
 import frappe
