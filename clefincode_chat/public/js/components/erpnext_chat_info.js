@@ -41,7 +41,7 @@ export default class ChatInfo {
                 me.profile = r.message.results;
             }
 
-           
+            console.log("r.message.results",r.message.results);
             const d = new frappe.ui.Dialog({
                 title: "Manage Contact Details",
                 fields: [

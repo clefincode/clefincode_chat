@@ -1736,10 +1736,11 @@ def whatsapp_twillio_webhook():
             file_name=file_name,
             message_type=message_type
         )
-
+        message_type=form_dict.get("MessageType")
         is_media = 1 if message_type in ["image", "video", "sticker"] else 0
         is_document = 1 if message_type == "document" else 0
-        is_voice_clip = 1 if message_type not in ["image", "video", "document"] else 0
+        is_voice_clip = 1 if message_type  in ["audio"] else 0
+        frappe.log_error("is_voice_clip",is_voice_clip)
 
         send(
             content=content + f"<p>{message_body}</p>",

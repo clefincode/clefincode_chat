@@ -6262,11 +6262,11 @@ def get_contact_by_profile(profile_id):
         SELECT 
             ChatProfile.name AS profile_id,
             ChatProfile.full_name,
-            Contact.user AS user_id,
-            User.enabled
+            Contact.user AS user_id
+            
         FROM `tabClefinCode Chat Profile` AS ChatProfile
         INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
-        LEFT JOIN `tabUser` AS User ON User.name = Contact.user
+        
         WHERE ChatProfile.name = %s
         LIMIT 1
     """, (profile_id,), as_dict=True)
