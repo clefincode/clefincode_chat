@@ -35,6 +35,8 @@ import tempfile
 from frappe.utils import now_datetime
 from frappe.utils import get_files_path, get_url
 from frappe.utils.file_manager import save_file
+from frappe.utils.pdf import get_pdf
+
 
 
 
@@ -5145,7 +5147,14 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     key = doc.get_document_share_key()  # noqa
                     frappe.db.commit()               
                     res=pdf(template.reference_doctype, doc.name,key,template.print_format,template.language_format,letterhead=template.letter_head)
-                    
+                    # res = generate_pdf_with_getpdf(
+                    #         doctype=template.reference_doctype,
+                    #         name=doc.name,
+                    #         print_format=template.print_format,
+                    #         lang=template.language_format,
+                    #         letterhead=template.letter_head,
+                    #         is_private=False
+                    #     )
                     link_attach=res['file_url']
                     file_id=res['file_id']
                     if template.media_url:
@@ -5652,6 +5661,15 @@ def is_reference_doctype_Template_empty(docname, template_type):
                 "empty": 0 if value else 1,
                 "value": value or ""
             }
+            
+        if template_type == "Clefincode Chat Template":
+            doc = frappe.get_doc("Clefincode Chat Template", docname)
+            value = doc.reference_doctype
+
+            return {
+                "empty": 0 if value else 1,
+                "value": value or ""
+            }
 
         if template_type == "ClefinCode WhatsApp Template":
             # Always empty for this template
@@ -5822,13 +5840,14 @@ def send_clefincode_chat_template(new_message):
         frappe.db.commit()
 
         # Generate PDF
-        pdf_result = pdf(
-            doc.doctype,
-            doc.name,
-            key,
-            template.print_format,
-            template.language
-        )
+        pdf_result = generate_pdf_with_getpdf(
+                            doctype=doc.doctype,
+                            name=doc.name,
+                            print_format=template.print_format,
+                            lang=template.language,
+                            letterhead=template.letter_head,
+                            is_private=False
+                        )
 
         # Build download link
         pdf_url = frappe.utils.get_url(pdf_result['file_url'])
@@ -6325,3 +6344,51 @@ def generate_pdf_with_wkhtml(html, options=None):
     subprocess.run(command, check=True)
 
     return pdf_out.name
+def generate_pdf_with_getpdf(
+    doctype,
+    name,
+    print_format=None,
+    lang=None,
+    letterhead=None,
+    is_private=False
+):
+    import frappe
+
+    doc = frappe.get_doc(doctype, name)
+
+ 
+    if lang:
+        frappe.local.lang = lang
+
+    # Letterhead
+    if letterhead:
+        frappe.flags.current_letterhead = letterhead
+
+    # Generate HTML
+    html = frappe.get_print(
+        doctype,
+        name,
+        print_format=print_format,
+        doc=doc,
+        no_letterhead=0
+    )
+
+    # Generate PDF (bytes)
+    pdf_data = get_pdf(html)
+
+    # Save file
+    file_name = f"{doctype}_{name}.pdf"
+    file_doc = save_file(
+        file_name,
+        pdf_data,
+        doctype,
+        name,
+        is_private=is_private
+    )
+
+    return {
+        "status": "success",
+        "file_url": file_doc.file_url,
+        "file_name": file_name,
+        "file_id": file_doc.name
+    }

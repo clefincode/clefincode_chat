@@ -49,11 +49,11 @@ class ClefinCodeChatProfile(Document):
 
                 # WhatsApp + Social networks → social_contact table
                 elif t in ["WhatsApp", "Instagram", "Messenger", "Telegram"]:
-                    contact.append("social_contact", {
-                        "platform": t,
-                        "social_id": info,
-                       
-                    })
+                        if has_field(contact, "social_contact"):
+                            contact.append("social_contact", {
+                                "platform": t,
+                                "social_id": info,
+                            })
 
                 # If marked as default, set Contact.platform
                 if detail.default:
@@ -91,11 +91,12 @@ class ClefinCodeChatProfile(Document):
 
             # WhatsApp + other socials → social_contact
             elif t in ["WhatsApp", "Instagram", "Messenger", "Telegram"]:
-                contact.append("social_contact", {
-                    "platform": t,
-                    "social_id": info,
-                    "is_default": detail.default
-                })
+                if has_field(contact, "social_contact"):
+                    contact.append("social_contact", {
+                        "platform": t,
+                        "social_id": info,
+                        "is_default": detail.default
+                    })
 
             # Set platform if default
             if detail.default:
@@ -103,3 +104,6 @@ class ClefinCodeChatProfile(Document):
 
         contact.save(ignore_permissions=True)
         frappe.flags.skip_profile_sync = False
+        
+def has_field(doc, fieldname):
+    return bool(doc.meta.get_field(fieldname))
