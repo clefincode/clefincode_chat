@@ -67,7 +67,7 @@
    "fieldtype": "Link",
    "label": "Template",
    "mandatory_depends_on": "eval:doc.message_type=='Template';",
-   "options": "Twilio Template"
+   "options": "ClefinCode Twilio Template"
   },
   {
    "fieldname": "column_break_12",
@@ -220,7 +220,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-11-23 17:11:01.769423",
+ "modified": "2025-12-16 12:14:17.818948",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Chat Template",

@@ -1,0 +1,383 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:friendly_name",
+ "creation": "2025-12-16 15:19:19.320706",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "friendly_name",
+  "language",
+  "template_type",
+  "reference_doctype",
+  "column_break_tvls",
+  "template_status",
+  "whatsapp_template_id",
+  "category",
+  "section_break_isgp",
+  "body",
+  "section_break_qbs7",
+  "subtitle",
+  "header_text",
+  "footer",
+  "pay_section_section",
+  "column_break_moxn",
+  "payment_id",
+  "merchant_name",
+  "country_code",
+  "currency_code",
+  "order_expiration",
+  "order_expiration_description",
+  "subtotal_amount",
+  "total_amount",
+  "column_break_nwap",
+  "pix_type",
+  "code",
+  "key_type",
+  "key",
+  "status",
+  "location_section",
+  "label",
+  "latitude",
+  "longitude",
+  "column_break_hhgy",
+  "section_break_yzst",
+  "media_url",
+  "cards",
+  "actions",
+  "variables",
+  "call_to_action",
+  "items",
+  "section_break_44",
+  "attach_document_print",
+  "print_format",
+  "language_format",
+  "letter_head",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "default": "TWILIO-.YYYY.-",
+   "fieldname": "naming_series",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Naming Series",
+   "reqd": 1
+  },
+  {
+   "fieldname": "friendly_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Friendly Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "en",
+   "fieldname": "language",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Language",
+   "options": "\nen\nes\nfr\nde\nit\npt\nar\nhi\nja\nko\nzh\nru",
+   "reqd": 1
+  },
+  {
+   "fieldname": "template_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Template Type",
+   "options": "\ntwilio/text\ntwilio/media\ntwilio/quick-reply\ntwilio/call-to-action\ntwilio/carousel\ntwilio/list-picker\ntwilio/flows\ntwilio/card",
+   "reqd": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference Doctype",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "column_break_tvls",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "template_status",
+   "fieldtype": "Select",
+   "label": "Template Status",
+   "options": "PENDING\nAPPROVED\nREJECTED"
+  },
+  {
+   "fieldname": "whatsapp_template_id",
+   "fieldtype": "Data",
+   "label": "WhatsApp Template ID"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Marketing\nUtility\nAuthentication"
+  },
+  {
+   "fieldname": "section_break_isgp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Text Editor",
+   "label": "Body"
+  },
+  {
+   "fieldname": "section_break_qbs7",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'twilio/call-to-action'||'twilio/card';",
+   "fieldname": "subtitle",
+   "fieldtype": "Data",
+   "label": "subtitle"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'whatsapp/card';",
+   "fieldname": "header_text",
+   "fieldtype": "Data",
+   "label": "Header_text"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'whatsapp/card';",
+   "fieldname": "footer",
+   "fieldtype": "Data",
+   "label": "Footer"
+  },
+  {
+   "depends_on": "eval:doc.template_type=='twilio/pay'",
+   "fieldname": "pay_section_section",
+   "fieldtype": "Section Break",
+   "label": "Pay section"
+  },
+  {
+   "fieldname": "column_break_moxn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "payment_id",
+   "fieldtype": "Data",
+   "label": "Payment id"
+  },
+  {
+   "fieldname": "merchant_name",
+   "fieldtype": "Data",
+   "label": "Merchant Name"
+  },
+  {
+   "fieldname": "country_code",
+   "fieldtype": "Link",
+   "label": "Country Code",
+   "options": "Country"
+  },
+  {
+   "fieldname": "currency_code",
+   "fieldtype": "Link",
+   "label": "Currency Code",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "order_expiration",
+   "fieldtype": "Int",
+   "label": "Order Expiration"
+  },
+  {
+   "fieldname": "order_expiration_description",
+   "fieldtype": "Data",
+   "label": "Order Expiration Description"
+  },
+  {
+   "fieldname": "subtotal_amount",
+   "fieldtype": "Float",
+   "label": "Subtotal Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_amount",
+   "fieldtype": "Float",
+   "label": "Total Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_nwap",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pix_type",
+   "fieldtype": "Select",
+   "label": "Pix Type",
+   "options": "\nORDER_DETAILS\nORDER_STATUS"
+  },
+  {
+   "depends_on": "eval:doc.pix_type=='ORDER_DETAILS';",
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "label": "Code"
+  },
+  {
+   "depends_on": "eval:doc.pix_type=='ORDER_DETAILS';",
+   "fieldname": "key_type",
+   "fieldtype": "Select",
+   "label": "Key Type",
+   "options": "CPF\nCNPJ\nEMAIL\nPHONE\nEVP"
+  },
+  {
+   "depends_on": "eval:doc.pix_type=='ORDER_DETAILS';",
+   "fieldname": "key",
+   "fieldtype": "Data",
+   "label": "Key"
+  },
+  {
+   "depends_on": "eval:doc.pix_type=='ORDER_STATUS';",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "status",
+   "options": "pending\nprocessing\npartially-shipped\nshipped\ncompleted\ncanceled"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'twilio/location'",
+   "fieldname": "location_section",
+   "fieldtype": "Section Break",
+   "label": "Location"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'twilio/location'",
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "label": "Lable"
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Data",
+   "label": "Latitude"
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Data",
+   "label": "Longitude"
+  },
+  {
+   "fieldname": "column_break_hhgy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_yzst",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:['twilio/media', 'twilio/card', 'whatsapp/card'].includes(doc.template_type)",
+   "fieldname": "media_url",
+   "fieldtype": "Small Text",
+   "label": "Media URL"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'twilio/carousel'",
+   "fieldname": "cards",
+   "fieldtype": "Table",
+   "label": "Cards",
+   "options": "CiC Twilio Template Card"
+  },
+  {
+   "fieldname": "actions",
+   "fieldtype": "Table",
+   "label": "actions",
+   "options": "CiC Twilio Template  action"
+  },
+  {
+   "fieldname": "variables",
+   "fieldtype": "Table",
+   "label": "Variables",
+   "options": "CiC Twilio Template Variable Mapping"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'twilio/call-to-action'||doc.template_type == 'twilio/card';",
+   "fieldname": "call_to_action",
+   "fieldtype": "Table",
+   "label": "Call to action",
+   "options": "CiC Twilio Template Call to action"
+  },
+  {
+   "depends_on": "eval:doc.template_type == 'twilio/list-picker'||doc.template_type == 'twilio/pay'",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "CiC Twilio Template Item"
+  },
+  {
+   "fieldname": "section_break_44",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "attach_document_print",
+   "fieldtype": "Check",
+   "label": " Attach Document Print"
+  },
+  {
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "language_format",
+   "fieldtype": "Link",
+   "label": "Language format",
+   "options": "Language"
+  },
+  {
+   "fieldname": "letter_head",
+   "fieldtype": "Link",
+   "label": "Letter Head",
+   "options": "Letter Head"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "CiC Twilio Template",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2025-12-16 15:53:27.984040",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "CiC Twilio Template",
+ "name_case": "UPPER CASE",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "friendly_name",
+ "translated_doctype": 1
+}

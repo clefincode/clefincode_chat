@@ -114,7 +114,7 @@
    "fieldtype": "Link",
    "label": "Template",
    "mandatory_depends_on": "eval:doc.message_type=='Template';",
-   "options": "Twilio Template"
+   "options": "CiC Twilio Template"
   },
   {
    "fieldname": "condition",
@@ -148,8 +148,8 @@
    "default": "0",
    "fieldname": "attach_document_print",
    "fieldtype": "Check",
-   "label": " Attach Document Print"
- 
+   "label": " Attach Document Print",
+   "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
    "default": "0",
@@ -257,7 +257,7 @@
    "fieldname": "variables",
    "fieldtype": "Table",
    "label": "Variables",
-   "options": "Twilio Template Variable Mapping"
+   "options": "CiC Twilio Template Variable Mapping Notification"
   },
   {
    "depends_on": "eval:doc.message_type=='Template';",
@@ -283,16 +283,16 @@
    "fieldname": "print_format",
    "fieldtype": "Link",
    "label": "Print Format",
-   "options": "Print Format"
-  
+   "options": "Print Format",
+   "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
    "depends_on": "attach_document_print",
    "fieldname": "language",
    "fieldtype": "Link",
    "label": "Language",
-   "options": "Language"
-   
+   "options": "Language",
+   "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
    "depends_on": "eval:doc.doctype_event==\"Value Change\";",
@@ -309,7 +309,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-12-09 16:01:41.950345",
+ "modified": "2025-12-16 15:58:51.099971",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification",

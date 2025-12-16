@@ -98,6 +98,7 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
                 apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default"))),
                 )
                 messaging.send(message)
+                frappe.log("send_notification_via_firebase",message)
 
             except Exception as e:
                 frappe.log_error(f"Android Error in sending notifications: {str(e)}")

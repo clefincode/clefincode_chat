@@ -1,3 +1,4 @@
+
 import {
   scroll_to_bottom,
   get_date_from_now,
@@ -3699,7 +3700,7 @@ async function check_reference_doctype_empty(docname,template_type) {
     method: "clefincode_chat.api.api_1_3_1.api.is_reference_doctype_Template_empty",
     args: { docname,template_type },
   });
-
+  
   return res.message; // { empty: true/false, value: "DocType" }
 }
 
