@@ -159,7 +159,7 @@ frappe.ui.form.on('Clefincode Notification', {
         }
     }
 });
-frappe.ui.form.on('Twilio Template Variable Mapping', {
+frappe.ui.form.on('CiC Twilio Template Variable Mapping Notification', {
     variables_add: function(frm, cdt, cdn) {
         // Triggered when a new row is added to the "variables" table
         let row = locals[cdt][cdn];
@@ -246,7 +246,7 @@ frappe.ui.form.on('Clefincode Notification', {
             frappe.call({
                 method: "frappe.client.get",
                 args: {
-                    doctype: "Twilio Template",
+                    doctype: "CiC Twilio Template",
                     name: frm.doc.template
                 },
                 callback: function(r) {

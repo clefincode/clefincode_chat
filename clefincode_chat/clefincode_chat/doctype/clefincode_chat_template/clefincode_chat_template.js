@@ -36,7 +36,7 @@ frappe.ui.form.on('Clefincode Chat Template', {
 });
 
 // Child Table Script
-frappe.ui.form.on("Twilio Template Variable Mapping2", {
+frappe.ui.form.on("CiC Twilio Template Variable Mapping", {
   variables_add: function(frm, cdt, cdn) {
     console.log("🔗 Available options:", frm.link_filter_options);
 
@@ -63,7 +63,7 @@ frappe.ui.form.on("Twilio Template Variable Mapping2", {
     }
   }
 });
-frappe.ui.form.on("Twilio Template Variable Mapping2", {
+frappe.ui.form.on("CiC Twilio Template Variable Mapping", {
   source(frm, cdt, cdn) {
     console.log("sdsds");
     const row = locals[cdt][cdn];

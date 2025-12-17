@@ -318,11 +318,11 @@ class CiCTwilioTemplate(Document):
                         'label': str(b.label),
                         'quantity': str(b.quantity),
                         'id': str(b.id),
-                        'amount': "{:.2f}".format(float(b.amount))  # تحويل الرقم إلى نص بصيغة 2 decimal
+                        'amount': "{:.2f}".format(float(b.amount))  
                     }
                     items_list.append(item)
 
-                # تحويل المصفوفة إلى JSON string
+              
                  items_string = json.dumps(items_list)
                 
                  types['twilio/pay'] = {'payment_id':self.payment_id,'body':body,
@@ -353,10 +353,9 @@ class CiCTwilioTemplate(Document):
                 'variables': variables,
                 'types': types
             }
-            frappe.log_error("twillio template",payload)
 
             # 1) create content
-            frappe.log_error("template submit",payload)
+
             create_url = "https://content.twilio.com/v1/Content"
             try:
                 create_resp = requests.post(create_url, json=payload, auth=HTTPBasicAuth(account_sid, auth_token), timeout=30)
@@ -374,25 +373,25 @@ class CiCTwilioTemplate(Document):
             if create_resp.status_code >= 400:
                 frappe.log_error( "twilio_create_content_error",create_resp.text)
               #  frappe.throw(f"Twilio create content failed: {create_resp.status_code} - {create_resp.text}")
-            frappe.log_error("post",create_data)
+            
             content_sid = create_data.get("sid")
             
             if not content_sid:
                 frappe.throw(f"No content SID returned from Twilio: {create_data}")
            
             # save content sid as whatsapp_template_id
-            frappe.db.set_value("Twilio Template", self.name, 
+            frappe.db.set_value("CiC Twilio Template", self.name, 
                     "whatsapp_template_id", str(content_sid)
                     
                 )
             
             frappe.db.commit()
             frappe.db.commit()
-            frappe.log_error("debug_after_save", {
-                "name": self.name,
-                "id": self.whatsapp_template_id,
-                "status": self.template_status
-            })
+            # frappe.log_error("debug_after_save", {
+            #     "name": self.name,
+            #     "id": self.whatsapp_template_id,
+            #     "status": self.template_status
+            # })
 
             # 2) submit approval for whatsapp (name must be lowercase+underscores)
             approve_url = f"https://content.twilio.com/v1/Content/{content_sid}/ApprovalRequests/whatsapp"
@@ -439,9 +438,7 @@ class CiCTwilioTemplate(Document):
                     "rejected": "REJECTED",
                     "failed": "REJECTED"
                 }
-                frappe.log_error("template twilio_status",twilio_status)
                 mapped_status = _status_map.get(twilio_status, "PENDING")
-                frappe.log_error("template mapped_status",mapped_status)
 
                 # success: store approval response (status may be 'received' or 'pending')
                 frappe.db.set_value(self.doctype, self.name, "template_status", mapped_status)
@@ -511,7 +508,7 @@ class CiCTwilioTemplate(Document):
 @frappe.whitelist()
 def check_status(docname):
     try:
-        frappe.log_error(f"🔍 Checking status for template: {docname}")
+        
 
         # Load the document
         template = frappe.get_doc("CiC Twilio Template", docname)
@@ -549,7 +546,7 @@ def check_status(docname):
 
             # Update the template status
             frappe.db.set_value(
-                "Twilio Template",
+                "CiC Twilio Template",
                 docname,
                 {
                     "template_status": status
@@ -563,7 +560,7 @@ def check_status(docname):
         return " Invalid response from Twilio."
 
     except Exception as e:
-        frappe.log_error(f"check_single_twilio_template_status error: {str(e)}", "Twilio Template Checker")
+        frappe.log_error(f"check_single_twilio_template_status error: {str(e)}", "CiC Twilio Template Checker")
         return f" Error: {str(e)}"
     
     

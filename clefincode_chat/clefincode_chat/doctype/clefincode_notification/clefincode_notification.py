@@ -48,7 +48,7 @@ class ClefincodeNotification(Document):
                     frappe.throw("Please select a template before enabling 'Attach Print'.")
 
                 # Fetch the linked Template document
-                template = frappe.get_doc("Twilio Template", self.template)
+                template = frappe.get_doc("CiC Twilio Template", self.template)
 
                 # Get the media URL from the template
                 temp_url = template.media_url or ""
@@ -62,7 +62,6 @@ class ClefincodeNotification(Document):
                 base_url = base_url.rstrip('/')
                 media_domain = urlparse(media_url).hostname
                 base_domain = urlparse(base_url).hostname
-                # frappe.log_error("base url",[media_domain,base_domain])
 
                 # Compare media_url with the base site URL
                 if  media_domain != base_domain:
@@ -91,8 +90,7 @@ class ClefincodeNotification(Document):
                 ))
     def send_template_message(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
         doc_data = doc.as_dict()
-        # frappe.log_error("doc_data",[doc_data])
-        #frappe.log_error("doc_profile",[doc.profile_id])
+       
        
         recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
             {"parent": self.name},
@@ -107,7 +105,7 @@ class ClefincodeNotification(Document):
         default_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", {"user": self.owner}, "name")
         
         data= check_if_contact_has_chat(self.owner, contact, "WhatsApp")
-        # frappe.log_error("dsds",[self.owner, contact, "WhatsApp"])
+       
         results = data.get("results", {})
         
 
@@ -128,7 +126,7 @@ class ClefincodeNotification(Document):
             results = channel.get("results", [])
 
             room = results[0].get("room") if results else None
-            # frappe.log_error("room",room)
+            
         
         cond = (self.condition or "").strip()
         if cond and not ignore_condition:
@@ -144,11 +142,7 @@ class ClefincodeNotification(Document):
                         f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())} status : {doc.status} "
                     )
                     return
-                # else:
-                #     # frappe.log_error(
-                #     #     "ClefincodeNotification: condition  met",
-                #     #     f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: status : {doc.status} "
-                #     # )
+               
                
             except Exception as e:
                 
@@ -171,20 +165,31 @@ class ClefincodeNotification(Document):
         attachment=None
         if self.message_type=="Template":  
                 content=self.template+","+doc.name    
-                # frappe.log_error("notification from template",content)
                 if self.attach_document_print:
                     # frappe.db.begin()
                     key = doc.get_document_share_key()  # noqa
                     frappe.db.commit()
-                
-                    res = pdf(
+                    from packaging import version
+                    frappe_version = frappe.__version__
+                    if version.parse(frappe_version) < version.parse("15.0.0"):
+                           res =pdf(
                             doctype=doc_data['doctype'],
                             name=doc.name,
                             key=key,
                             format=self.print_format,
                             lang=self.language,
                             letterhead=self.letter_head   
-                        )
+                        )  
+                    else:
+                        res = generate_pdf_with_getpdf(
+                                doctype=doc_data['doctype'],
+                                name=doc.name,
+                                print_format=self.print_format,
+                                lang=self.language,
+                                letterhead=self.letter_head,
+                                is_private=False
+                            )
+                   
                     attachment=res['file_url']
                       
 
@@ -209,22 +214,32 @@ class ClefincodeNotification(Document):
                     )
             #send_whatsapp_message_twilio_notification( "14155238886", to_number, message, "text")
             send(body_preview, get_profile_id(self.owner), room , self.owner )
-            # frappe.log_error("test")
             if self.attach_document_print:
                 # frappe.db.begin()
                 key = doc.get_document_share_key()  # noqa
                 frappe.db.commit()
                
-                res = pdf(
+                from packaging import version
+                frappe_version = frappe.__version__
+                if version.parse(frappe_version) < version.parse("15.0.0"):
+                           res =pdf(
                             doctype=doc_data['doctype'],
                             name=doc.name,
                             key=key,
                             format=self.print_format,
                             lang=self.language,
                             letterhead=self.letter_head   
-                        )
+                        )  
+                else:
+                        res = generate_pdf_with_getpdf(
+                                doctype=doc_data['doctype'],
+                                name=doc.name,
+                                print_format=self.print_format,
+                                lang=self.language,
+                                letterhead=self.letter_head,
+                                is_private=False
+                            )
               
-                # frappe.log_error("dsds",[self.print_format,variables])
                 #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
                 send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
         if doc_data and self.set_property_after_alert and self.property_value:
@@ -292,19 +307,19 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
         doc = frappe.get_doc(doctype, name)
         frappe.logger().info(f"[PDF] Generating PDF via wkhtmltopdf for {doctype} {name}")
 
-        # 2️⃣ Apply language settings
+        # Apply language settings
         if version.parse(frappe_version) >= version.parse("15.0.0"):
             from frappe.translate import set_default_language
             set_default_language(lang)
         else:
             frappe.local.lang = lang or "en"
 
-        # 3️⃣ Apply specific letterhead (Solution 4)
+        #  Apply specific letterhead (Solution 4)
         if letterhead:
             frappe.flags.current_letterhead = letterhead
             created_letterhead_flag = True
 
-        # 4️⃣ Render print HTML with letterhead enabled
+        #  Render print HTML with letterhead enabled
         html = frappe.get_print(
             doctype,
             name,
@@ -313,7 +328,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             no_letterhead=0
         )
 
-        # 5️⃣ Convert relative paths → absolute URLs
+        #  Convert relative paths → absolute URLs
         site_url = frappe.utils.get_url()
         html = html.replace('src="/', f'src="{site_url}/')
         html = html.replace('href="/', f'href="{site_url}/')
@@ -326,7 +341,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
         with open(html_file.name, "w", encoding="utf-8") as f:
             f.write(html)
 
-        # 6️⃣ wkhtmltopdf command
+        #  wkhtmltopdf command
         command = [
             wkhtml_path,
             "--margin-top", "20mm",
@@ -338,7 +353,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             pdf_file.name
         ]
 
-        # 7️⃣ Run and capture output
+        #  Run and capture output
         result = subprocess.run(
             command,
             stdout=subprocess.PIPE,
@@ -346,7 +361,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             text=True
         )
 
-        # 8️⃣ Handle errors
+        # Handle errors
         if result.returncode != 0:
             frappe.log_error(
                 title="wkhtmltopdf error",
@@ -391,6 +406,54 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
         # Clean up temporary letterhead override
         if created_letterhead_flag and hasattr(frappe.flags, "current_letterhead"):
             del frappe.flags.current_letterhead
+def generate_pdf_with_getpdf(
+    doctype,
+    name,
+    print_format=None,
+    lang=None,
+    letterhead=None,
+    is_private=False
+):
+    import frappe
+
+    doc = frappe.get_doc(doctype, name)
+
+ 
+    if lang:
+        frappe.local.lang = lang
+
+    # Letterhead
+    if letterhead:
+        frappe.flags.current_letterhead = letterhead
+
+    # Generate HTML
+    html = frappe.get_print(
+        doctype,
+        name,
+        print_format=print_format,
+        doc=doc,
+        no_letterhead=0
+    )
+
+    # Generate PDF (bytes)
+    pdf_data = get_pdf(html)
+
+    # Save file
+    file_name = f"{doctype}_{name}.pdf"
+    file_doc = save_file(
+        file_name,
+        pdf_data,
+        doctype,
+        name,
+        is_private=is_private
+    )
+
+    return {
+        "status": "success",
+        "file_url": file_doc.file_url,
+        "file_name": file_name,
+        "file_id": file_doc.name
+    }
 
 
 

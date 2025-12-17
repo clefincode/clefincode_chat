@@ -183,16 +183,15 @@ def get_auth_token_twillio():
 def check_twilio_template_status():
   
     try:
-        frappe.log_error("status check")
+       
         pending_templates = frappe.get_all(
-            "Twilio Template",
+            "CiC Twilio Template",
             filters={"template_status": "PENDING"},
             fields=["name", "whatsapp_template_id"]
         )
-        frappe.log_error("pending_templates",pending_templates)
 
         if not pending_templates:
-            frappe.logger().info("✅ لا توجد قوالب معلقة حالياً.")
+            frappe.logger().info("There are currently no pending templates.")
             return
 
      
@@ -228,17 +227,17 @@ def check_twilio_template_status():
 
             
                 frappe.db.set_value(
-                    "Twilio Template",
+                    "CiC Twilio Template",
                     template["name"],
                     {
                         "template_status": status,
                     }
                 )
 
-                frappe.log_error(f"✅ Updated {template['name']} → {status} ({rejection_reason})")
-                frappe.logger().info(f"✅ Updated {template['name']} → {status} ({rejection_reason})")
+                frappe.log_error(f" Updated {template['name']} → {status} ({rejection_reason})")
+                frappe.logger().info(f" Updated {template['name']} → {status} ({rejection_reason})")
 
         frappe.db.commit()
 
     except Exception as e:
-        frappe.log_error(f"check_twilio_template_status error: {str(e)}", "Twilio Template Checker")
+        frappe.log_error(f"check_twilio_template_status error: {str(e)}", "CiC Twilio Template Checker")

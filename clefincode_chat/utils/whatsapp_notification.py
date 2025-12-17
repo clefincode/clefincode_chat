@@ -49,19 +49,19 @@ def run_server_script_for_doc_event(doc, event):
         if event in low_event_list:
             
             for notif_name in notifications_map.get(high_event, []):
-                # frappe.log_error("dsdsds",[doc,event])
                 if high_event == "Save" and doc.docstatus == 1:
                      continue
+                enqueue_notification_send(notif_name, doc)
                
-                frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
+                # frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
                
               
 
         # -------------------------------------------------------------------
     if event == "on_value_change":
         for notif_name in notifications_map.get("Value Change", []):
-            # frappe.log_error("on_value_change envent ",[doc.as_dict()])
-            frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
+            # frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
+            enqueue_notification_send(notif_name, doc)
            
            
 
@@ -245,6 +245,29 @@ def detect_value_changes(doc, method=None):
             continue
 
         if old_value != new_value:
-            frappe.log_error("on_value_change event",[old_value,new_value])
             run_server_script_for_doc_event(doc, "on_value_change")
             break
+def enqueue_notification_send(notification_name, doc):
+    frappe.enqueue(
+        method="clefincode_chat.utils.whatsapp_notification._execute_notification_send",
+        queue="long",
+        timeout=300,
+        is_async=True,
+        notification_name=notification_name,
+        doc_doctype=doc.doctype,
+        doc_name=doc.name,
+    )
+
+
+def _execute_notification_send(notification_name, doc_doctype, doc_name):
+    try:
+        notif = frappe.get_doc("Clefincode Notification", notification_name)
+        doc = frappe.get_doc(doc_doctype, doc_name)
+
+        notif.send_template_message(doc)
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "WhatsApp Notification Queue Error"
+        )
