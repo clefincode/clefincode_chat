@@ -267,4 +267,4 @@ sounds = [
 webhooks = [
     {"from_route": "/telegram/webhook", "to_method": "clefincode_chat.webhook.telegram_webhook"}
 ]
-patches = ["clefincode_chat.patches.v1_3_1.add_whatsapp_to_notification"]
+patches = ["clefincode_chat.patches.v1_3_1.run_setup_requirements.run_setup_requirements"]
