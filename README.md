@@ -130,6 +130,13 @@ bench --site yoursite.name install-app clefincode_chat
 bench --site yoursite.name migrate
 bench build
 ```
+
+**Note:** If migrating from version < 1.3.0 to > 1.3.0, run the following command before migrate:
+
+```bash
+bench setup requirements
+```
+```
 ## Getting Started with WhatsApp in ERPNext
 
 You'll first need to set up developer assets and obtain credentials from the Meta Developer Portal. Follow this guide to get started: 
