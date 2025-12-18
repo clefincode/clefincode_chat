@@ -5944,36 +5944,54 @@ def extract_varibale_from_template(template,docname):
 @frappe.whitelist()
 def get_documents_by_doctype(doctype, page=1, search=None):
     try:
+        # Check read permission on the DocType
         if not frappe.has_permission(doctype, "read"):
             frappe.throw("No Permission", frappe.PermissionError)
 
         meta = frappe.get_meta(doctype)
 
-        title_field = meta.title_field or "name"
+        # Determine the best field to use as a title
+        # Priority:
+        # 1. meta.title_field
+        # 2. subject
+        # 3. title
+        # 4. name (fallback)
+        if meta.title_field:
+            title_source = meta.title_field
+        elif meta.has_field("subject"):
+            title_source = "subject"
+        elif meta.has_field("title"):
+            title_source = "title"
+        else:
+            title_source = "name"
 
-        
+        # Collect searchable fields from DocType metadata
         search_fields = []
         if meta.search_fields:
             search_fields = [f.strip() for f in meta.search_fields.split(",")]
 
-        
-        valid_fields = ["name"]
-        for f in [title_field] + search_fields:
+        # Build a list of valid fields to fetch
+        valid_fields = ["name", title_source]
+        for f in search_fields:
             df = meta.get_field(f)
             if df and df.fieldtype not in ["Date", "Datetime"]:
                 valid_fields.append(f)
 
+        # Remove duplicates
         all_fields = list(set(valid_fields))
 
+        # Pagination setup
         page = int(page)
         page_length = 10
         start = (page - 1) * page_length
 
+        # Build OR filters for search
         or_filters = []
         if search:
             for f in all_fields:
                 or_filters.append([doctype, f, "like", f"%{search}%"])
 
+        # Fetch documents
         docs = frappe.get_list(
             doctype,
             fields=all_fields,
@@ -5983,13 +6001,18 @@ def get_documents_by_doctype(doctype, page=1, search=None):
             order_by="modified desc"
         )
 
+        # Normalize the title field in the response
+        for d in docs:
+            d["title"] = d.get(title_source) or d.get("name")
+
         return {
             "doctype": doctype,
             "page": page,
             "page_length": page_length,
-            "fields_returned": all_fields,
+            "title_field_used": title_source,
             "results": docs
         }
+
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Link Search API Error")

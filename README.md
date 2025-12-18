@@ -166,6 +166,216 @@ You'll first need to set up developer assets and obtain credentials from the Met
 🎉Now, you can begin sending and receiving WhatsApp messages directly using our chat app within your ERP system🎉
 
 <img width="1402" src="screenshots/web/send_message.png">  
+Twilio WhatsApp Integration
+
+Connect WhatsApp through Twilio to manage inbound and outbound messages directly inside ERPNext.
+
+1. Enter Twilio Credentials
+
+Add your Twilio credentials:
+
+Twilio Account SID
+
+Auth Token
+
+<img width="1402" src="screenshots/web/twilio_setting.png">
+2. Create a Twilio WhatsApp Profile
+
+Select the WhatsApp-enabled number from Twilio
+
+Select Provider: Twilio
+
+Choose a Type (Personal or Support) and save
+
+Important tip: A template will be created automatically and its preview will be visible.
+
+<img width="1402" src="screenshots/web/whatapp_profile.gif">
+3. Test WhatsApp Messaging
+Test Sent Messages
+
+Text
+
+Image
+
+Voice note
+
+<img width="1402" src="screenshots/web/test_messages.gif">
+Test Received Messages
+
+Text
+
+Image
+
+Voice note
+
+Location
+
+Contact
+
+<img width="1402" src="screenshots/web/receive_messages.gif">
+Twilio Templates
+
+Create message templates, submit them for approval, then send them from chat using /.
+
+Create Twilio Text Template
+
+Enter Friendly Name
+
+Select Template Type: twilio/text
+
+Select Category
+
+Select Language
+
+Write message in Body
+
+Save, submit, and wait for approval
+
+<img width="1402" src="screenshots/web/create_text_template.gif">
+
+Important tips (Meta/WhatsApp template name rules)
+
+Allowed characters: lowercase alphanumeric only (a-z, 0-9)
+
+Allowed separator: underscore _ only
+
+No spaces
+
+No special characters (! @ # $ % - . etc.)
+
+Use meaningful names (example: order_delivery)
+
+Name should be unique for your account if template content is unique
+
+Create Twilio Media Template
+
+- Enter Friendly Name
+
+- Select Template Type: twilio/media
+
+- Select Category
+
+- Select Language
+
+- Write message in Body
+
+- Add media link in Media URL
+
+- Save, submit, and wait for approval
+
+<img width="1402" src="screenshots/web/create_image_template.gif">
+Create Quick Reply Template
+
+- Enter Friendly Name
+
+- Select Template Type: quick-replay
+
+- Write message in Body
+
+- Add button and value in actions table
+
+- Save, submit, and wait for approval
+
+<img width="1402" src="screenshots/web/create_quick_replay_template.gif">
+Create List Picker Template
+
+Enter Friendly Name
+
+Select Template Type: list-picker
+
+Write message in Body
+
+Add list items in Items table
+
+Save, submit, and wait for approval
+
+<img width="1402" src="screenshots/web/create_list_picker_template.gif">
+Use Variables
+
+Twilio uses variables in content templates to personalize messages. Variables follow the {{...}} syntax and are populated with dynamic data when the message is sent.
+
+You can map variables to fields from the associated DocType by filling the variable table.
+
+<img width="1402" src="screenshots/web/varible_with_template.gif">
+
+Important tips
+
+Variables must be sequential: {{1}}, {{2}}, {{3}}
+
+Variables should not be adjacent
+
+Variables should not start or end the message
+
+Must have enough text: (2x + 1) non-variable words per x variables
+
+Avoid too many variables in short messages
+
+Add Variable to Media Template
+
+Set base URL of your site
+
+Select field with attached file
+
+Add default value
+
+<img width="1402" src="screenshots/web/varible_with_media.gif">
+Attach DocType Print to Template
+
+To send the connected DocType print:
+
+- Use a Media Template and add a variable (as above)
+
+- No need to add a DocType field, but default value is required
+
+- Enable Attach Document Print
+
+- Select Print Format
+
+- Select Language Format: English
+
+- Select Letter Head
+
+<img width="1402" src="screenshots/web/attached_print.png">
+
+Send Template from Chat
+
+- Open Chat
+
+- Type / and wait for approved templates
+
+- Select a template
+
+- If linked to a DocType, choose the required document
+
+<img width="1402" src="screenshots/web/test_sent_template.gif">
+
+## Manage Contacts
+
+Add and manage contacts directly from the chat interface, including multiple identifiers per contact.
+
+### Manage Contacts (Admin)
+
+- Click the **Chat** icon.
+- Click the **+** button.
+- Select **Add Contact** to create a new contact.
+- Admins can edit contacts using **Manage Contact**.
+- Update contact details in the popup window.
+- If an identifier already exists, the system will show an error.
+
+<img width="1402" src="screenshots/web/manage_contact.gif">
+
+### ClefinCode Chat Profile
+
+A **Chat Profile** centralizes all identifiers for a person/company (WhatsApp, Telegram, Instagram, Messenger, etc.) and maps them to a system user.
+
+- Create a **Chat Profile** and set its name.
+- Assign a **System User** (email).
+- Add one or more contact identifiers (WhatsApp / Telegram / Instagram / Messenger).
+- The profile keeps all identifiers organized in one place.
+
+<img width="1402" src="screenshots/web/add_contact.gif">
+
+
 
 ## Reporting Bugs
 
