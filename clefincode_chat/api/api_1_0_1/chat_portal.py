@@ -83,7 +83,47 @@ def send(content , room , sender , sender_email , send_date , respondent_user):
     frappe.publish_realtime(event= "update_room", message= results, user = respondent_user)
     frappe.publish_realtime(event= "receive_message", message= results, user = respondent_user)
     send_notification(respondent_user, results, "send_message") 
+    import re
+    from clefincode_chat.api.api_1_0_1.api import send as send_support
+    from frappe.auth import get_logged_user
+    content = str(content).strip() 
+    reply_doc = frappe.db.get_value(
+        "ClefinCode Chat Replies", 
+        {"question": content},
+        ["answer"],
+        as_dict=True
+    )
+        
+    user_name = frappe.db.get_value(
+        "User", 
+        {"email": f"{respondent_user}"}, 
+        ["full_name"],
+        as_dict=True
+    )
     
+    user_name = user_name.full_name
+    if reply_doc and sender == "Guest":
+     
+        current_user = get_logged_user()
+        frappe.set_user('Administrator')
+        answer_html = reply_doc.answer
+
+   
+        match = re.search(r'<div class="ql-editor read-mode">(.*?)</div>', answer_html, re.DOTALL)
+        if match:
+            cleaned_answer = match.group(1).strip()
+        else:
+            cleaned_answer = answer_html  # fallback if regex fails
+
+        send_support(
+        content= cleaned_answer,
+        user = user_name,
+        room=room,
+        email=respondent_user
+                            )
+        frappe.set_user(current_user)
+        
+            
 # ==========================================================================================
 @frappe.whitelist(allow_guest=True)
 def get_messages(room):    
