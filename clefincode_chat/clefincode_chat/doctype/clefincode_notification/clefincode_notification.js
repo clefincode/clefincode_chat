@@ -217,6 +217,7 @@ frappe.ui.form.on('Clefincode Notification Recipient list', {
 
 			console.log(row.source_doctype);
             const meta_fields = frappe.meta.get_docfields(frm.doc.reference_doctype);
+			console.log(meta_fields);
 
             const no_value_fields = frappe.model.no_value_fields || [
                 'Section Break', 'Column Break', 'HTML', 'Table', 'Button', 'Image', 'Fold'
@@ -226,7 +227,7 @@ frappe.ui.form.on('Clefincode Notification Recipient list', {
                 .filter(df => !no_value_fields.includes(df.fieldtype))
                 .map(df => `${df.fieldname}`);
 
-            
+            console.log(fields);
             frm.fields_dict.clefincode_notification_recipient_list.grid.update_docfield_property(
 				"rcevier_by_filed",
 				"options",
@@ -267,3 +268,25 @@ frappe.ui.form.on('Clefincode Notification', {
         }
     }
 	});
+frappe.ui.form.on('Clefincode Notification', {
+    channel: function(frm) {
+        if (frm.doc.channel === "Telegram") {
+            // Force Message Type to "Message" when channel is Telegram
+            frm.set_value('message_type', 'Message');
+
+            // Make Message Type field read-only
+            frm.set_df_property('message_type', 'read_only', 1);
+        } else {
+            // Enable Message Type field for other channels
+            frm.set_df_property('message_type', 'read_only', 0);
+        }
+    },
+
+    refresh: function(frm) {
+        // Ensure the same behavior when the document is loaded
+        if (frm.doc.channel === "Telegram") {
+            frm.set_value('message_type', 'Message');
+            frm.set_df_property('message_type', 'read_only', 1);
+        }
+    }
+});
