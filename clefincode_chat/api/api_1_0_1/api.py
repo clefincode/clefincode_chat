@@ -3523,3 +3523,88 @@ def is_mention(content):
     
     return False
 # ========================================================================================
+
+import re
+from frappe import db
+
+@frappe.whitelist(allow_guest=True)
+def read_guest_message(guest_message):
+    if not guest_message:
+        return {"success": False, "message": "No message provided"}
+
+    # Normalize the input message to lowercase for consistent matching
+    normalized_guest_message = guest_message.lower()
+
+    # Fetch all guestmessage values from the Doctype
+    all_entries = frappe.db.sql(
+        """
+        SELECT name, LOWER(guestmessage) AS guestmessage 
+        FROM `tabClefinCode Chat Replies`
+        """,
+        as_dict=True,
+    )
+    frappe.log_error("all entries",all_entries)
+
+    # Iterate over the entries to find a match
+    matching_entry = None
+    for entry in all_entries:
+        if (normalized_guest_message or
+                entry["guestmessage"] in normalized_guest_message):
+            frappe.log_error("matching entry",entry)
+            matching_entry = entry
+            
+            break
+
+    if not matching_entry:
+        return {"success": False, "message": "No matching replies found"}
+
+    # Fetch replies from the child table
+    replys_doc = frappe.get_doc("ClefinCode Chat Replies", matching_entry["name"])
+    replies = [row.reply for row in replys_doc.replies]
+
+    return {"success": True, "replies": replies}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_answer(message):
+    if not message:
+        return {"success": False, "answer": _("No message provided.")}
+
+    # Try to find a matching question
+    faqs = frappe.get_all("ClefinCode Chat Replies", fields=["question", "answer"])
+    for faq in faqs:
+        if message.strip().lower() in faq.question.strip().lower():
+            return {"success": True, "answer": faq.answer}
+
+    return {"success": False, "answer": _("Sorry, I couldn’t find a matching answer.")}
+
+
+# @frappe.whitelist(allow_guest=True)
+# def set_answers():
+    
+
+# # Regex to match the question
+#     pattern = r"can i know the cost of (.+?) in (.+?) for (.+?)\?"
+
+#     # Get all chat replies
+#     chat_replies = frappe.get_all("ClefinCode Chat Replies", fields=["name", "question"])
+#     frappe.log_error("chat replies",chat_replies)
+#     for reply in chat_replies:
+#         question = reply["question"].lower().strip()
+#         frappe.log_error("question",question)
+
+#         match = re.match(pattern, question)
+#         if match:
+#             frappe.log_error("match",match)
+#             service, plan, server_type = match.groups()
+
+#             # Format the answer
+#             answer = f"The price for {service} in {plan} for {server_type} is 2000$."
+#             frappe.log_error("answer",answer)
+
+#             # Save it back to the record (assuming there is an 'answer' field)
+#             frappe.db.set_value("ClefinCode Chat Replies", reply["name"], "answer", answer)
+            
+#     frappe.db.commit()        
+
+
