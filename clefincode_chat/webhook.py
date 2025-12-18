@@ -1274,7 +1274,7 @@ def telegram_webhook():
                 chat_id = update["message"]["chat"]["id"]
                 sender_id = update["message"]["from"]["id"]
                 sender_first_name = update["message"]["from"]["first_name"]
-                sender_last_name = update["message"]["from"]["last_name"]
+                # sender_last_name = update["message"]["from"]["last_name"]
                 sender_profile_name = update["message"]["from"].get("username", "") or f"{sender_first_name} {sender_last_name}"
                 receiver_id = get_telegram_receiver_id()
                 telegram_profile_doc = frappe.get_doc("ClefinCode Telegram Profile", receiver_id)
@@ -1341,19 +1341,22 @@ def get_telegram_receiver_id():
 # ==========================================================================================
 @frappe.whitelist(allow_guest=True)
 def set_telegram_webhook():
-    access_token = frappe.db.get_value("ClefinCode Telegram Integration", None, "access_token")
+    #access_token = frappe.db.get_value("ClefinCode Telegram Integration", None, "access_token")
+    doc = frappe.get_doc("ClefinCode Telegram Integration")
+    access_token = doc.get_password("access_token")
     if not access_token:
         frappe.throw("Access token for Telegram Integration is missing.")
+   
     
     base_url = frappe.utils.get_url()
     webhook_url = f"{base_url}/api/method/clefincode_chat.webhook.telegram_webhook"
 
-
+    frappe.log_error("telegram", f"https://api.telegram.org/bot{access_token}/setWebhook")
     response = requests.post(
         f"https://api.telegram.org/bot{access_token}/setWebhook",
         json={"url": webhook_url}
     )
-
+    frappe.log_error("telegram", f"https://api.telegram.org/bot{access_token}/setWebhook")
     if response.ok:
         frappe.log_error("Telegram webhook set successfully!")
     else:

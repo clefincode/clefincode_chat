@@ -174,7 +174,10 @@ class CiCTwilioTemplate(Document):
 
             # Allowed characters only
             import re
-            if not re.match(r"^[A-Za-z0-9_.-]+$", self.friendly_name):
+            
+            
+            if not re.match(r"^[a-z0-9_.-]+$", self.friendly_name):
+                
                 frappe.throw(
                     "Invalid characters in name. Allowed: letters, numbers, dot, hyphen, underscore."
                 )

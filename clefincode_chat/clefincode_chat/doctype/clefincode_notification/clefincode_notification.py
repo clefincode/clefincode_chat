@@ -89,6 +89,25 @@ class ClefincodeNotification(Document):
                     self.reference_doctype,
                 ))
     def send_template_message(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
+       if self.channel=="Whatsapp":
+            self.send_via_whatsapp( doc, phone_no, default_template, ignore_condition)
+       if self.channel=="Telegram":
+          self.send_via_telegram( doc, phone_no, default_template, ignore_condition)
+       doc_data = doc.as_dict()
+       if doc_data and self.set_property_after_alert and self.property_value:
+                        if doc_data.doctype and doc_data.name:
+                            fieldname = self.set_property_after_alert
+                            value = self.property_value
+                            meta = frappe.get_meta(doc_data.get("doctype"))
+                            df = meta.get_field(fieldname)
+                            if df:
+                                if df.fieldtype in frappe.model.numeric_fieldtypes:
+                                    value = frappe.utils.cint(value)
+
+                                frappe.db.set_value(doc_data.get("doctype"), doc_data.get("name"), fieldname, value)
+
+
+    def send_via_whatsapp(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
         doc_data = doc.as_dict()
        
        
@@ -102,13 +121,17 @@ class ClefincodeNotification(Document):
                     {"parent": recevie_profile, "type": "WhatsApp"},
                     "contact_info"
                     )
+        if contact is None:
+                frappe.log_error(
+                    message=f"WhatsApp contact_info not found for receive profile: {recevie_profile}",
+                    title="Missing WhatsApp Contact Info"
+                        )
+                return
         default_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", {"user": self.owner}, "name")
         
         data= check_if_contact_has_chat(self.owner, contact, "WhatsApp")
        
-        results = data.get("results", {})
-        
-
+        results = data.get("results", {})     
 
         if results:
 
@@ -193,9 +216,6 @@ class ClefincodeNotification(Document):
                     attachment=res['file_url']
                       
 
-                #send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template")
-            
-                # send_whatsapp_message_from_template_notification(self.template,recevie_profile,"14155238886",doc)
                 
                 
                 send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template",attachment=attachment)
@@ -207,11 +227,7 @@ class ClefincodeNotification(Document):
             body_preview = message or ""
             for k, v in variables.items():
               body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
-            to_number = frappe.db.get_value(
-                    "ClefinCode Chat Profile Contact Details",
-                    {"parent": recevie_profile, "type": "WhatsApp"},
-                    "contact_info"
-                    )
+            
             #send_whatsapp_message_twilio_notification( "14155238886", to_number, message, "text")
             send(body_preview, get_profile_id(self.owner), room , self.owner )
             if self.attach_document_print:
@@ -242,19 +258,105 @@ class ClefincodeNotification(Document):
               
                 #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
                 send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
-        if doc_data and self.set_property_after_alert and self.property_value:
-                        if doc_data.doctype and doc_data.name:
-                            fieldname = self.set_property_after_alert
-                            value = self.property_value
-                            meta = frappe.get_meta(doc_data.get("doctype"))
-                            df = meta.get_field(fieldname)
-                            if df:
-                                if df.fieldtype in frappe.model.numeric_fieldtypes:
-                                    value = frappe.utils.cint(value)
-
-                                frappe.db.set_value(doc_data.get("doctype"), doc_data.get("name"), fieldname, value)
-
-
+        
+    def send_via_telegram(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
+        doc_data = doc.as_dict()
+        recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
+            {"parent": self.name},
+            "rcevier_by_filed"
+            )
+        recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
+        contact = frappe.db.get_value(
+                    "ClefinCode Chat Profile Contact Details",
+                    {"parent": recevie_profile, "type": "Telegram"},
+                    "contact_info"
+                    )
+        if contact is None:
+                frappe.log_error(
+                    message=f"Telegram contact_info not found for receive profile: {recevie_profile}",
+                    title="Missing Telegram Contact Info"
+                        )
+                return
+        default_whatsapp_number = frappe.db.get_value("ClefinCode Telegram Profile", {"user": self.owner}, "name")       
+        data= check_if_contact_has_chat(self.owner, contact, "Telegram")       
+        results = data.get("results", {})
+        if results:
+            result = results
+            room = result.get("name")
+            chat_status = result.get("chat_status")
+        else:
+            room = None
+            chat_status = None
+        if not room:
+            users=[{"email":self.owner,"name":self.owner,"platform":"Chat"},{"email":contact,"name":contact,"platform":"WhatsApp","platform_profile":"ClefinCode WhatsApp Profile","platform_gateway":default_whatsapp_number}]
+            channel=create_channel('' , json.dumps(users), 'Direct' ,'' , self.owner , get_profile_id(self.owner) , creation_date = None)                
+            results = channel.get("results", [])
+            room = results[0].get("room") if results else None
+        cond = (self.condition or "").strip()    
+        if cond and not ignore_condition:
+            try:
+                # allow dot access like doc.status
+                ctx_doc = _dict(doc.as_dict())
+                env = get_safe_globals().copy()
+                passed = frappe.safe_eval(cond, env, {"doc": ctx_doc})
+                if not passed:
+                    frappe.log_error(
+                        "ClefincodeNotification: condition not met",
+                        f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())} status : {doc.status} "
+                    )
+                    return            
+            except Exception as e:                
+                return       
+        recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
+            {"parent": self.name},
+            "rcevier_by_filed"
+            )
+        variables = {}
+        for var in self.variables:
+                    key = str(var.variable_key).strip()
+                    source_doctype = str(var.source_doctype)
+                    source_field=str(var.source_field)
+                    value= frappe.db.get_value(
+                                    source_doctype,doc.name,source_field
+                                    )
+                    if key and value:
+                        variables[key] = value
+        recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
+        attachment=None
+        message =self.message_content
+        body_preview = message or ""
+        for k, v in variables.items():
+               pattern = rf"{{{{\s*{re.escape(k)}\s*}}}}"
+               body_preview = re.sub(pattern, str(v), body_preview)
+        send(body_preview, get_profile_id(self.owner), room , self.owner )
+        if self.attach_document_print:
+                # frappe.db.begin()
+                key = doc.get_document_share_key()  # noqa
+                frappe.db.commit()
+               
+                from packaging import version
+                frappe_version = frappe.__version__
+                if version.parse(frappe_version) < version.parse("15.0.0"):
+                           res =pdf(
+                            doctype=doc_data['doctype'],
+                            name=doc.name,
+                            key=key,
+                            format=self.print_format,
+                            lang=self.language,
+                            letterhead=self.letter_head   
+                        )  
+                else:
+                        res = generate_pdf_with_getpdf(
+                                doctype=doc_data['doctype'],
+                                name=doc.name,
+                                print_format=self.print_format,
+                                lang=self.language,
+                                letterhead=self.letter_head,
+                                is_private=False
+                            )
+              
+                #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
+                send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
 
 @frappe.whitelist()
 def call_trigger_notifications():

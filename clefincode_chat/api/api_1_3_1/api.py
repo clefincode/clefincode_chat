@@ -4534,7 +4534,7 @@ def send_telegram_message(chat_id, message, message_type="text", attachment_url=
         api_base = f"https://api.telegram.org/bot{access_token}"
         was_private = False
         public_attachment_url = None
-
+        
         # Handle file visibility for media messages
         if attachment_url:
             if message_type == "audio":
@@ -4590,7 +4590,7 @@ def send_telegram_message(chat_id, message, message_type="text", attachment_url=
 
 
         response = requests.post(endpoint, json=payload)
-
+        frappe.log_error("api_base",[vars(response)])
         if was_private:
             reset_file_to_private(public_attachment_url)
 
@@ -4624,6 +4624,7 @@ def process_telegram_message(platform_gateway, telegram_customer_id, email, chan
                 message = BeautifulSoup(content, 'html.parser').get_text()
 
         # Send the message to Telegram
+        
         send_telegram_message(
             chat_id=telegram_customer_id,
             message=message,
@@ -5778,7 +5779,9 @@ def send_clefincode_chat_template(new_message):
     # --------------------------------------------
     # Extract variables from the template
     # --------------------------------------------
+    
     vars_values = extract_varibale_from_template(template, docname)
+    
     
 
     # --------------------------------------------
@@ -5786,7 +5789,8 @@ def send_clefincode_chat_template(new_message):
     # --------------------------------------------
     final_body = template.message_content
     for k, v in vars_values.items():
-        final_body = final_body.replace("{{" + k + "}}", str(v))
+        pattern = r"{{\s*" + re.escape(k) + r"\s*}}"
+        final_body = re.sub(pattern, str(v), final_body)
 
     # --------------------------------------------
     # Detect image in the vars values
@@ -5885,12 +5889,18 @@ def send_clefincode_chat_template(new_message):
      
      
 def extract_varibale_from_template(template,docname):
+   
     variables={}
+ 
     for var in template.variables:
                 key = (var.variable_key or "").strip()
                 source_doctype = (var.source or "").strip()
                 source_field = (var.source_field or "").strip()
-                value=var.default 
+                value=var.default
+                
+                if key and value is not None:
+                    
+                    variables[key] = value 
 
                 if not key:
                     continue
@@ -5909,7 +5919,8 @@ def extract_varibale_from_template(template,docname):
                                 f"No linked docname found for field '{fieldname}' in {template.reference_doctype} {docname}",
                                 "Twilio Template Mapping"
                             )
-                            continue
+                            
+                        continue
 
                         # Fetch the field value from the linked doctype
                         value = frappe.db.get_value(linked_doctype, linked_docname, source_field)
@@ -5923,7 +5934,8 @@ def extract_varibale_from_template(template,docname):
                             value= urllib.parse.quote(value[1:], safe=':/')
                 # else:
                 #     value=(var.default or "").strip()
-
+                if value is None:
+                    value=var.default 
                 if key and value is not None:
                     variables[key] = value
                       
