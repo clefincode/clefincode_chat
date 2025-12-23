@@ -2731,11 +2731,27 @@ def get_chat_profile_first_name(chat_profile):
     return frappe.db.get_value("ClefinCode Chat Profile", chat_profile , "full_name").split(' ')[0]
 # ==========================================================================================
 def get_contact_first_name(contact):
-    return frappe.db.sql(f"""
+    """
+    Returns the first name of a contact from ClefinCode Chat Profile.
+    If the contact does not exist, returns the contact info (email) as fallback.
+    """
+    result = frappe.db.sql("""
         SELECT ChatProfile.full_name
-        FROM `tabClefinCode Chat Profile` AS ChatProfile, `tabClefinCode Chat Profile Contact Details` AS ContactDetails
-        WHERE ContactDetails.parent = ChatProfile.name AND ChatProfile.is_support <> 1 AND ContactDetails.contact_info = '{contact}'
-        """ , as_dict = True)[0].full_name.split(' ')[0]
+        FROM `tabClefinCode Chat Profile` AS ChatProfile
+        JOIN `tabClefinCode Chat Profile Contact Details` AS ContactDetails
+            ON ContactDetails.parent = ChatProfile.name
+        WHERE ChatProfile.is_support <> 1
+          AND ContactDetails.contact_info = %s
+        LIMIT 1
+    """, contact, as_dict=True)
+
+    if result and result[0].get("full_name"):
+        # Return first name
+        return result[0]["full_name"].split(' ')[0]
+    else:
+        # Fallback: return the contact info (email)
+        return contact
+
 # ==========================================================================================
 def get_contact_full_name(contact): 
     full_name = frappe.db.sql(f"""
