@@ -47,8 +47,15 @@ class ClefinCodeChatProfile(Document):
                         "is_primary": detail.default
                     })
 
+                elif t == "WhatsApp":
+                        contact.append("phone_nos", {
+                            "phone": info,
+                            "is_primary": detail.default,
+                            "phone_type": "Mobile"
+                        })
+
                 # WhatsApp + Social networks → social_contact table
-                elif t in ["WhatsApp", "Instagram", "Messenger", "Telegram"]:
+                elif t in ["Instagram", "Messenger", "Telegram"]:
                         if has_field(contact, "social_contact"):
                             contact.append("social_contact", {
                                 "platform": t,
@@ -88,9 +95,14 @@ class ClefinCodeChatProfile(Document):
                     "email_id": info,
                     "is_primary": detail.default
                 })
-
+            elif t == "WhatsApp":
+                    contact.append("phone_nos", {
+                        "phone": info,
+                        "is_primary": detail.default,
+                        "phone_type": "Mobile"
+                    })
             # WhatsApp + other socials → social_contact
-            elif t in ["WhatsApp", "Instagram", "Messenger", "Telegram"]:
+            elif t in [ "Instagram", "Messenger", "Telegram"]:
                 if has_field(contact, "social_contact"):
                     contact.append("social_contact", {
                         "platform": t,
