@@ -190,9 +190,16 @@ def get_sender_info(messages, form_dict):
 
 def get_or_create_chat_profile(sender_number, sender_profile_name):
     chat_profile = check_if_chat_profile_exists(sender_number)
+   
     if not chat_profile:
-        contact = create_contact(sender_number, sender_profile_name)
-        chat_profile = frappe.db.get_value("ClefinCode Chat Profile", {"contact": contact}, "name")
+        
+        chat_profile = check_if_chat_profile_exists(f"+{sender_number}")
+       
+        if not chat_profile:
+           
+            contact = create_contact(sender_number, sender_profile_name)
+            chat_profile = frappe.db.get_value("ClefinCode Chat Profile", {"contact": contact}, "name")
+    
     return chat_profile
 
 
@@ -277,7 +284,8 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
 
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
     frappe.log_error("create_direct_channel",messages)
-    channel_name = get_profile_full_name(receiver_user_email)   
+    #channel_name = get_profile_full_name(receiver_user_email)  
+    channel_name = frappe.db.get_value("ClefinCode Chat Profile", {"name": chat_profile}, "full_name") 
     message_type = messages[0]["type"] if "type" in messages[0] else "text"
     
     recipients_list = [
@@ -286,12 +294,12 @@ def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_do
     ]
     if message_type == "text":
         return create_channel(
-            get_profile_full_name(sender_number) ,
+            channel_name or get_profile_full_name(sender_number) ,
             json.dumps(recipients_list),
             "Direct",
             format_html_string(messages[0]["text"]["body"]),
             receiver_user_email,
-            channel_name
+            get_profile_full_name(receiver_user_email) 
         )["results"][0]["room"]
         
     else:
@@ -1639,6 +1647,7 @@ def whatsapp_twillio_webhook():
         # Retrieve or create chat profile
         chat_profile = get_or_create_chat_profile(sender_number, sender_profile_name)
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
+        
 
         # Register message inside chat channel
         chat_channel_info = handle_chat_channel(
