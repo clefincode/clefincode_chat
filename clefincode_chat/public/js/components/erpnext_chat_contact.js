@@ -349,10 +349,10 @@ save_all_contacts(dialog) {
 
       // Show Manage Contact if user owns contact OR is admin OR system manager
       if (isUserContact || isAdmin || isSystemManager) {
-      console.log("Profile");
-      console.log(this.profile);
+      // console.log("Profile");
+      // console.log(this.profile);
       const user_contact = contact_details.find(cd => cd.contact_info === frappe.session.user);
-      console.log(user_contact);
+      // console.log(user_contact);
 
         html_options += `
             <div class="dropdown-divider"></div>
