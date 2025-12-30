@@ -455,7 +455,7 @@ def create_channel(channel_name , users, type , last_message , creator_email , c
     })
     room_doc.insert(ignore_permissions=True)
     for user in json.loads(users):
-        room_doc.append("members" , {"profile_id" : get_profile_id(user["email"]) ,"user" : user["email"] , "platform" : user["platform"], "platform_profile": user.get("platform_profile"), "platform_gateway": user.get("platform_gateway")})
+        room_doc.append("members" , {"profile_id" : user.get("profile_id") or get_profile_id(user["email"]) ,"user" : user["email"] , "platform" : user["platform"], "platform_profile": user.get("platform_profile"), "platform_gateway": user.get("platform_gateway")})
         share_doctype("ClefinCode Chat Channel", room_doc.name, user["email"])
     room_doc.save(ignore_permissions=True)
     frappe.db.commit()
