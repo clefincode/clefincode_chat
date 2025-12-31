@@ -817,10 +817,11 @@ export default class ChatSpace {
       });
 
       this.$chat_actions.find(".type-message").on("input", function () {
+        const textValue = $(this).find(".ql-editor").text();
         if (me.profile.room) {
           // Only call setupTypingIndicator if it's not already active
           if (!me.isTypingIndicatorActive) {
-              const textValue = $(this).find(".ql-editor").text();
+              
            console.log(typeof textValue);
 
           if (!me.isTypingIndicatorActive) {
@@ -839,6 +840,13 @@ export default class ChatSpace {
               if (container) container.remove();
             }
           }
+        }
+        else{
+          if (textValue.startsWith("/")) {
+              me.debouncedFetchTemplates(textValue);
+            } else {
+              me.removeTemplateSuggestions();
+            }
         }
 
         me.toggle_voice_clip_icon();
@@ -2088,6 +2096,48 @@ export default class ChatSpace {
     return updatedMentionedDoctypes;
   }
 
+debouncedFetchTemplates(textValue) {
+  clearTimeout(this.templateTimeout);
+  this.templateTimeout = setTimeout(() => {
+    this.fetchTemplateSuggestions(textValue);
+  }, 250);
+}
+removeTemplateSuggestions() {
+  this.$wrapper
+    .closest(".chat-window")
+    .find("#template-suggestions")
+    .remove();
+}
+
+async fetchTemplateSuggestions(textValue) {
+  if (!textValue || !textValue.startsWith("/")) {
+    this.removeTemplateSuggestions();
+    return;
+  }
+
+  try {
+    const res = await frappe.call({
+      method: "clefincode_chat.api.api_1_3_1.api.get_template_suggestions",
+      args: {
+        user: this.profile.user_email,
+        platform: this.profile.platform || "Chat",
+        text: textValue
+      }
+    });
+
+    if (res.message && res.message.length > 0) {
+      this.showTemplateSuggestions({
+        template: res.message,
+        user: this.profile.user_email
+      });
+    } else {
+      this.removeTemplateSuggestions();
+    }
+  } catch (err) {
+    console.error("Template suggestions error:", err);
+  }
+}
+
   async create_direct_channel(content) {
 
 
@@ -2997,12 +3047,22 @@ async setupTypingIndicator(textValue) {
     }
   }
 showTemplateSuggestions(res) {
-  console.log(res);
-    const chatWindow = $(`.chat-window[data-room="${res.room}"]`);
-  if (!chatWindow.length) {
-    console.warn("Chat window not found for room:", res.room);
-    return;
-  }
+  let chatWindow;
+    const me = this; 
+
+
+if (res.room) {
+  chatWindow = $(`.chat-window[data-room="${res.room}"]`);
+}
+
+else {
+  chatWindow = this.$wrapper.closest(".chat-window");
+}
+
+if (!chatWindow || !chatWindow.length) {
+  console.warn("Chat window not found");
+  return;
+}
 
   const editor = chatWindow.find(".type-message .ql-editor");
 
@@ -3056,6 +3116,9 @@ showTemplateSuggestions(res) {
     );
 
    item.on("click", async function () {
+      if (!res.room) {
+    await me.create_direct_channel(name);
+  }
     editor.text("/" + name);
     container.fadeOut(200, () => container.remove());
 
@@ -3069,9 +3132,9 @@ showTemplateSuggestions(res) {
     if (check.empty) {
         const message_info = {
             content: name,
-            user: res.user,
-            room: res.room,
-            email: res.user,
+            user: me.profile.user,
+            room: room,
+            email:  me.profile.user,
             message_type: "information",
             message_template_type: template_type
         };
@@ -3080,7 +3143,18 @@ showTemplateSuggestions(res) {
         editor.html("");
     }
     else {
-        let topic_info = await get_topic_info(res.room);
+                const room =
+            me.profile.room_type === "Contributor"
+              ? me.profile.parent_channel
+              : me.profile.room;
+
+          if (!room) {
+            console.warn("No room available for topic info");
+            return;
+          }
+
+
+        let topic_info = await get_topic_info(room);
 
         if (!topic_info || !topic_info.length) {
             console.error("topic_info is empty", topic_info);
@@ -3100,9 +3174,9 @@ showTemplateSuggestions(res) {
 
             const message_info = {
                 content: name + "," + selected_docname,
-                user: res.user,
-                room: res.room,
-                email: res.user,
+                user:  me.profile.user,
+                room: room,
+                email:  me.profile.user,
                 message_type: "information",
                 message_template_type: template_type
             };

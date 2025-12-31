@@ -6427,3 +6427,52 @@ def generate_pdf_with_getpdf(
         "file_name": file_name,
         "file_id": file_doc.name
     }
+@frappe.whitelist()
+def get_template_suggestions(user, platform="Chat", text=""):
+    if not text or not text.startswith("/"):
+        return []
+
+    templates = []
+
+    if platform == "Chat":
+        templates = frappe.get_all(
+            "Clefincode Chat Template",
+            fields=["name", "friendly_name as meta_template_name"]
+        )
+        for t in templates:
+            t["doctype"] = "Clefincode Chat Template"
+
+    elif platform == "WhatsApp":
+        profile = frappe.get_all(
+            "ClefinCode WhatsApp Profile",
+            filters={"user": user},
+            fields=["name"]
+        )
+
+        if profile:
+            templates = frappe.get_all(
+                "ClefinCode WhatsApp Template",
+                filters={
+                    "docstatus": 1,
+                    "whatsapp_profile": profile[0].name,
+                    "template_status": "APPROVED"
+                },
+                fields=["name", "meta_template_name"]
+            )
+            for t in templates:
+                t["doctype"] = "ClefinCode WhatsApp Template"
+
+        twilio_templates = frappe.get_all(
+            "CiC Twilio Template",
+            filters={
+                "whatsapp_template_id": ["is", "set"],
+                "template_status": "APPROVED"
+            },
+            fields=["name", "friendly_name as meta_template_name"]
+        )
+        for t in twilio_templates:
+            t["doctype"] = "CiC Twilio Template"
+
+        templates += twilio_templates
+
+    return templates
