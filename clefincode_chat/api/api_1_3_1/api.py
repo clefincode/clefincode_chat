@@ -6020,6 +6020,7 @@ def get_documents_by_doctype(doctype, page=1, search=None):
 
 
 #====================================================
+
 def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
     import subprocess
     import tempfile
@@ -6046,13 +6047,18 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             frappe.flags.current_letterhead = letterhead
             created_letterhead_flag = True
 
-        html = frappe.get_print(
-            doctype,
-            name,
-            print_format=format,
-            doc=doc,
-            no_letterhead=0
-        )
+            original_ignore = frappe.flags.get('ignore_permissions', False)
+        frappe.flags.ignore_permissions = True
+        try:
+            html = frappe.get_print(
+                doctype,
+                name,
+                print_format=format,
+                doc=doc,
+                no_letterhead=0
+            )
+        finally:
+            frappe.flags.ignore_permissions = original_ignore  
         site_url = frappe.utils.get_url()
 
         # Convert all src="/..." to src="https://your-site.com/..."
@@ -6115,6 +6121,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             del frappe.flags.current_letterhead        
             
             
+
             
 def handle_pdf_attachment(file_url, file_name):
     """Return HTML content for a PDF file attachment, similar to the JS handle_attachment function."""
@@ -6379,6 +6386,7 @@ def generate_pdf_with_wkhtml(html, options=None):
     subprocess.run(command, check=True)
 
     return pdf_out.name
+
 def generate_pdf_with_getpdf(
     doctype,
     name,
@@ -6389,9 +6397,9 @@ def generate_pdf_with_getpdf(
 ):
     import frappe
 
-    doc = frappe.get_doc(doctype, name)
+  
+    doc = frappe.get_doc(doctype, name, ignore_permissions=True)
 
- 
     if lang:
         frappe.local.lang = lang
 
@@ -6399,16 +6407,21 @@ def generate_pdf_with_getpdf(
     if letterhead:
         frappe.flags.current_letterhead = letterhead
 
-    # Generate HTML
-    html = frappe.get_print(
-        doctype,
-        name,
-        print_format=print_format,
-        doc=doc,
-        no_letterhead=0
-    )
+    
+    original_ignore = frappe.flags.get('ignore_permissions', False)
+    frappe.flags.ignore_permissions = True
+    try:
+        html = frappe.get_print(
+            doctype,
+            name,
+            print_format=print_format,
+            doc=doc,
+            no_letterhead=0
+        )
+    finally:
+        frappe.flags.ignore_permissions = original_ignore 
 
-    # Generate PDF (bytes)
+    
     pdf_data = get_pdf(html)
 
     # Save file
