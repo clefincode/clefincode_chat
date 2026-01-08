@@ -204,6 +204,7 @@ class ClefincodeNotification(Document):
                             letterhead=self.letter_head   
                         )  
                     else:
+                        
                         res = generate_pdf_with_getpdf(
                                 doctype=doc_data['doctype'],
                                 name=doc.name,
@@ -396,7 +397,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
 
     
 
-    DEFAULT_FOLDER = "Generated_PDFs"  
+    DEFAULT_FOLDER = "CiC Chat Notif PDF"  
 
     
    
@@ -494,7 +495,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
 
         # 🔟 Save file into File DocType
         file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
-        _file = save_file(file_name, pdf_data, doctype, name, is_private=False,folder="Home/Attachments/Generated_PDFs")
+        _file = save_file(file_name, pdf_data, doctype, name, is_private=False,folder=f"Home/Attachments/{DEFAULT_FOLDER}")
 
         return {
             "status": "success",
@@ -527,16 +528,9 @@ def generate_pdf_with_getpdf(
   
 ):
     import frappe
-
     doc = frappe.get_doc(doctype, name)
-    DEFAULT_FOLDER = "Generated_PDFs"  
-
-    
-   
+    DEFAULT_FOLDER = "CiC Chat Notif PDF"  
     create_folder_if_not_exists(DEFAULT_FOLDER,"Home/Attachments")
-
-    
- 
     if lang:
         frappe.local.lang = lang
 
@@ -565,7 +559,7 @@ def generate_pdf_with_getpdf(
         doctype,
         name,
         is_private=is_private,
-        folder="Home/Attachments/Generated_PDFs"
+        folder=f"Home/Attachments/{DEFAULT_FOLDER}"
     )
 
     return {
