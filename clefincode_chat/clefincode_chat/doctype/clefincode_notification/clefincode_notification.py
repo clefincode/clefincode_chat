@@ -204,6 +204,7 @@ class ClefincodeNotification(Document):
                             letterhead=self.letter_head   
                         )  
                     else:
+                        
                         res = generate_pdf_with_getpdf(
                                 doctype=doc_data['doctype'],
                                 name=doc.name,
@@ -394,6 +395,14 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
     import frappe
     from frappe.utils.file_manager import save_file
 
+    
+
+    DEFAULT_FOLDER = "CiC Chat Notif PDF"  
+
+    
+   
+    create_folder_if_not_exists(DEFAULT_FOLDER,"Home/Attachments")
+
     # 1️⃣ Ensure wkhtmltopdf is installed
     wkhtml_path = shutil.which("wkhtmltopdf")
     if not wkhtml_path:
@@ -486,7 +495,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
 
         # 🔟 Save file into File DocType
         file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
-        _file = save_file(file_name, pdf_data, doctype, name, is_private=False)
+        _file = save_file(file_name, pdf_data, doctype, name, is_private=False,folder=f"Home/Attachments/{DEFAULT_FOLDER}")
 
         return {
             "status": "success",
@@ -515,13 +524,13 @@ def generate_pdf_with_getpdf(
     print_format=None,
     lang=None,
     letterhead=None,
-    is_private=False
+    is_private=False,
+  
 ):
     import frappe
-
     doc = frappe.get_doc(doctype, name)
-
- 
+    DEFAULT_FOLDER = "CiC Chat Notif PDF"  
+    create_folder_if_not_exists(DEFAULT_FOLDER,"Home/Attachments")
     if lang:
         frappe.local.lang = lang
 
@@ -549,7 +558,8 @@ def generate_pdf_with_getpdf(
         pdf_data,
         doctype,
         name,
-        is_private=is_private
+        is_private=is_private,
+        folder=f"Home/Attachments/{DEFAULT_FOLDER}"
     )
 
     return {
@@ -559,7 +569,28 @@ def generate_pdf_with_getpdf(
         "file_id": file_doc.name
     }
 
+def create_folder_if_not_exists(folder_name, parent_folder="Home"):
+    # Check if folder already exists
+    exists = frappe.db.exists(
+        "File",
+        {
+            "file_name": folder_name,
+            "is_folder": 1,
+            "folder": parent_folder
+        }
+    )
 
+    if not exists:
+        folder = frappe.get_doc({
+            "doctype": "File",
+            "file_name": folder_name,
+            "is_folder": 1,
+            "folder": parent_folder
+        })
+        folder.insert(ignore_permissions=True)
+        return folder.name
+
+    return exists
 
        
 def handle_pdf_attachment(file_url, file_name):
