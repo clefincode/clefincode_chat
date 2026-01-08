@@ -226,9 +226,14 @@ def handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_p
 def manage_support_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc):
     channel_info = check_if_channel_exists(sender_number, receiver_number, "Support")
     if not channel_info:
-        recipients_list, responder_user = build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number)
-        chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
-        return [chat_channel , None]
+        channel_info = check_if_channel_exists(f"+{sender_number}", receiver_number, "Support")
+        if not channel_info:
+            recipients_list, responder_user = build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number)
+            chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
+            return [chat_channel , None]
+        else:
+          chat_channel , pending_messages = channel_info 
+          return [chat_channel , pending_messages]  
     else:    
         chat_channel , pending_messages = channel_info 
         return [chat_channel , pending_messages]
@@ -275,8 +280,15 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
     receiver_user_email = whatsapp_profile_doc.user
     channel_info = check_if_channel_exists(sender_number, receiver_number, "Personal")
     if not channel_info:
-        chat_channel = create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number)
-        return [chat_channel , None]
+       
+        channel_info = check_if_channel_exists(f"+{sender_number}", receiver_number, "Personal")
+        if not channel_info:
+            chat_channel = create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number)
+            
+            return [chat_channel , None]
+        else:
+           chat_channel , pending_messages = channel_info 
+           return [chat_channel , pending_messages]  
     else:    
         chat_channel , pending_messages = channel_info 
         return [chat_channel , pending_messages] 

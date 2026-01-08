@@ -427,7 +427,8 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             name,
             print_format=format,
             doc=doc,
-            no_letterhead=0
+            no_letterhead=0,
+           
         )
 
         #  Convert relative paths → absolute URLs
@@ -534,7 +535,8 @@ def generate_pdf_with_getpdf(
         name,
         print_format=print_format,
         doc=doc,
-        no_letterhead=0
+        no_letterhead=0,
+      
     )
 
     # Generate PDF (bytes)
