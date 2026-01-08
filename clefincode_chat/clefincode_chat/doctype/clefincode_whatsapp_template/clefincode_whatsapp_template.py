@@ -45,7 +45,7 @@ class ClefinCodeWhatsAppTemplate(Document):
             frappe.log_error(f"on_submit error for template {self.name}: {str(e)}", "ClefinCodeWhatsAppTemplate.on_submit")
             frappe.throw(str(e))
     
-    def post_whatsapp_template(self):
+    def post_whatsapp_template_meta(self):
         try:
             access_token = get_access_token()
             api_base = "https://graph.facebook.com/v23.0"
