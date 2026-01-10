@@ -1,3 +1,4 @@
+
 import {
   scroll_to_bottom,
   get_date_from_now,
@@ -816,12 +817,36 @@ export default class ChatSpace {
       });
 
       this.$chat_actions.find(".type-message").on("input", function () {
+        const textValue = $(this).find(".ql-editor").text();
         if (me.profile.room) {
           // Only call setupTypingIndicator if it's not already active
           if (!me.isTypingIndicatorActive) {
-            me.setupTypingIndicator();
+              
+           console.log(typeof textValue);
+
+          if (!me.isTypingIndicatorActive) {
+            if (textValue.startsWith("/") && textValue.length === 1) {
+              
+              me.setupTypingIndicator(textValue);
+            } else {
+              me.setupTypingIndicator();
+              const container = document.querySelector("#template-suggestions");
+              if (container) container.remove();
+            }
             me.isTypingIndicatorActive = true;
           }
+           else {
+              const container = document.querySelector("#template-suggestions");
+              if (container) container.remove();
+            }
+          }
+        }
+        else{
+          if (textValue.startsWith("/")) {
+              me.debouncedFetchTemplates(textValue);
+            } else {
+              me.removeTemplateSuggestions();
+            }
         }
 
         me.toggle_voice_clip_icon();
@@ -1558,7 +1583,7 @@ export default class ChatSpace {
       return;
     }
 
-    let content = this.$chat_space.find(".ql-editor.input-message").html();
+    let content = this.$chat_space.find(".ql-editor").html();
     (this.is_link = null),
       (this.is_media = null),
       (this.is_document = null),
@@ -2070,6 +2095,48 @@ export default class ChatSpace {
     });
     return updatedMentionedDoctypes;
   }
+
+debouncedFetchTemplates(textValue) {
+  clearTimeout(this.templateTimeout);
+  this.templateTimeout = setTimeout(() => {
+    this.fetchTemplateSuggestions(textValue);
+  }, 250);
+}
+removeTemplateSuggestions() {
+  this.$wrapper
+    .closest(".chat-window")
+    .find("#template-suggestions")
+    .remove();
+}
+
+async fetchTemplateSuggestions(textValue) {
+  if (!textValue || !textValue.startsWith("/")) {
+    this.removeTemplateSuggestions();
+    return;
+  }
+
+  try {
+    const res = await frappe.call({
+      method: "clefincode_chat.api.api_1_3_1.api.get_template_suggestions",
+      args: {
+        user: this.profile.user_email,
+        platform: this.profile.platform || "Chat",
+        text: textValue
+      }
+    });
+
+    if (res.message && res.message.length > 0) {
+      this.showTemplateSuggestions({
+        template: res.message,
+        user: this.profile.user_email
+      });
+    } else {
+      this.removeTemplateSuggestions();
+    }
+  } catch (err) {
+    console.error("Template suggestions error:", err);
+  }
+}
 
   async create_direct_channel(content) {
 
@@ -2666,7 +2733,15 @@ export default class ChatSpace {
             me.hideTypingIndicator(res.user);
           }
         }
-      } else if (res.realtime_type == "set_topic") {
+      }else if (res.realtime_type == "show_template") {
+      
+        
+       
+          if (res.user === me.profile.user_email && res.template && res.template.length > 0) {
+            me.showTemplateSuggestions(res);
+          } 
+      }
+       else if (res.realtime_type == "set_topic") {
         me.chat_topic = res.chat_topic;
         me.reference_doctypes = me.reference_doctypes.concat(
           res.mention_doctypes
@@ -2911,8 +2986,7 @@ export default class ChatSpace {
 
     me.lastScrollTop = st; // Update last scroll position
   }
-
-  async setupTypingIndicator() {
+async setupTypingIndicator(textValue) {
     let user = this.profile.user_email;
     let room;
 
@@ -2921,7 +2995,16 @@ export default class ChatSpace {
     } else {
       room = this.profile.room;
     }
-    this.callSetTypingAPI(user, room, "true");
+   
+    if (textValue && textValue.startsWith("/")) {
+      this.callSetTypingAPI(user, room, "true", textValue);
+      
+    } else {
+    
+      this.callSetTypingAPI(user, room, "true");
+    }
+
+
 
     setTimeout(async () => {
       this.isTypingIndicatorActive = false;
@@ -2936,14 +3019,16 @@ export default class ChatSpace {
     }, 3000);
   }
 
-  callSetTypingAPI(user, room, isTyping) {
+  callSetTypingAPI(user, room, isTyping,textValue) {
+    console.log(textValue);
     frappe.call({
-      method: "clefincode_chat.api.api_1_2_1.api.set_typing",
+      method: "clefincode_chat.api.api_1_3_1.api.set_typing",
       args: {
         user: user,
         room: room,
         is_typing: isTyping,
         last_active_sub_channel: this.last_active_sub_channel,
+        text: textValue,
       },
     });
   }
@@ -2961,7 +3046,178 @@ export default class ChatSpace {
       }, 3000);
     }
   }
+showTemplateSuggestions(res) {
+  let chatWindow;
+    const me = this; 
 
+
+if (res.room) {
+  chatWindow = $(`.chat-window[data-room="${res.room}"]`);
+}
+
+else {
+  chatWindow = this.$wrapper.closest(".chat-window");
+}
+
+if (!chatWindow || !chatWindow.length) {
+  console.warn("Chat window not found");
+  return;
+}
+
+  const editor = chatWindow.find(".type-message .ql-editor");
+
+
+  chatWindow.find("#template-suggestions").remove();
+  
+  const container = $(`
+   <div id="template-suggestions"
+  style="
+    position:absolute;
+    background:#fff;
+    border:1px solid #ccc;
+    border-radius:6px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.15);
+    padding:8px;
+    z-index:500;
+    max-height:220px;
+    overflow-y:auto;
+    font-size:13px;
+    width:256px;
+    opacity:0;
+    transform:translateY(10px);
+    transition:all 0.25s ease;
+  ">
+</div>
+  `);
+  
+  res.template.forEach((t) => {
+    const name = t.name || "Unnamed Template";
+    const doctype_type=t.doctype
+
+   const item = $(`
+  <div style="padding:8px; cursor:pointer; border-bottom:1px solid #eee;">
+    <table style="width:100%; font-size:13px;">
+      <tr>
+        <td style="font-weight:bold; color:#333;">${t.meta_template_name || t.template_name}</td>
+       
+      </tr>
+      
+    </table>
+  </div>
+`);
+
+    item.hover(
+      function () {
+        $(this).css("background", "#e6dedeff");
+      },
+      function () {
+        $(this).css("background", "transparent");
+      }
+    );
+
+   item.on("click", async function () {
+      if (!res.room) {
+    await me.create_direct_channel(name);
+  }
+    editor.text("/" + name);
+    container.fadeOut(200, () => container.remove());
+
+    const check = await check_reference_doctype_empty(name, doctype_type);
+
+    // Determine template type based on the doctype
+    let template_type = (doctype_type === "Clefincode Chat Template")
+        ? "Send Template Public"
+        : "Send Template";
+
+    if (check.empty) {
+        const message_info = {
+            content: name,
+            user: me.profile.user,
+            room: room,
+            email:  me.profile.user,
+            message_type: "information",
+            message_template_type: template_type
+        };
+
+        send_message(message_info);
+        editor.html("");
+    }
+    else {
+                const room =
+            me.profile.room_type === "Contributor"
+              ? me.profile.parent_channel
+              : me.profile.room;
+
+          if (!room) {
+            console.warn("No room available for topic info");
+            return;
+          }
+
+
+        let topic_info = await get_topic_info(room);
+
+        if (!topic_info || !topic_info.length) {
+            console.error("topic_info is empty", topic_info);
+            return;
+        }
+
+        let topic = topic_info[0];
+        let reference_doctypes = topic.reference_doctypes;
+
+        // If doctype exists in reference list
+        if (reference_doctypes.some(d => d.doctype === check.value)) {
+            console.log("Value exists in reference_doctypes");
+        }
+
+        // Select docname
+        show_doctype_selector(check.value, function (selected_docname) {
+
+            const message_info = {
+                content: name + "," + selected_docname,
+                user:  me.profile.user,
+                room: room,
+                email:  me.profile.user,
+                message_type: "information",
+                message_template_type: template_type
+            };
+
+            send_message(message_info);
+            editor.html("");
+        });
+    }
+});
+
+
+    container.append(item);
+  });
+
+  
+  editor.parent().css("position", "relative");
+  editor.after(container);
+
+  
+  const rect = editor[0].getBoundingClientRect();
+  const containerHeight = container.outerHeight();
+
+  container.css({
+    top: -(containerHeight + 5) + "px",
+    left: "0px",
+    width: rect.width + "px",
+  });
+
+  setTimeout(() => {
+    container.css({
+      opacity: "1",
+      transform: "translateY(0)",
+    });
+  }, 10);
+}
+insertTemplateText (text) {
+  const editor = me.$chat_actions.find(".ql-editor");
+  if (editor && editor.length > 0) {
+    editor.text(text);
+  }
+};
   async hideTypingIndicator(user_email) {
     if (this.profile.room_type == "Direct") {
       if (user_email && this.profile.contact == user_email) {
@@ -3511,4 +3767,35 @@ async function create_website_support_group(website_user_email, content) {
     },
   });
   return await res.message.results[0];
+}
+
+async function check_reference_doctype_empty(docname,template_type) {
+  const res = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.is_reference_doctype_Template_empty",
+    args: { docname,template_type },
+  });
+  
+  return res.message; // { empty: true/false, value: "DocType" }
+}
+
+function show_doctype_selector(doctype, callback) {
+  const d = new frappe.ui.Dialog({
+    title: `Select ${doctype}`,
+    fields: [
+      {
+        fieldname: "docname",
+        label: `Select ${doctype}`,
+        fieldtype: "Link",
+        options: doctype,
+        reqd: 1
+      }
+    ],
+    primary_action_label: "Select",
+    primary_action(values) {
+      d.hide();
+      callback(values.docname);
+    }
+  });
+
+  d.show();
 }

@@ -245,7 +245,7 @@ async function send_message(message_info) {
     is_screenshot = 0,
   } = message_info;
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.send",
+    method: "clefincode_chat.api.api_1_3_1.api.send",
     args: {
       content: content,
       user: user,

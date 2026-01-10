@@ -12,7 +12,10 @@ import ChatContactList from "./erpnext_chat_contact_list";
 import { remove_chat_topic } from "./erpnext_chat_space";
 
 export default class ChatInfo {
+
   constructor(opts) {
+    console.log("opts")
+    console.log(opts)
     this.chat_space = opts.chat_space;
     this.chat_status = opts.chat_status;
     this.roomtype = this.chat_space.profile.room_type;
@@ -26,7 +29,187 @@ export default class ChatInfo {
     this.is_admin = 0;
     this.setup();
   }
+  open_manage_popup() {
+    const me = this;
 
+    
+    frappe.call({
+        method: "clefincode_chat.api.api_1_3_1.api.get_contact_by_profile",
+        args: { profile_id: me.roomname },
+        callback(r) {
+            if (r.message && r.message.results) {
+                me.profile = r.message.results;
+            }
+
+            console.log("r.message.results",r.message.results);
+            const d = new frappe.ui.Dialog({
+                title: "Manage Contact Details",
+                fields: [
+                    { fieldtype: "HTML", fieldname: "contacts_table_html" },
+                    { fieldtype: "Section Break" },
+                    {
+                        label: "Add New Row",
+                        fieldname: "add_row",
+                        fieldtype: "Button",
+                        click: () => me.add_new_row(d)
+                    }
+                ],
+                primary_action_label: "Save",
+                primary_action: () => me.save_all_contacts(d)
+            });
+
+            me.render_contacts_table(d);
+            d.show();
+        }
+    });
+}
+
+//---------------------------------------------
+// Render Contact Table
+//---------------------------------------------
+
+render_contacts_table(dialog) {
+    const me = this;
+
+    let rows = "";
+    this.profile.contact_details.forEach((cd, index) => {
+        rows += `
+            <tr data-index="${index}">
+                <td>${cd.contact_type}</td>
+                <td>${cd.contact_info}</td>
+                <td><button class="btn btn-xs btn-secondary edit-row">Edit</button></td>
+                <td><button class="btn btn-xs btn-danger delete-row">Delete</button></td>
+            </tr>
+        `;
+    });
+
+    const html = `
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Contact Info</th>
+                    <th>Edit</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+
+    dialog.fields_dict.contacts_table_html.$wrapper.html(html);
+    this.bind_row_events(dialog);
+}
+bind_row_events(dialog) {
+    const me = this;
+
+    dialog.$wrapper.find(".edit-row").on("click", function () {
+        const index = $(this).closest("tr").data("index");
+        me.edit_row(dialog, index);
+    });
+
+    dialog.$wrapper.find(".delete-row").on("click", function () {
+        const index = $(this).closest("tr").data("index");
+        me.delete_row(dialog, index);
+    });
+}
+
+edit_row(dialog, index) {
+    const me = this;
+    const row = me.profile.contact_details[index];
+
+    const d = new frappe.ui.Dialog({
+        title: "Edit Contact Row",
+        fields: [
+            {
+                label: "Contact Type",
+                fieldname: "contact_type",
+                fieldtype: "Select",
+                options: ["Email", "Chat", "WhatsApp", "Messenger", "Instagram", "Telegram"],
+                default: row.contact_type
+            },
+            {
+                label: "Contact Info",
+                fieldname: "contact_info",
+                fieldtype: "Data",
+                default: row.contact_info
+            }
+        ],
+        primary_action_label: "Update",
+        primary_action(values) {
+            row.contact_type = values.contact_type;
+            row.contact_info = values.contact_info;
+
+            d.hide();
+            me.render_contacts_table(); 
+            dialog.hide();
+        }
+    });
+
+    d.show();
+}
+
+//---------------------------------------------
+// Delete Row
+//---------------------------------------------
+
+delete_row(dialog, index) {
+    this.profile.contact_details.splice(index, 1);
+    this.render_contacts_table(dialog);
+}
+
+//---------------------------------------------
+// Add New Row Popup
+//---------------------------------------------
+
+add_new_row(dialog) {
+    const me = this;
+
+    const d = new frappe.ui.Dialog({
+        title: "Add New Contact Row",
+        fields: [
+            {
+                label: "Contact Type",
+                fieldname: "contact_type",
+                fieldtype: "Select",
+                options: ["Email", "Chat","Phone" ,"WhatsApp", "Messenger", "Instagram", "Telegram"]
+            },
+            {
+                label: "Contact Info",
+                fieldname: "contact_info",
+                fieldtype: "Data"
+            }
+        ],
+        primary_action_label: "Add",
+        primary_action(values) {
+            me.profile.contact_details.push(values);
+            d.hide();
+            me.render_contacts_table(dialog);
+        }
+    });
+
+    d.show();
+}
+
+save_all_contacts(dialog) {
+    frappe.call({
+        method: "clefincode_chat.api.api_1_3_1.api.update_profile_contacts",
+        args: {
+            profile_id: this.profile.profile_id,   // your correct ID field
+            contact_details: this.profile.contact_details
+        },
+        callback: () => {
+            frappe.show_alert("Contact details updated successfully");
+
+            // this.get_contact_details(); 
+            // //this.$chat_contact.remove();
+            // this.setup(); 
+
+            dialog.hide();
+           
+        }
+    });
+}
   setup() {
     this.$chat_info = $(document.createElement("div")).addClass("chat-info");
     this.setup_header();
@@ -91,7 +274,8 @@ export default class ChatInfo {
       const checkemail = this.user_email;
       this.is_admin = await check_if_room_admin(this.room, checkemail);
       if (this.chat_space.profile.is_removed != 1) {
-        if (this.is_admin == 1) {
+        if (this.is_admin == 1)
+           {
           body += `<span class="edit" style="cursor:pointer;">${frappe.utils.icon(
             "edit",
             "md"
@@ -116,6 +300,12 @@ export default class ChatInfo {
           body += `<div>${this.email}</div>`;
         }
       });
+       {
+          body += `<span class="edit-profile" style="cursor:pointer;">${frappe.utils.icon(
+            "edit",
+            "md"
+          )}</span>`;
+        }
     } else if (this.roomtype == "Contributor") {
       body += `<div>@Contributor</div>`;
     }
@@ -624,7 +814,9 @@ export default class ChatInfo {
       });
       d.show();
     });
-
+    this.$chat_info.find(".edit-profile").on("click", function () {
+    me.open_manage_popup();
+});
     this.$chat_info.find(".leave-conversation").on("click", function () {
       frappe.confirm(
         "Are you sure you want to leave this conversation?",

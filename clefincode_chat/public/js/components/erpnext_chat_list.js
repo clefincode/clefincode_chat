@@ -489,6 +489,7 @@ async render_messages(signal = null) {
     });
 
     frappe.realtime.on("update_room", async function (res) {
+      console.log("sdasddsfgfdsfg");
       if (res.realtime_type == "send_message") {
         const setCommonFields = () => {
           res.is_admin = true;

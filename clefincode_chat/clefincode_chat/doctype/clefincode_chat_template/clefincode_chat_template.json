@@ -1,0 +1,245 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:template_name",
+ "creation": "2025-11-16 14:17:52.767249",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "friendly_name",
+  "reference_doctype",
+  "column_break_3",
+  "channel",
+  "message_type",
+  "disabled",
+  "template",
+  "template_content",
+  "media_url",
+  "message_content",
+  "create_template",
+  "section_break_11",
+  "attach_document_print",
+  "custom_attachment",
+  "attach",
+  "file_name",
+  "header_type",
+  "attach_from_field",
+  "variables",
+  "clefincode_notification_recipient_list",
+  "section_break_22",
+  "set_property_after_alert",
+  "property_value",
+  "template_name",
+  "print_format",
+  "language",
+  "letter_head"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Reference DocType",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fieldname": "template",
+   "fieldtype": "Link",
+   "label": "Template",
+   "mandatory_depends_on": "eval:doc.message_type=='Template';",
+   "options": "CiC Twilio Template"
+  },
+  {
+   "fieldname": "section_break_11",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "attach_document_print",
+   "fieldtype": "Check",
+   "label": " Attach Document Print"
+  },
+  {
+   "default": "0",
+   "description": "WhatsApp Template requires document",
+   "fieldname": "custom_attachment",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Custom attachment"
+  },
+  {
+   "depends_on": "eval:doc.custom_attachment",
+   "description": "Upload the file as public. Whatsapp cannot access the private file.",
+   "fieldname": "attach",
+   "fieldtype": "Attach",
+   "label": "Attach"
+  },
+  {
+   "depends_on": "eval:doc.custom_attachment",
+   "fieldname": "file_name",
+   "fieldtype": "Data",
+   "label": "File name"
+  },
+  {
+   "fieldname": "header_type",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Header Type"
+  },
+  {
+   "depends_on": "eval:doc.custom_attachment",
+   "description": "Attach media from doctype field",
+   "fieldname": "attach_from_field",
+   "fieldtype": "Data",
+   "label": "Attach from field "
+  },
+  {
+   "fieldname": "set_property_after_alert",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Set Property After Alert"
+  },
+  {
+   "fieldname": "property_value",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Value To Be Set"
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fetch_from": "template.body",
+   "fetch_if_empty": 1,
+   "fieldname": "template_content",
+   "fieldtype": "Text Editor",
+   "label": "Template Content"
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fieldname": "create_template",
+   "fieldtype": "Button",
+   "label": "Create Template"
+  },
+  {
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Channel",
+   "options": "Whatsapp\nTelegram"
+  },
+  {
+   "fieldname": "clefincode_notification_recipient_list",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Clefincode Notification Recipient list",
+   "options": "Clefincode Notification Recipient list"
+  },
+  {
+   "depends_on": "eval:doc.message_type!='Template';",
+   "fieldname": "variables",
+   "fieldtype": "Table",
+   "label": "Variables",
+   "options": "CiC Twilio Template Variable Mapping"
+  },
+  {
+   "depends_on": "eval:doc.message_type=='Template';",
+   "fetch_from": "template.media_url",
+   "fieldname": "media_url",
+   "fieldtype": "Small Text",
+   "label": "Media URL"
+  },
+  {
+   "fieldname": "message_type",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Message Type",
+   "options": "Message\nTemplate"
+  },
+  {
+   "depends_on": "eval:doc.message_type!='Template';",
+   "fieldname": "message_content",
+   "fieldtype": "Small Text",
+   "label": "Message_content"
+  },
+  {
+   "depends_on": "attach_document_print",
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "depends_on": "attach_document_print",
+   "fieldname": "language",
+   "fieldtype": "Link",
+   "label": "Language",
+   "options": "Language"
+  },
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "section_break_22",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "friendly_name",
+   "fieldtype": "Data",
+   "label": "Friendly Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "letter_head",
+   "fieldtype": "Link",
+   "label": "Letter Head",
+   "options": "Letter Head"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-12-17 15:37:05.171724",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "Clefincode Chat Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "friendly_name",
+ "translated_doctype": 1
+}
