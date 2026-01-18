@@ -211,7 +211,7 @@ class ClefincodeNotification(Document):
                                 print_format=self.print_format,
                                 lang=self.language,
                                 letterhead=self.letter_head,
-                                is_private=False
+                                is_private=self.is_private
                             )
                    
                     attachment=res['file_url']
