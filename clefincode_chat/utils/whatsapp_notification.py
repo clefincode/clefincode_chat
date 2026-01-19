@@ -37,7 +37,7 @@ def run_server_script_for_doc_event(doc, event):
 
     
     # -------------------------------------------------------------------
-    if event in ("on_update", "on_update_after_submit", "on_submit", "on_change"):#on_update", "on_update_after_submit",
+    if event in ( "on_change"):#on_update", "on_update_after_submit",
     
         detect_value_changes(doc, event)
        
