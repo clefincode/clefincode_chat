@@ -154,9 +154,8 @@ doc_events = {
 
         "on_change": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
 
-        "before_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
-        "on_submit": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
-
+        "before_submit": "clefincode_chat.utils.whatsapp_notification.capture_old_snapshot",
+        "on_submit":"clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "before_cancel": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
         "on_cancel": "clefincode_chat.utils.whatsapp_notification.run_server_script_for_doc_event",
 

@@ -30,6 +30,7 @@
   "section_break_11",
   "code",
   "attach_document_print",
+  "is_private",
   "print_format",
   "letter_head",
   "language",
@@ -303,11 +304,18 @@
    "fieldtype": "Link",
    "label": "Letter Head",
    "options": "Letter Head"
+  },
+  {
+   "default": "0",
+   "fetch_from": "template.is_private",
+   "fieldname": "is_private",
+   "fieldtype": "Check",
+   "label": "Is Private"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-12-17 12:34:38.789889",
+ "modified": "2026-01-18 18:35:56.245901",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification",

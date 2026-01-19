@@ -110,7 +110,7 @@
    "link_fieldname": "name"
   }
  ],
- "modified": "2025-12-11 14:56:33.116050",
+ "modified": "2026-01-07 16:33:40.605746",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Profile",
@@ -128,6 +128,15 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Accounts Manager",
+   "share": 1
   }
  ],
  "sort_field": "modified",

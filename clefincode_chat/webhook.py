@@ -230,13 +230,14 @@ def manage_support_channel(sender_number, receiver_number, chat_profile, whatsap
         if not channel_info:
             recipients_list, responder_user = build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number)
             chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
-            return [chat_channel , None]
+            return [chat_channel , None,]
         else:
           chat_channel , pending_messages = channel_info 
-          return [chat_channel , pending_messages]  
+          sender_number=f"+{sender_number}"
+          return [chat_channel , pending_messages,sender_number]  
     else:    
         chat_channel , pending_messages = channel_info 
-        return [chat_channel , pending_messages]
+        return [chat_channel , pending_messages,sender_number]
 
 
 def build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number):
@@ -287,11 +288,12 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
             
             return [chat_channel , None]
         else:
-           chat_channel , pending_messages = channel_info 
-           return [chat_channel , pending_messages]  
+           chat_channel , pending_messages = channel_info
+           sender_number=f"+{sender_number}"
+           return [chat_channel , pending_messages,sender_number]  
     else:    
         chat_channel , pending_messages = channel_info 
-        return [chat_channel , pending_messages] 
+        return [chat_channel , pending_messages,sender_number] 
 
 
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
@@ -1670,19 +1672,21 @@ def whatsapp_twillio_webhook():
             messages=[{"text": {"type": message_type, "body": message_body}}]
         )
 
-        chat_channel, _ = chat_channel_info
+        chat_channel, _,email = chat_channel_info
         last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
-
+        if email is None:
+            email=sender_number
         # =============================
         # TEXT MESSAGE
         # =============================
         if message_type == "text":
+      
             send(
                 content=f"<p>{message_body}</p>",
                 user=sender_number,
                 room=chat_channel,
-                email=sender_number,
+                email=email,
                 sub_channel=last_sub_channel
             )
             return
@@ -1710,7 +1714,7 @@ def whatsapp_twillio_webhook():
                 content=content,
                 user=sender_number,
                 room=chat_channel,
-                email=sender_number,
+                email=email,
                 sub_channel=last_sub_channel,
                 attachment=map_file_url,
                 is_media=1,
@@ -1741,7 +1745,7 @@ def whatsapp_twillio_webhook():
                 content=content,
                 user=sender_number,
                 room=chat_channel,
-                email=sender_number,
+                email=email,
                 sub_channel=last_sub_channel,
                 attachment=file_url,
                 is_document=1,
@@ -1770,7 +1774,7 @@ def whatsapp_twillio_webhook():
             content=content + f"<p>{message_body}</p>",
             user=sender_number,
             room=chat_channel,
-            email=sender_number,
+            email=email,
             sub_channel=last_sub_channel,
             attachment=file_url,
             is_media=is_media,
