@@ -5210,8 +5210,8 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
 
     attach_var= extract_placeholder(template.media_url)
     if link:
-        variables[attach_var] = urllib.parse.quote(variables[attach_var], safe=':/')
-        frappe.log_error("link link ",link)
+       
+       
         file_info = frappe.db.get_value(
                     "File", {"file_url": f"/{link}"},
                     ["name", "is_private", "file_url"], as_dict=True
@@ -5247,7 +5247,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     timeout=600,
                     
                 )
-                    frappe.log_error("dssd",[public_url,variables[attach_var]])
+                    
     message = client.messages.create(
         from_=f"whatsapp:{from_number}",
         to=f"whatsapp:{to_number}",
