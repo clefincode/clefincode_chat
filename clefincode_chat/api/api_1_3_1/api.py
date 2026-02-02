@@ -1179,11 +1179,12 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     results["room"] = room
                     results["send_date"] = convert_utc_to_user_timezone(send_date, get_user_timezone(member.user)["results"][0]["time_zone"])
                     results["time_zone"] = frappe.db.get_value("User" , member.user , "time_zone")
-                    results["target_user"] = member.user            
-                    frappe.publish_realtime(event=room, message=results, user=member.user)       
-                    frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user)
-                    frappe.publish_realtime(event="update_room", message=results, user= member.user)
-                    send_notification(member.user , results, "send_message")
+                    results["target_user"] = member.user  
+                    if member.user:          
+                        frappe.publish_realtime(event=room, message=results, user=member.user)       
+                        frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user)
+                        frappe.publish_realtime(event="update_room", message=results, user= member.user)
+                        send_notification(member.user , results, "send_message")
             
             elif channel_doc.chat_profile.startswith("Support"):                           
                 for member in channel_doc.members:
