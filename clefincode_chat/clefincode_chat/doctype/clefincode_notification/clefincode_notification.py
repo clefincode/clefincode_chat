@@ -429,7 +429,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
         if letterhead:
             frappe.flags.current_letterhead = letterhead
             created_letterhead_flag = True
-
+        frappe.flags.ignore_print_permissions = True
         #  Render print HTML with letterhead enabled
         html = frappe.get_print(
             doctype,
@@ -439,6 +439,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             no_letterhead=0,
            
         )
+        frappe.flags.ignore_print_permissions = False
 
         #  Convert relative paths → absolute URLs
         site_url = frappe.utils.get_url()
@@ -539,14 +540,18 @@ def generate_pdf_with_getpdf(
         frappe.flags.current_letterhead = letterhead
 
     # Generate HTML
-    html = frappe.get_print(
-        doctype,
-        name,
-        print_format=print_format,
-        doc=doc,
-        no_letterhead=0,
-      
-    )
+    try:
+        frappe.flags.ignore_print_permissions = True
+
+        html = frappe.get_print(
+            doctype,
+            name,
+            print_format=print_format,
+            doc=doc
+        )
+
+    finally:
+        frappe.flags.ignore_print_permissions = False
 
     # Generate PDF (bytes)
     pdf_data = get_pdf(html)
