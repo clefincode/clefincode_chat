@@ -35,14 +35,14 @@ class ClefinCodeWhatsAppTemplate(Document):
                
                 if not getattr(profile, "business_account_id", None):
                     frappe.throw("WhatsApp Business Account ID not set on profile")
-                self.post_whatsapp_template_meta(profile)
+                self.post_whatsapp_template_meta()
             elif provider in ("twilio",):
                 self.post_whatsapp_template_twilio(profile)
             else:
                 frappe.throw(f"Unknown whatsapp provider '{provider}' on profile {profile.name}")
 
         except Exception as e:
-            frappe.log_error(f"on_submit error for template {self.name}: {str(e)}", "ClefinCodeWhatsAppTemplate.on_submit")
+            frappe.log_error("ClefinCodeWhatsAppTemplate.on_submit",f"on_submit error for template {self.name}: {str(e)}")
             frappe.throw(str(e))
     
     def post_whatsapp_template_meta(self):
