@@ -6122,7 +6122,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             created_letterhead_flag = True
 
             original_ignore = frappe.flags.get('ignore_permissions', False)
-        frappe.flags.ignore_permissions = True
+        frappe.flags.ignore_print_permissions = True
         try:
             html = frappe.get_print(
                 doctype,
@@ -6132,7 +6132,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
                 no_letterhead=0
             )
         finally:
-            frappe.flags.ignore_permissions = original_ignore  
+            frappe.flags.ignore_print_permissions = True
         site_url = frappe.utils.get_url()
 
         # Convert all src="/..." to src="https://your-site.com/..."
@@ -6489,8 +6489,7 @@ def generate_pdf_with_getpdf(
         frappe.flags.current_letterhead = letterhead
 
     
-    original_ignore = frappe.flags.get('ignore_permissions', False)
-    frappe.flags.ignore_permissions = True
+    frappe.flags.ignore_print_permissions = True
     try:
         html = frappe.get_print(
             doctype,
@@ -6500,7 +6499,7 @@ def generate_pdf_with_getpdf(
             no_letterhead=0
         )
     finally:
-        frappe.flags.ignore_permissions = original_ignore 
+        frappe.flags.ignore_print_permissions = False
 
     
     pdf_data = get_pdf(html)
