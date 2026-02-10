@@ -1147,7 +1147,6 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             "message_template_type": message_template_type,
             "avatar_url": channel_doc.channel_image,
             "utc_message_date" : send_date,
-            "reply_to_message":reply_to_message_name,
             "platform": platform 
         }
         
@@ -2619,34 +2618,92 @@ def get_topic_messages(chat_topic):
 #############################################################################################
 ######################################## Contacts ###########################################
 #############################################################################################
-@frappe.whitelist()
-def get_contacts(user_email):    
-    contacts_list = frappe.db.sql(f"""
-    SELECT DISTINCT ChatProfile.name AS profile_id, ChatProfile.full_name, Contact.user AS user_id, User.enabled
-    FROM `tabClefinCode Chat Profile` AS ChatProfile
-    INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
-    LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user                     
-    WHERE (User.enabled = 1 OR User.enabled IS NULL)
-    ORDER BY Contact.user DESC
-    """, as_dict=True)
+# @frappe.whitelist()
+# def get_contacts(user_email):    
+#     contacts_list = frappe.db.sql(f"""
+#     SELECT DISTINCT ChatProfile.name AS profile_id, ChatProfile.full_name, Contact.user AS user_id, User.enabled
+#     FROM `tabClefinCode Chat Profile` AS ChatProfile
+#     INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
+#     LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user                     
+#     WHERE (User.enabled = 1 OR User.enabled IS NULL)
+#     ORDER BY Contact.user DESC
+#     """, as_dict=True)
         
-    filtered_contacts = []
+#     filtered_contacts = []
+#     if is_limited_user(user_email):
+#         filtered_contacts = [
+#             contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
+#         ]
+#     else:
+#         filtered_contacts = contacts_list
+
+#     for contact in filtered_contacts:
+#         # Fetch contact details
+#         contact['contact_details'] = frappe.db.sql("""
+#             SELECT contact_info, type AS contact_type,verified, `default`
+#             FROM `tabClefinCode Chat Profile Contact Details`
+#             WHERE parent = %s
+#         """, (contact['profile_id'],), as_dict=True)
+
+#     return {"results": [{"contacts": filtered_contacts}]}     
+@frappe.whitelist()
+def get_contacts(user_email, limit=20, offset=0, search_text=None):
+    
+    search_condition = ""
+    search_values = {}
+    if search_text:
+        search_condition = "AND ChatProfile.full_name LIKE %(search)s"
+        search_values["search"] = f"%{search_text}%"
+
+    
+    contacts_list = frappe.db.sql(f"""
+        SELECT DISTINCT
+            ChatProfile.name AS profile_id,
+            ChatProfile.full_name,
+            Contact.user AS user_id,
+            User.enabled
+        FROM `tabClefinCode Chat Profile` AS ChatProfile
+        INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
+        LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user
+        WHERE (User.enabled = 1 OR User.enabled IS NULL)
+        {search_condition}
+        ORDER BY Contact.user DESC
+    """, search_values,as_dict=True)
+
+    
     if is_limited_user(user_email):
         filtered_contacts = [
-            contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
+            c for c in contacts_list
+            if c.get("user_id") and not is_limited_user(c.get("user_id"))
         ]
     else:
         filtered_contacts = contacts_list
+    limit = int(limit)
+    offset = int(offset)
+    
+    page_slice = filtered_contacts[offset: offset + limit]
 
-    for contact in filtered_contacts:
-        # Fetch contact details
+    
+    for contact in page_slice:
         contact['contact_details'] = frappe.db.sql("""
-            SELECT contact_info, type AS contact_type,verified, `default`
+            SELECT contact_info, type AS contact_type, verified, `default`
             FROM `tabClefinCode Chat Profile Contact Details`
             WHERE parent = %s
         """, (contact['profile_id'],), as_dict=True)
 
-    return {"results": [{"contacts": filtered_contacts}]}     
+    total = len(filtered_contacts)
+    next_offset = offset + len(page_slice)
+    has_more = next_offset < total
+
+    return {
+        "results": [{
+            "contacts": page_slice,
+            "total": total,
+            "has_more": has_more,
+            "next_offset": next_offset
+        }]
+    }
+
 # ==========================================================================================
 @frappe.whitelist()
 def get_contacts_for_new_group(user_email):    
@@ -6124,7 +6181,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             created_letterhead_flag = True
 
             original_ignore = frappe.flags.get('ignore_permissions', False)
-        frappe.flags.ignore_print_permissions = True
+        frappe.flags.ignore_permissions = True
         try:
             html = frappe.get_print(
                 doctype,
@@ -6134,7 +6191,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
                 no_letterhead=0
             )
         finally:
-            frappe.flags.ignore_print_permissions = True
+            frappe.flags.ignore_permissions = original_ignore  
         site_url = frappe.utils.get_url()
 
         # Convert all src="/..." to src="https://your-site.com/..."
@@ -6491,6 +6548,7 @@ def generate_pdf_with_getpdf(
         frappe.flags.current_letterhead = letterhead
 
     
+    
     frappe.flags.ignore_print_permissions = True
     try:
         html = frappe.get_print(
@@ -6502,11 +6560,9 @@ def generate_pdf_with_getpdf(
         )
     finally:
         frappe.flags.ignore_print_permissions = False
+       
 
-    frappe.log_error(
-    message=f"Current user: {frappe.session.user}",
-    title="PDF Test"
-)
+    
     pdf_data = get_pdf(html)
 
     # Save file

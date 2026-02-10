@@ -31,7 +31,8 @@
   "is_screenshot",
   "whatsapp_message_id",
   "instagram_message_id",
-  "messenger_message_id"
+  "messenger_message_id",
+  "reply_to_message"
  ],
  "fields": [
   {
@@ -174,12 +175,18 @@
    "fieldname": "messenger_message_id",
    "fieldtype": "Data",
    "label": "Messenger Message Id"
+  },
+  {
+   "fieldname": "reply_to_message",
+   "fieldtype": "Link",
+   "label": "Reply To Message",
+   "options": "ClefinCode Chat Message"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-13 13:26:27.013053",
+ "modified": "2026-02-08 17:51:23.553220",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Message",

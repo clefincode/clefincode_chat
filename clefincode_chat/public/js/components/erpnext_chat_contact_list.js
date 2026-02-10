@@ -18,12 +18,40 @@ export default class ChatContactList {
     this.new_group = opts.new_group;
     this.add_member = opts.add_member;
     this.chat_info = opts.chat_info;
+    this.limit = 10;
+    this.offset = 0;
+    this.has_more = true;
+    this.loading = false;
+    this.contacts = [];
+    this.chat_contacts = [];
+    this.search_text = "";
     if (this.chat_info) {
       this.chat_space = this.chat_info.chat_space;
     }
     this.selected_contacts = [];
     this.setup();
   }
+
+  on_search_change(value) {
+  this.search_text = value;
+
+  this.offset = 0;
+  this.has_more = true;
+
+
+  this.contacts = [];
+  this.chat_contacts = [];
+
+ 
+  this.$chat_contacts_container
+    .find(".chat-contact")
+    .remove();
+
+
+  this.load_next_page(true);
+}
+
+
 
   setup() {
     this.$chat_contact_list = $(document.createElement("div"));
@@ -121,24 +149,116 @@ export default class ChatContactList {
           this.chat_info.chat_space.chat_members,
           this.chat_info.chat_space.contributors
         );
+         this.setup_contacts(); 
+      this.setup_events();
+      return;
       } else if(this.new_group == 1){
         this.contacts = await get_contacts_for_new_group(this.profile.user_email);
-      }else{
-        this.contacts = await get_contacts(this.profile.user_email);
-      }
-      if (this.contacts.length == 0) {
-        this.setup_empty_contacts_container();
-      } else {
-        this.$chat_contact_list
-          .find(".select-contacts")
-          .html(this.contacts.length + " contacts");
-        this.setup_contacts();
-      }
+           this.setup_contacts();
       this.setup_events();
+      return;
+      }
+     
+      this.setup_contacts_container_once();  
+    await this.load_next_page(true);       
+    this.setup_events();
+    this.setup_scroll_event();   
     } catch (error) {
       console.log(error);
     }
   }
+setup_contacts_container_once() {
+  this.$chat_contacts_container = $(document.createElement("div"))
+    .addClass("chat-contacts-container");
+
+  // أزرار فوق (تنضاف مرة وحدة)
+  if (frappe.model.can_create("ClefinCode Chat Profile")) {
+    this.$chat_contacts_container.append(`
+      <div class="new-contact">
+        ${frappe.get_avatar("avatar-medium", "C")}
+        <div>New Contact</div>
+      </div>
+    `);
+  }
+
+  if (this.new_group == 0) {
+    this.$chat_contacts_container.append(`
+      <div class="new-group">
+        ${frappe.get_avatar("avatar-medium","G")}
+        <div>New group</div>
+      </div>
+    `);
+  }
+
+  this.$chat_contact_list.append(this.$chat_contacts_container);
+}
+async load_next_page(is_first = false) {
+  if (!this.has_more || this.loading) return;
+
+  this.loading = true;
+
+  try {
+    const data = await get_contacts(
+          this.profile.user_email,
+          this.limit,
+          this.offset,
+          this.search_text
+        );
+    const new_contacts = data.contacts || [];
+
+    this.offset = data.next_offset;
+    this.has_more = data.has_more;
+
+    // أضفهم للـ state
+    this.contacts.push(...new_contacts);
+
+    // اعمل append كـ ChatContact elements (بدون مسح القديم)
+    new_contacts.forEach((element) => {
+      const profile = {
+        user: this.profile.user,
+        user_email: this.profile.user_email,
+        is_admin: this.profile.is_admin,
+        time_zone: this.profile.time_zone,
+        profile_id: element.profile_id,
+        contact_name: element.full_name,
+        contact_details: element.contact_details,
+        add_member: this.add_member,
+      };
+
+      const cc = new ChatContact({
+        $wrapper: this.$wrapper,
+        $chat_contacts_container: this.$chat_contacts_container,
+        chat_contact_list: this,
+        profile,
+      });
+
+      this.chat_contacts.push(cc);
+    });
+
+    // تحديث العداد فوق (اختياري)
+    if (is_first) {
+      this.$chat_contact_list.find(".select-contacts")
+        .html(`${data.total} contacts`);
+    }
+
+  } catch (e) {
+    console.log(e);
+  } finally {
+    this.loading = false;
+  }
+}
+setup_scroll_event() {
+  const me = this;
+
+  this.$chat_contacts_container.on("scroll", function () {
+    const el = this;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
+
+    if (nearBottom) {
+      me.load_next_page();
+    }
+  });
+}
 
   setup_empty_contacts_container() {
     this.$chat_contact_list.find(".chat-search").remove();
@@ -297,15 +417,24 @@ export default class ChatContactList {
       });
     }, 500);
 
+    // this.$chat_contact_list.find(".chat-search-box").on("input", function (e) {
+    //   if (me.search_timeout != undefined) {
+    //     clearTimeout(me.search_timeout);
+    //     me.search_timeout = undefined;
+    //   }
+    //   me.search_timeout = setTimeout(() => {
+    //     me.fitler_contacts($(this).val().toLowerCase());
+    //   }, 300);
+    // });
     this.$chat_contact_list.find(".chat-search-box").on("input", function (e) {
-      if (me.search_timeout != undefined) {
-        clearTimeout(me.search_timeout);
-        me.search_timeout = undefined;
-      }
-      me.search_timeout = setTimeout(() => {
-        me.fitler_contacts($(this).val().toLowerCase());
-      }, 300);
-    });
+        if (me.search_timeout) {
+          clearTimeout(me.search_timeout);
+        }
+
+        me.search_timeout = setTimeout(() => {
+          me.on_search_change($(this).val().toLowerCase());
+        }, 300);
+      });
 
     this.$chat_contact_list
       .find(".back-to-chat-list")
@@ -482,15 +611,13 @@ export default class ChatContactList {
   }
 } //END Class
 
-async function get_contacts(user_email) {
+async function get_contacts(user_email, limit = 10, offset = 0, search_text = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_1.api.get_contacts",
-    args: {
-      user_email: user_email,
-    },
+    method: "clefincode_chat.api.api_1_3_2.api.get_contacts",
+    args: { user_email, limit, offset, search_text  },
   });
-  return await res.message.results[0].contacts;
+  return res.message.results[0]; // {contacts, total, has_more, next_offset}
 }
 
 async function get_contacts_for_new_group(user_email) {

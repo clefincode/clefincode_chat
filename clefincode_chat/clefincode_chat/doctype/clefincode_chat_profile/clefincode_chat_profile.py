@@ -137,6 +137,8 @@ class ClefinCodeChatProfile(Document):
 
             # Set platform if default
             if is_default:
+                if t=="Email":
+                     t="Chat"
                 contact.platform = t
 
         contact.save(ignore_permissions=True)
