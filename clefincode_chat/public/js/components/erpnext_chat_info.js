@@ -14,8 +14,9 @@ import { remove_chat_topic } from "./erpnext_chat_space";
 export default class ChatInfo {
 
   constructor(opts) {
-    console.log("opts")
-    console.log(opts)
+   
+    
+   
     this.chat_space = opts.chat_space;
     this.chat_status = opts.chat_status;
     this.roomtype = this.chat_space.profile.room_type;
@@ -28,20 +29,21 @@ export default class ChatInfo {
     this.user_email = this.chat_space.profile.user_email;
     this.is_admin = 0;
     this.setup();
+   
   }
+
   open_manage_popup() {
     const me = this;
 
-    
     frappe.call({
-        method: "clefincode_chat.api.api_1_3_1.api.get_contact_by_profile",
+        method: "clefincode_chat.api.api_1_3_2.api.get_contact_by_profile",
         args: { profile_id: me.roomname },
         callback(r) {
             if (r.message && r.message.results) {
                 me.profile = r.message.results;
             }
 
-            console.log("r.message.results",r.message.results);
+         
             const d = new frappe.ui.Dialog({
                 title: "Manage Contact Details",
                 fields: [
@@ -305,6 +307,8 @@ save_all_contacts(dialog) {
             "edit",
             "md"
           )}</span>`;
+          body +=`<span class="toggle-search" title="Search" style="cursor:pointer;cursor:pointer;margin-right:8px; width:20px; height:20px; margin-left:8px;">${frappe.utils.icon("search", "sm")}</span>`;
+
         }
     } else if (this.roomtype == "Contributor") {
       body += `<div>@Contributor</div>`;
@@ -816,6 +820,27 @@ save_all_contacts(dialog) {
     });
     this.$chat_info.find(".edit-profile").on("click", function () {
     me.open_manage_popup();
+});
+
+  this.$chat_info.find(".toggle-search").on("click", () => {
+
+  me.chat_space.$wrapper.find(".chat-space").show();  
+  me.chat_space.$wrapper.find(".chat-info").remove(); 
+  
+  
+  const $search =  me.chat_space.$wrapper.find(".chat-search");  
+  $search.stop(true, true).slideToggle(150); 
+
+  if ($search.is(":visible")) {
+    setTimeout(() => {
+      
+      me.chat_space.$wrapper.find(".chat-search-input").focus();
+    }, 0);
+  } else {
+   
+    me.searchActive = false;
+    me.searchQuery = null;
+  }
 });
     this.$chat_info.find(".leave-conversation").on("click", function () {
       frappe.confirm(

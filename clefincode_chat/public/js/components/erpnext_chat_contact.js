@@ -37,10 +37,10 @@ sync_forward_selected_items() {
     (x) => x.profile_id === this.profile.profile_id
   );
 
-  // ✅ تحديث سطر الكونتاكت
+
   this.update_forward_selected_row();
 
-  // ✅ Sync dropdown items (حتى لو صار rerender بعد search)
+  
   const $items = this.$chat_contact.find(".dropdown-menu .dropdown-item");
   $items.each((_, el) => {
     const $el = $(el);
@@ -383,14 +383,12 @@ save_all_contacts(dialog) {
       const isAdmin = frappe.session.user === "Administrator";
       const isSystemManager = frappe.user_roles.includes("System Manager");
 
-      console.log("contact_details");
-      console.log(contact_details);
+    
       // Show Manage Contact if user owns contact OR is admin OR system manager
       if (isUserContact || isAdmin || isSystemManager) {
-      console.log("Profile");
-      console.log(this.profile);
+    
       const user_contact = contact_details.find(cd => cd.contact_info === frappe.session.user);
-      console.log(user_contact);
+      
 
         html_options += `
             <div class="dropdown-divider"></div>
@@ -422,7 +420,7 @@ save_all_contacts(dialog) {
      this.$chat_contact.on("click", "#manageContactBtn", () => {
         const user_contact = me.profile.contact_details.find(cd => cd.contact_info === frappe.session.user);
         
-        console.log("Current contact_details:", me.profile.contact_details);
+        
         me.open_manage_popup(user_contact);
     });
   }
@@ -511,8 +509,7 @@ handle_mail_icon_click(contact_element) {
 }
 
 handle_whatsapp_icon_click() {
-   console.log("erpnext_chat_app")
-    console.log(erpnext_chat_app)
+
     const default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number;
     const default_whatsapp_type = erpnext_chat_app.res.default_whatsapp_type;
 
@@ -534,10 +531,7 @@ handle_whatsapp_icon_click() {
 handle_chat_contact_click() {
   const contact = this.profile.default_contact;
   const platform = this.profile.default_platform;
-  console.log(contact);
-  console.log(platform);
-  console.log("contact");
-  console.log("platform");
+
   if (platform === "WhatsApp") {
         const default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number;
 
@@ -563,18 +557,16 @@ handle_chat_contact_click() {
     // const contact_element = $(e).closest(".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact,.options-icon");
     const is_forward = this.chat_contact_list && this.chat_contact_list.forward == 1;
 
-    // ✅ فقط بالـ Forward: إذا الكليك كان جوّا dropdown option
+
     const $dropdown_item = is_forward ? $(e).closest(".dropdown-menu .dropdown-item") : $();
 
-    // selector القديم نخليه مثل ما هو لغير forward
     const fallback_selector = is_forward
       ? ".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact, .options-icon"
       : ".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact,options-icon";
 
     const contact_element = $dropdown_item.length ? $dropdown_item : $(e).closest(fallback_selector);
 
-    console.log("contact_element");
-    console.log(contact_element);
+
     if(contact_element.hasClass("options-icon")){
       return
     }else if (contact_element.length > 0) { 

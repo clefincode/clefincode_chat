@@ -38,6 +38,13 @@ export default class ChatContactList {
     this.room_has_more = true;
     this.room_loading = false;
     this.room_limit = 10;
+    this.forward_preview = (this.forward == 1); 
+    this.preview_rooms_limit = 5;
+    this.preview_contacts_limit = 5;
+
+    this.show_all_rooms = false;
+    this.show_all_contacts = false;
+    
     this.setup();
   }
   inject_forward_select_styles() {
@@ -47,7 +54,6 @@ export default class ChatContactList {
 
   $("head").append(`
     <style id="cc-forward-select-style">
-      /* ✅ تمييز سطر الكونتاكت المختار بالقائمة الرئيسية */
       .chat-contact-list.forward-mode .chat-contact {
         position: relative;
       }
@@ -65,7 +71,7 @@ export default class ChatContactList {
         opacity: 0.85;
       }
 
-      /* ✅ علامة ✓ على الأيقونة اللي معمولها Select */
+      
       .chat-contact-list.forward-mode .chat-contact .chat-icons .icon {
         position: relative;
       }
@@ -84,7 +90,6 @@ export default class ChatContactList {
         box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
       }
 
-      /* ✅ علامة ✓ + لون داخل الـ options (dropdown items) */
       .chat-contact-list.forward-mode .chat-contact .dropdown-menu .dropdown-item.selected {
         position: relative;
         background: rgba(0,0,0,0.06);
@@ -102,30 +107,25 @@ export default class ChatContactList {
     </style>
   `);
 }
-n_search_change(value) {
-  this.search_text = value;
+async on_search_change(value) {
+this.search_text = value;
 
-  // contacts
-  this.offset = 0;
-  this.has_more = true;
-  this.contacts = [];
-  this.chat_contacts = [];
+  this.offset = 0; this.has_more = true; this.loading = false;
+  this.contacts = []; this.chat_contacts = [];
 
-  // rooms (forward only)
-  if (this.forward == 1) {
-    this.room_offset = 0;
-    this.room_has_more = true;
-    this.rooms = [];
-  }
+  this.room_offset = 0; this.room_has_more = true; this.room_loading = false;
+  this.rooms = [];
 
   this.$chat_contacts_container.find(".chat-contact").remove();
 
-  // أولاً rooms ثم contacts
+  
   if (this.forward == 1) {
-    this.load_next_rooms_page(true).then(() => this.load_next_page(true));
-  } else {
-    this.load_next_page(true);
+    if (this.show_all_rooms) return await this.open_all_rooms_view();
+    if (this.show_all_contacts) return await this.open_all_contacts_view();
+    return await this.load_forward_preview();
   }
+
+  await this.load_next_page(true);
 }
 
 //   on_search_change(value) {
@@ -169,7 +169,6 @@ n_search_change(value) {
   this.room_loading = true;
 
   try {
-    // نفس endpoint تبع get_channels_list بس نمرر query لو موجود
     const data = await get_channels_list_for_forward(
       this.profile.user_email,
       this.room_limit,
@@ -179,9 +178,9 @@ n_search_change(value) {
 
     const new_rooms = data.results || [];
     if (is_first && !this.$chat_contacts_container.find(".forward-open-channels-title").length) {
-      this.$chat_contacts_container.append(
-        `<div class="small text-muted px-2 pt-2 forward-open-channels-title">Open channels</div>`
-      );
+      // this.$chat_contacts_container.append(
+      //   `<div class="small text-muted px-2 pt-2 forward-open-channels-title">Open channels</div>`
+      // );
     }
     // pagination
     this.room_offset += new_rooms.length;
@@ -240,7 +239,6 @@ toggle_room_target(roomObj, $row) {
     $row.addClass("forward-selected-contact");
   }
 
-  // تحديث العداد + أيقونة save
   this.update_selected_counter();
   this.$chat_contact_list.find(".save-icon").html(
     this.selected_contacts.length ? frappe.utils.icon("tick", "lg") : ""
@@ -370,16 +368,219 @@ toggle_room_target(roomObj, $row) {
       }
      
       this.setup_contacts_container_once();  
-          if (this.forward == 1) {
-      await this.load_next_rooms_page(true);
-    }
-    await this.load_next_page(true);       
+         if (this.forward == 1) {
+        await this.load_forward_preview();      // ✅ 5 rooms + 5 contacts + see more
+      } else {
+        await this.load_next_page(true);
+      }
+        
     this.setup_events();
-    this.setup_scroll_event();   
+   if (this.forward != 1) this.setup_scroll_event();
     } catch (error) {
       console.log(error);
     }
   }
+
+async load_forward_preview() {
+  this.$chat_contacts_container.empty();
+
+  this.$chat_contacts_container.append(`
+    <div class="px-2 pt-2 small text-muted forward-open-channels-title">Open channels</div>
+  `);
+
+ 
+  this.room_offset = 0;
+  this.room_limit = this.preview_rooms_limit;
+  this.room_has_more = true;
+  this.room_loading = false;
+  this.rooms = [];
+  await this.load_next_rooms_page(true);
+    this.$chat_contacts_container.append(`
+    <div class="forward-see-more-line forward-see-more-rooms" role="button" tabindex="0">
+      <span>See more</span>
+    </div>
+  `);
+
+  if (!this.room_has_more) {
+    this.$chat_contacts_container.find(".forward-see-more-rooms").addClass("d-none");
+  }
+
+ // ===== CONTACTS =====
+  this.$chat_contacts_container.append(`
+    <div class="px-2 pt-3 small text-muted forward-contacts-title">Contacts</div>
+  `);
+
+  
+  this.offset = 0;
+  this.limit = this.preview_contacts_limit; // 5
+  this.has_more = true;
+  this.loading = false;
+  this.contacts = [];
+  this.chat_contacts = [];
+  await this.load_next_page(true);
+
+  // 
+  this.$chat_contacts_container.append(`
+    <div class="forward-see-more-line forward-see-more-contacts" role="button" tabindex="0">
+      <span>See more</span>
+    </div>
+  `);
+
+
+  if (!this.has_more) {
+    this.$chat_contacts_container.find(".forward-see-more-contacts").addClass("d-none");
+  }
+
+
+  this.bind_forward_see_more();
+}
+bind_forward_see_more() {
+  const me = this;
+
+  this.$chat_contacts_container.off("click.forwardSeeMoreRooms");
+  this.$chat_contacts_container.on("click.forwardSeeMoreRooms", ".forward-see-more-rooms", async function () {
+    await me.open_all_rooms_view();
+  });
+
+  this.$chat_contacts_container.off("click.forwardSeeMoreContacts");
+  this.$chat_contacts_container.on("click.forwardSeeMoreContacts", ".forward-see-more-contacts", async function () {
+    await me.open_all_contacts_view();
+  });
+}
+
+async fill_view_with_more_rooms() {
+  while (this.room_has_more && !this.room_loading) {
+    const container = this.$chat_contacts_container[0];
+    if (!container || container.scrollHeight > container.clientHeight + 20) {
+      break; 
+    }
+    await this.load_next_rooms_page();
+  }
+}
+
+async fill_view_with_more_contacts() {
+  while (this.has_more && !this.loading) {
+    const container = this.$chat_contacts_container[0];
+    if (!container || container.scrollHeight > container.clientHeight + 20) {
+      break;
+    }
+    await this.load_next_page();
+  }
+}
+
+async open_all_rooms_view() {
+  this.show_all_rooms = true;
+  this.show_all_contacts = false;
+
+  this.$chat_contacts_container.empty();
+
+  this.$chat_contacts_container.append(`
+    <div class="d-flex justify-content-between align-items-center px-2 pt-2">
+      <div class="small text-muted">Open channels</div>
+      <div class="small text-secondary forward-back-preview" style="cursor:pointer;">Back</div>
+    </div>
+  `);
+
+  this.room_offset = 0;
+  this.room_limit = 10;
+  this.room_has_more = true;
+  this.room_loading = false;
+  this.rooms = [];
+
+  await this.load_next_rooms_page(true);
+
+  this.bind_forward_back_to_preview();
+  this.setup_scroll_event(); 
+}async open_all_rooms_view() {
+  this.show_all_rooms = true;
+  this.show_all_contacts = false;
+  this.$chat_contacts_container.empty();
+  this.$chat_contacts_container.append(`
+    <div class="d-flex justify-content-between align-items-center px-2 pt-2">
+      <div class="small text-muted">Open channels</div>
+      <div class="small text-secondary forward-back-preview" style="cursor:pointer;">Back</div>
+    </div>
+  `);
+
+  this.room_offset = 0;
+  this.room_limit = 10;
+  this.room_has_more = true;
+  this.room_loading = false;
+  this.rooms = [];
+
+  await this.load_next_rooms_page(true);
+
+
+  await this.fill_view_with_more_rooms();
+
+  this.bind_forward_back_to_preview();
+  this.setup_scroll_event();
+}
+
+async open_all_contacts_view() {
+  this.show_all_rooms = false;
+  this.show_all_contacts = true;
+  this.$chat_contacts_container.empty();
+  this.$chat_contacts_container.append(`
+    <div class="d-flex justify-content-between align-items-center px-2 pt-2">
+      <div class="small text-muted">Contacts</div>
+      <div class="small text-secondary forward-back-preview" style="cursor:pointer;">Back</div>
+    </div>
+  `);
+
+  this.offset = 0;
+  this.limit = 10;
+  this.has_more = true;
+  this.loading = false;
+  this.contacts = [];
+  this.chat_contacts = [];
+
+  await this.load_next_page(true);
+
+ 
+  await this.fill_view_with_more_contacts();
+
+  this.bind_forward_back_to_preview();
+  this.setup_scroll_event();
+}
+async open_all_contacts_view() {
+  this.show_all_rooms = false;
+  this.show_all_contacts = true;
+
+  this.$chat_contacts_container.empty();
+
+  this.$chat_contacts_container.append(`
+    <div class="d-flex justify-content-between align-items-center px-2 pt-2">
+      <div class="small text-muted">Contacts</div>
+      <div class="small text-secondary forward-back-preview" style="cursor:pointer;">Back</div>
+    </div>
+  `);
+
+  this.offset = 0;
+  this.limit = 10;
+  this.has_more = true;
+  this.loading = false;
+
+  this.contacts = [];
+  this.chat_contacts = [];
+
+  await this.load_next_page(true);
+
+  this.bind_forward_back_to_preview();
+  this.setup_scroll_event();
+}
+bind_forward_back_to_preview() {
+  const me = this;
+
+  this.$chat_contacts_container.off("click.forwardBackPreview");
+  this.$chat_contacts_container.on("click.forwardBackPreview", ".forward-back-preview", async function () {
+    me.show_all_rooms = false;
+    me.show_all_contacts = false;
+
+    await me.load_forward_preview();
+  });
+}
+
 setup_contacts_container_once() {
   this.$chat_contacts_container = $(document.createElement("div"))
     .addClass("chat-contacts-container");
@@ -423,13 +624,12 @@ async load_next_page(is_first = false) {
     this.has_more = data.has_more;
 
     if (is_first && this.forward == 1 && !this.$chat_contacts_container.find(".forward-contacts-title").length) {
-      this.$chat_contacts_container.append(
-        `<div class="small text-muted px-2 pt-2 forward-contacts-title">Contacts</div>`
-      );
+      // this.$chat_contacts_container.append(
+      //   `<div class="small text-muted px-2 pt-2 forward-contacts-title">Contacts</div>`
+      // );
     }
     this.contacts.push(...new_contacts);
 
-    // اعمل append كـ ChatContact elements (بدون مسح القديم)
     new_contacts.forEach((element) => {
       const profile = {
         user: this.profile.user,
@@ -467,21 +667,29 @@ async load_next_page(is_first = false) {
 setup_scroll_event() {
   const me = this;
 
-  this.$chat_contacts_container.on("scroll", function () {
+  this.$chat_contacts_container.off("scroll.forwardScroll");
+  this.$chat_contacts_container.on("scroll.forwardScroll", function () {
     const el = this;
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
-
     if (!nearBottom) return;
 
-    // forward: rooms first then contacts
-    if (me.forward == 1 && me.room_has_more) {
+    if (me.forward == 1 && !me.show_all_rooms && !me.show_all_contacts) return;
+
+  
+    if (me.forward == 1 && me.show_all_rooms) {
       me.load_next_rooms_page();
       return;
     }
 
-    me.load_next_page();
+    if (me.forward == 1 && me.show_all_contacts) {
+      me.load_next_page();
+      return;
+    }
+
+    if (me.forward != 1) me.load_next_page();
   });
 }
+
 
   setup_empty_contacts_container() {
     this.$chat_contact_list.find(".chat-search").remove();
@@ -854,12 +1062,10 @@ setup_scroll_event() {
 back_to_chat_space() {
   this.$wrapper.find(".chat-contact-list").remove();
   this.$wrapper.find(".chat-space").show();
-  // chat-info ممكن يكون مخفي حسب الحالة
   this.$wrapper.find(".chat-info").show();
 }
 
 get_platform_profile_and_gateway(platform) {
-  // نفس المنطق الموجود في ChatSpace.create_direct_channel
   const res = window.erpnext_chat_app?.res || {};
 
   if (platform === "WhatsApp") {
@@ -908,15 +1114,14 @@ async create_direct_channel_for_forward(contact, platform, last_message_preview 
 
 async ensure_room_for_forward(contact) {
   const platform = contact.platform || "Chat";
-  console.log("contact");
-  console.log(contact);
+
   
   const roomRes = await check_if_contact_has_chat(this.profile.user_email, contact.email, platform);
  
   if (roomRes?.results?.name) return roomRes.results.name;
  
 
-  // ما في روم -> أنشئ روم Direct
+ 
   const preview = this.forward_payload?.content
     ? $("<div>").html(this.forward_payload.content).text().trim().slice(0, 60)
     : "";
