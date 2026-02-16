@@ -230,7 +230,7 @@ def manage_support_channel(sender_number, receiver_number, chat_profile, whatsap
         if not channel_info:
             recipients_list, responder_user = build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number)
             chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
-            return [chat_channel , None,]
+            return [chat_channel, None, sender_number]
         else:
           chat_channel , pending_messages = channel_info 
           sender_number=f"+{sender_number}"
@@ -286,7 +286,7 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
         if not channel_info:
             chat_channel = create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number)
             
-            return [chat_channel , None]
+            return [chat_channel, None, sender_number]
         else:
            chat_channel , pending_messages = channel_info
            sender_number=f"+{sender_number}"
