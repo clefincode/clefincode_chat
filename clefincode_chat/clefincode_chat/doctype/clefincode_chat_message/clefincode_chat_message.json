@@ -50,9 +50,7 @@
   "reply_preview_text",
   "reply_preview_sender_email",
   "section_break_ycxf",
-  "reactions_json",
-  "section_break_klsu",
-  "original_content"
+  "reactions_json"
  ],
  "fields": [
   {
@@ -171,7 +169,6 @@
   {
    "fieldname": "whatsapp_message_id",
    "fieldtype": "Data",
-   "hidden": 1,
    "label": "Whatsapp Message Id"
   },
   {
@@ -277,15 +274,6 @@
    "label": "Reply Preview Sender Email"
   },
   {
-   "fieldname": "section_break_klsu",
-   "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "original_content",
-   "fieldtype": "Long Text",
-   "label": "Original Content"
-  },
-  {
    "fieldname": "section_break_ycxf",
    "fieldtype": "Section Break"
   },
@@ -304,7 +292,7 @@
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-02-16 18:36:37.692603",
+ "modified": "2026-02-17 17:59:32.652416",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Message",

@@ -14,7 +14,7 @@ import mimetypes
 from mimetypes import guess_type
 from frappe.utils import random_string
 from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status, get_access_token_instagram, get_access_token_messenger , get_auth_token_twillio
-from clefincode_chat.api.api_1_3_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
+from clefincode_chat.api.api_1_3_2.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
 import urllib.parse
 from frappe.utils.password import get_decrypted_password
 from requests.auth import HTTPBasicAuth
@@ -1607,9 +1607,17 @@ def whatsapp_twillio_webhook():
         # =============================
         # Helper: Normalize WhatsApp numbers
         # =============================
+        reply_to_message_name=None
+        if form_dict.get("OriginalRepliedMessageSid"):
+                reply_to_message_name = frappe.db.get_value(
+            "ClefinCode Chat Message",
+            {"whatsapp_message_id": form_dict.get("OriginalRepliedMessageSid")},
+            "name"
+        )
         def normalize_number(number: str) -> str:
             return number.replace("whatsapp:+", "") if number and number.startswith("whatsapp:+") else number
-
+        whatsapp_message_id=form_dict.get("MessageSid")
+      
         message_body = form_dict.get("Body")
         sender_number = normalize_number(form_dict.get("From"))
         receiver_number = normalize_number(form_dict.get("To"))
@@ -1683,6 +1691,8 @@ def whatsapp_twillio_webhook():
         if message_type == "text":
       
             send(
+                whatsapp_message_id=whatsapp_message_id,
+                reply_to_message_name=reply_to_message_name,
                 content=f"<p>{message_body}</p>",
                 user=sender_number,
                 room=chat_channel,
@@ -1711,6 +1721,8 @@ def whatsapp_twillio_webhook():
             )
 
             send(
+                whatsapp_message_id=whatsapp_message_id,
+                reply_to_message_name=reply_to_message_name,
                 content=content,
                 user=sender_number,
                 room=chat_channel,
@@ -1742,6 +1754,8 @@ def whatsapp_twillio_webhook():
             )
 
             send(
+                whatsapp_message_id=whatsapp_message_id,
+                reply_to_message_name=reply_to_message_name,
                 content=content,
                 user=sender_number,
                 room=chat_channel,
@@ -1780,7 +1794,9 @@ def whatsapp_twillio_webhook():
             is_media=is_media,
             is_document=is_document,
             is_voice_clip=is_voice_clip,
-            file_id=file_id
+            file_id=file_id,
+            whatsapp_message_id=whatsapp_message_id,
+            reply_to_message_name=reply_to_message_name,
         )
 
     except Exception:

@@ -1220,7 +1220,7 @@ async function get_contacts_for_new_group(user_email) {
 async function get_channels_list_for_forward(email, limit, offset, query = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_channels_list",
+    method: "clefincode_chat.api.api_1_3_2.api.get_channels_list",
     args: {
       user_email: email,
       limit,
