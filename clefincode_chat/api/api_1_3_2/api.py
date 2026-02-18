@@ -1332,60 +1332,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
         
         return {"results": [{"status": f"Error: {str(e)}"}]} 
 # ==========================================================================================
-# @frappe.whitelist()
-# def get_messages(room , user_email , room_type , chat_topic = None, remove_date = None , limit = 10 , offset = 0):
-#     condition = ""
-#     if chat_topic:
-#         condition = f"chat_topic = '{chat_topic}'"
-    
-#     if room_type != "Topic":
-#         if room_type != "Contributor":
-#             condition = f"chat_channel = '{room}'"
-#             if room_type == "Group":
-#                 if remove_date and remove_date != "":
-#                     condition += f" AND send_date <='{remove_date}'"            
-#         else: 
-#             sub_channels = json.loads(room)
-#             sub_channels_list = []
-#             for d in sub_channels:
-#                 sub_channels_list.append(d)
-#             sub_channels_str = ', '.join([frappe.db.escape(channel) for channel in sub_channels_list])
-#             condition = f"sub_channel IN ({sub_channels_str})"
-    
-    
 
-#     results = frappe.db.sql(f"""
-#     SELECT content , send_date , sender_email , sender , name AS message_name , is_media , is_document , is_voice_clip  , file_id  , message_type, message_template_type , only_receive_by , reply_to_message ,is_forwarded , forwarded_from , is_deleted , reply_preview_type , reply_preview_file , reply_preview_file_url , reply_preview_sender ,reply_preview_text,reply_preview_sender_email,reactions_json,original_content,is_edited
-#     FROM `tabClefinCode Chat Message`
-#     WHERE {condition} AND (only_receive_by IS NULL OR only_receive_by = '')
-
-#     UNION
-
-#     SELECT content , send_date , sender_email , sender , name AS message_name , is_media , is_document , is_voice_clip  , file_id  , message_type, message_template_type , only_receive_by , reply_to_message , is_forwarded , forwarded_from ,is_deleted , reply_preview_type , reply_preview_file , reply_preview_file_url , reply_preview_sender ,reply_preview_text,reply_preview_sender_email,reactions_json,original_content,is_edited
-#     FROM `tabClefinCode Chat Message`
-#     WHERE {condition} AND only_receive_by = '{user_email}'
-    
-#     ORDER BY send_date DESC 
-#     LIMIT {limit} OFFSET {offset}
-#     """ , as_dict = True)
-#     for message in results:
-#         message.utc_message_date = message.send_date
-#         message.send_date = convert_utc_to_user_timezone(message.send_date, get_user_timezone(user_email)["results"][0]["time_zone"])
-#         message.time_zone = get_user_timezone(user_email)["results"][0]["time_zone"]         
-#         message.get_messages = 1
-#         if message.is_deleted:
-#             message.content = None
-#             message.file_id = None
-#             message.reply_preview_file = None
-#             message.reply_preview_file_url = None
-#             message.reply_preview_text = None
-#             message.forwarded_from = None
-#             message.is_media = 0
-#             message.is_document = 0
-#             message.is_voice_clip = 0
-#             message.is_forwarded = 0
-#             message.reply_preview_type = None
-#     return {"results" : sorted(results, key=lambda d: d["send_date"])}
 @frappe.whitelist()
 def get_messages(room, user_email, room_type, chat_topic=None, remove_date=None, limit=10, offset=0):
     condition = ""
@@ -7457,16 +7404,7 @@ def add_or_update_reaction(message_name, emoji):
         results['target_user'] = member.user
         results['emoji'] = emoji
         send_notification(member.user, results, "reactions_message",room_name)
-    # last_message = frappe.get_all(
-    #     "ClefinCode Chat Message",
-    #     filters={"chat_channel":doc.chat_channel},
-    #     fields=["name"],
-    #     order_by="creation desc",
-    #     limit=1
-    # )
 
-    # is_last_message = last_message and last_message[0].name == doc.name
-    # if is_last_message:
     soup = BeautifulSoup(doc.content, "html.parser")
     clean_content = soup.get_text()
 
