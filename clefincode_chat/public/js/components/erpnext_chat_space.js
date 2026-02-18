@@ -86,8 +86,6 @@ export default class ChatSpace {
     };
     this.$emojiMenu = null;
 
-
-
     if (this.chat_topic_space) {
       this.profile.room_type = "Topic";
     }
@@ -112,6 +110,7 @@ export default class ChatSpace {
   div.innerHTML = html || "";
   return (div.textContent || div.innerText || "").trim();
 }
+
 openEmojiMenu({ $bubble, messageName }) {
   this.closeEmojiMenu();
 
@@ -136,19 +135,34 @@ openEmojiMenu({ $bubble, messageName }) {
   $("body").append($menu);
 
   const rect = $bubble[0].getBoundingClientRect();
-
   requestAnimationFrame(() => {
-    const w = $menu.outerWidth();
-    const h = $menu.outerHeight();
+        const w = $menu.outerWidth();
+        const h = $menu.outerHeight();
 
-    let left = rect.left + rect.width / 2 - w / 2;
-    let top = rect.top - h - 8;
+        let left = rect.left + rect.width / 2 - w / 2;
+        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
 
-    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-    top = Math.max(8, top);
+        const spaceAbove = rect.top;
+        const spaceBelow = window.innerHeight - rect.bottom;
 
-    $menu.css({ left: `${left}px`, top: `${top}px` });
-  });
+        let top;
+
+        if (spaceAbove >= h + 8) {
+        
+          top = rect.top - h - 8;
+        } else if (spaceBelow >= h + 8) {
+        
+          top = rect.bottom + 8;
+        } else {
+        
+          top = Math.max(8, Math.min(rect.top - h / 2, window.innerHeight - h - 8));
+        }
+
+        $menu.css({ left: `${left}px`, top: `${top}px` });
+      });
+
+
+  
 
 $menu.on("click", ".emoji-item", async (e) => {
   e.stopPropagation();
@@ -288,7 +302,6 @@ async resolvePendingReplies() {
       });
   }
 }
-
 async makeReplySnippet(replyMsgName, maxLen = 80) {
 
   let original = this.messageCache.get(replyMsgName);
@@ -325,7 +338,6 @@ if (original.is_deleted) {
     text
   };
 }
-
 async jumpToMessage(messageName, maxTries = 50) {
 
   const limit = this.messages_limit || 10;
@@ -397,8 +409,6 @@ async jumpToMessage(messageName, maxTries = 50) {
 
   frappe.msgprint("Original message not found.");
 }
-
-
 highlightAndScroll($msg) {
   const $bubble = $msg.find(".message-bubble").first();
   if (!$bubble.length) return;
@@ -445,14 +455,12 @@ highlightAndScroll($msg) {
 
   observer.observe($msg[0]);
 }
-
 async saveReaction(messageName, emoji) {
   return frappe.call({
     method: "clefincode_chat.api.api_1_3_2.api.add_or_update_reaction",
     args: { message_name: messageName, emoji }
   });
 }
-
 async getReactions(messageName) {
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_3_2.api.get_reactions_for_message",
@@ -461,7 +469,6 @@ async getReactions(messageName) {
 
   return res.message || res;
 }
-
 renderReactions(messageName, payload) {
   const $msg = this.$chat_space.find(`#msg-${messageName}`);
   if (!$msg.length) return;
@@ -511,7 +518,6 @@ renderReactions(messageName, payload) {
 
   $wrap.html(html);
 }
-
 normalizeReactionsPayload(payload) {
   
   const root = payload?.message?.data ? payload.message : payload; 
@@ -523,9 +529,6 @@ normalizeReactionsPayload(payload) {
     users_list: data?.users_list || []
   };
 }
-
-
-
 async fetchAndRenderReactions(messageName) {
   try {
     const payload = await this.getReactions(messageName);
@@ -539,14 +542,10 @@ async fetchAndRenderReactions(messageName) {
     console.warn("Failed to load reactions", messageName, e);
   }
 }
-
 async hydrateReactionsForMessages(messages_list = []) {
   const names = messages_list.map(m => m.message_name).filter(Boolean);
   await Promise.all(names.map(n => this.fetchAndRenderReactions(n)));
 }
-
-
-
 async fetch_single_message(messageName) {
   const args = {
     message_name: messageName,
@@ -587,7 +586,6 @@ async fetch_single_message(messageName) {
   
     return platform_icon;
   }
-
   async setup() {
     if (this.profile.room_type == "Direct") {
       this.$chat_space = $(document.createElement("div")).addClass(
@@ -1008,38 +1006,7 @@ async fetch_single_message(messageName) {
       }
     });
 
-    // frappe.realtime.on("trigger_channel_status", function (res) {
-    //     // if (res.status == "Open") {
-    //       me.profile.is_removed = 0;
-    //       me.chat_status = 'Open';
-
-    //       // 2) Remove the “closed” UI you injected
-    //       me.$chat_actions.remove();
-    //       me.$chat_space.find('.no-messages-info').remove();
-
-
-    //       // 4) Reload the last N messages and scroll to bottom
-    //       me.messages_offset = 0;
-    //       me.messages_limit = 10;
-    //       me.fetch_and_setup_messages();
-        // }
-
-        // else {
-        //   // me.chat_space.chat_status = "Closed";
-        //   me.chat_status = "Closed";
-
-        //   $(".close-chat-window").click();
-
-        //   const $btn = me.chat_info.$chat_info.find(".close-channel");
-        //   if (me.chat_status === "Closed") {
-        //     $btn.prop("disabled", true).text("Closed");
-        //   } else {
-        //     $btn.prop("disabled", false).text("Close Channel");
-        //   }
-        // }
-    // });
-
-
+    
     if (!this.profile.room) return;
 
     const target_channel =
@@ -2342,9 +2309,20 @@ const textLabel = previewText
 const isMyMessage = sender_email === this.profile.user_email;
 
 if (!is_deleted) {
+  const isTextOnly =
+  !is_deleted &&
+  !this.messageCache.get(message_name)?.is_media &&
+  !this.messageCache.get(message_name)?.is_document &&
+  !this.messageCache.get(message_name)?.is_voice_clip &&
+  !this.messageCache.get(message_name)?.attachment;
 
-  if (!isMyMessage) {
+
+  if (!isMyMessage ) {
     $messageActions.find(".delete-btn").remove();
+    $messageActions.find(".edit-btn").remove();
+  }
+   if ( !isTextOnly) {
+   
     $messageActions.find(".edit-btn").remove();
   }
 
@@ -4279,7 +4257,7 @@ async setupTypingIndicator(textValue) {
   callSetTypingAPI(user, room, isTyping,textValue) {
    
     frappe.call({
-      method: "clefincode_chat.api.api_1_3_1.api.set_typing",
+      method: "clefincode_chat.api.api_1_3_2.api.set_typing",
       args: {
         user: user,
         room: room,
@@ -4387,6 +4365,10 @@ if (!chatWindow || !chatWindow.length) {
         : "Send Template";
 
     if (check.empty) {
+          const room =
+            me.profile.room_type === "Contributor"
+              ? me.profile.parent_channel
+              : me.profile.room;
         const message_info = {
             content: name,
             user: me.profile.user,

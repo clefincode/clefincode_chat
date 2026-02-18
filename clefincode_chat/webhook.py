@@ -20,7 +20,7 @@ from frappe.utils.password import get_decrypted_password
 from requests.auth import HTTPBasicAuth
 
 from twilio.twiml.messaging_response import MessagingResponse
-
+import traceback
 
 @frappe.whitelist(allow_guest=True)
 def handle():
@@ -32,6 +32,17 @@ def handle():
         log_webhook(form_dict)        
 
         messages = extract_messages(form_dict)
+        reply_to_message_name=None
+        context=messages[0].get("context")
+        if context:
+            wa_id=context.get("id")
+            if wa_id:            
+                reply_to_message_name = frappe.db.get_value(
+                "ClefinCode Chat Message",
+                {"whatsapp_message_id": wa_id},
+                "name"
+            )
+
         if not messages:
             return
         
@@ -60,18 +71,18 @@ def handle():
 
             if not message_template or not template_status:
                 content = '<div class="handle-error-whatsapp" data-template="handle_error_whatsapp"><p style="color:#0089FF"> No confirmation sent in over 24 hours. Please check the template in your WhatsApp profile.</p>/div>'
-                send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")                
+                send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation",reply_to_message_name =reply_to_message_name)                
                 return
             
             content = '<div class="handle-error-whatsapp" data-template="handle_error_whatsapp"><p style="color:#FF0000"> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p></div>'
-            send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")
+            send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation",reply_to_message_name =reply_to_message_name)
             
             send_message_confirm_template(receiver_number, sender_number, channel, message_template)
             return
         
         message_type = messages[0]["type"] if "type" in messages[0] else None
         media_url , mime_type, file_url = None , None, None           
-
+        
         sender_number, sender_profile_name = get_sender_info(messages, form_dict)
         chat_profile = get_or_create_chat_profile(sender_number, sender_profile_name)
 
@@ -81,7 +92,7 @@ def handle():
 
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
         chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages)
-        chat_channel , pending_messages = chat_channel_info
+        chat_channel , pending_messages, sender_number  = chat_channel_info
         last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
         response = None
@@ -93,9 +104,9 @@ def handle():
                 response = "resend"
 
         if message_type == "text":
-            send(content= format_html_string(messages[0]["text"]["body"]), user = sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel)
+            send(content= format_html_string(messages[0]["text"]["body"]), user = sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,reply_to_message_name =reply_to_message_name)
         elif message_type == "button":
-            send(content= format_html_string( messages[0]["button"]["text"],True), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,message_type='information')
+            send(content= format_html_string( messages[0]["button"]["text"],True), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,message_type='information',reply_to_message_name =reply_to_message_name)
         elif message_type in ['image' , 'sticker' , 'video', 'audio' , 'document']:
             media_id =  messages[0][message_type]["id"] 
             media_url , mime_type = retrieve_media_url(media_id)
@@ -108,7 +119,7 @@ def handle():
                 is_document=1
             else:
                 is_voice_clip=1
-            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = is_media, is_document = is_document , is_voice_clip = is_voice_clip , file_id = file_url[2])
+            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = is_media, is_document = is_document , is_voice_clip = is_voice_clip , file_id = file_url[2],reply_to_message_name =reply_to_message_name)
         if response == "resend":
             # reset pending messages to zero
             frappe.db.set_value('ClefinCode Chat Channel User', {"parent": chat_channel , "user": sender_number, "platform_gateway": receiver_number}, 'pending_messages', 0)
@@ -118,7 +129,7 @@ def handle():
             remove_group_member(sender_number, chat_channel)
 
     except Exception as e:
-        frappe.log_error(title = "Error when handling webhook" , message = str(e))
+        frappe.log_error(title = "Error when handling webhook" , message =traceback.format_exc())
 
 def handle_attachment(file_url, file_name, message_type):
     if message_type == 'image':

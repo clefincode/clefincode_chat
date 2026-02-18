@@ -3451,12 +3451,31 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
                 preview += "..."
 
             reply_preview_message = f"*Replying to:*\n{preview}"
+    
     provider = frappe.db.get_value("ClefinCode WhatsApp Profile", platform_gateway, "provider")
+    
     if provider == "Meta":
-        #send_whatsapp_template_meta(message_content, whatsapp_customer_number)
-        if reply_preview_message:
-            send_whatsapp_message(new_message,platform_gateway,whatsapp_customer_number,reply_preview_message,None,0)
-        send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
+        if new_message.message_template_type=="Send Template":
+            content = new_message.content
+            soup = BeautifulSoup(content, 'html.parser')
+
+            text = soup.get_text()       # convert HTML → plain text
+            messages = text.split(',')   # now you can split safely
+
+            if len(messages) < 2:
+                template_name = content.strip()
+                docname = ""
+            else:
+                template_name = messages[0].strip()
+                docname = messages[1].strip()
+                
+            #send_message_confirm_template(platform_gateway, whatsapp_customer_number, new_message.chat_channel, template_name)
+            send_whatsapp_template_meta(template_name, whatsapp_customer_number)
+            
+        else:
+            # if reply_preview_message:
+            #     send_whatsapp_message(new_message,platform_gateway,whatsapp_customer_number,reply_preview_message,None,0)
+            send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
             send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment)
@@ -3509,27 +3528,7 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
                 response_data = create_media_payload(receiver, media_id, message_type)
 
         else:
-            # if new_message_doc.reply_to_message and new_message_doc.reply_preview_text:
-            #     reply_message = f"*This message is reply to*: {new_message_doc.reply_preview_text}"
-
-            #     reply_payload = {
-            #         "messaging_product": "whatsapp",
-            #         "recipient_type": "individual",
-            #         "to": receiver,
-            #         "type": "text",
-            #         "text": {
-            #             "preview_url": "false",
-            #             "body": reply_message
-            #         }
-            #     }
-
-            #     reply_response = requests.post(endpoint, json=reply_payload, headers=headers)
-
-            #     if not reply_response.ok:
-            #         frappe.log_error(
-            #             title="Reply preview message failed",
-            #             message=reply_response.text
-            #         )
+         
             response_data = {
                 "messaging_product": "whatsapp",
                 "recipient_type": "individual",
@@ -3540,6 +3539,12 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
                     "body": message
                 }
             }
+        if new_message_doc.reply_to_message:
+            whatsapp_message_id=frappe.db.get_value("ClefinCode Chat Message",  new_message_doc.reply_to_message, "whatsapp_message_id")
+            
+            response_data.update({"context": {
+                    "message_id": whatsapp_message_id
+                }})
 
         response = requests.post(endpoint, json=response_data, headers=headers)
 
@@ -3555,6 +3560,7 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
 # ==========================================================================================
 def send_message_confirm_template(platform_gateway, whatsapp_customer_number, channel, message_template):
     try:       
+      
         access_token = get_access_token()
         api_base = "https://graph.facebook.com/v23.0"
         phone_number_id = frappe.db.get_value("ClefinCode WhatsApp Profile", platform_gateway, "phone_number_id")
@@ -3578,7 +3584,7 @@ def send_message_confirm_template(platform_gateway, whatsapp_customer_number, ch
                 }
             }
         }
-
+        
         response = requests.post(endpoint, json=data, headers=headers)
 
         if response.ok:
@@ -4214,39 +4220,46 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
             profile_whatsapp = frappe.get_all(
                     "ClefinCode WhatsApp Profile",
                     filters={"user": user},
-                    fields=["name"]
+                    fields=["name","provider"]
             )
             templates_clefin = []
             templates_twilio = []
             if profile_whatsapp:
-                whatsapp_profile_name = profile_whatsapp[0].name  
 
-                templates_clefin = frappe.get_all(
-                            "ClefinCode WhatsApp Template",
-                            filters={
-                                "docstatus": 1,
-                                "whatsapp_profile": ["=", whatsapp_profile_name],  
-                                "template_status":"APPROVED"
-                            },
-                            fields=["name", "meta_template_name"]
-                        )
-                for t in templates_clefin:
-                        t["doctype"] = "ClefinCode WhatsApp Template"
+                provider =profile_whatsapp[0].provider
+                
+                if provider == "Meta":
+                
+                    whatsapp_profile_name = profile_whatsapp[0].name  
+
+                    templates_clefin = frappe.get_all(
+                                "ClefinCode WhatsApp Template",
+                                filters={
+                                    "docstatus": 1,
+                                    "whatsapp_profile": ["=", whatsapp_profile_name],  
+                                    "template_status":"APPROVED"
+                                },
+                                fields=["name", "meta_template_name"]
+                            )
+                    for t in templates_clefin:
+                            t["doctype"] = "ClefinCode WhatsApp Template"
+                elif provider =="Twilio":
+                    templates_twilio = frappe.get_all(
+                        "CiC Twilio Template",
+                        filters={
+                            "whatsapp_template_id": ["is", "set"],
+                            "template_status": "APPROVED",
+                            
+                                },
+                                fields=["name", "friendly_name as meta_template_name"]
+                           )
+           
+                    for t in templates_twilio:
+                        t["doctype"] = "CiC Twilio Template"
+                
             else:
                 templates_clefin = []
             
-            templates_twilio = frappe.get_all(
-                "CiC Twilio Template",
-                filters={
-                    "whatsapp_template_id": ["is", "set"],
-                    "template_status": "APPROVED",
-                    
-                },
-                fields=["name", "friendly_name as meta_template_name"]
-            )
-           
-            for t in templates_twilio:
-                  t["doctype"] = "CiC Twilio Template"
             templates=templates_clefin + templates_twilio
             results["profile_whatsapp"] = profile_whatsapp
             results["realtime_type"]= "show_template"
@@ -4777,7 +4790,7 @@ def make_file_public(file_path):
     except Exception as e:
         frappe.log_error(f"Failed to make file public: {str(e)}")
         frappe.throw(f"Failed to prepare media file for sending: {str(e)}")
-        
+       
 #=================================================================================
 def get_temp_public_url(file_url):
   
@@ -4880,8 +4893,7 @@ def get_contact_profile_full_name(sender_id):
     """ , as_dict = True)
     if full_name:
         return full_name[0].full_name        
-    
-    
+       
 #############################################################################################
 ######################################## Messenger Functions ################################
 #############################################################################################
@@ -5046,7 +5058,6 @@ def auto_fill_contact_platform(doc, method):
 #############################################################################################
 ######################################## Telegram Functions #################################
 #############################################################################################
-
 @frappe.whitelist()
 def get_telegram_profile_type(telegram_system_id):
     return frappe.db.get_value("ClefinCode Telegram Profile" , telegram_system_id, "type")
@@ -5072,7 +5083,6 @@ def get_telegram_channel(telegram_system_id, telegram_user_id):
     """ , as_dict = True)
     if results:
         return results[0].name               
-
 
 @frappe.whitelist()
 def send_telegram_message(chat_id, message, message_type="text", attachment_url=None):
@@ -5157,7 +5167,6 @@ def send_telegram_message(chat_id, message, message_type="text", attachment_url=
     except Exception as e:
         frappe.log_error(title="Telegram Response Sending Error", message=str(e))
 
-
 def process_telegram_message(platform_gateway, telegram_customer_id, email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot):    
     try:
         responder_user_profile = get_profile_id(email)
@@ -5236,7 +5245,6 @@ def standardize_audio_to_mp3(file_path):
         frappe.log_error(title="File Registration Error", message=str(e))
 
 # =============================================================================
-
 @frappe.whitelist()
 def check_if_chat_topic_exist(channel_id):
     
@@ -5313,7 +5321,6 @@ def get_notification_log(user, start=0, limit=10):
             "data": str(e)
         }]
 # ==========================================================================================
-
 def upload_media_to_server(file_path):
     """
     Uploads a local file to the server's public directory and returns the public URL.
@@ -5328,8 +5335,6 @@ def upload_media_to_server(file_path):
     
     site_url = frappe.utils.get_url()
     return f"{site_url}/files/{file_name}"
-
-
 
 def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
     try:
@@ -5462,17 +5467,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
             # ------------------------------------------
             # TEXT MESSAGE ONLY
             # ------------------------------------------
-            # client.messages("SMe503cbd4903abc0918ef3a5156598f0e").remove()
-            # if new_message_doc.reply_to_message:
-            #     reply_message=f'*This message is reply to*:{new_message_doc.reply_preview_text}'
-            #     reply_msg = client.messages.create(
-            #     from_=f'whatsapp:{twilio_whatsapp_number}',
-            #     body=reply_message,
-               
-            #     to=f'whatsapp:{receiver}',
-                
-            # )
-                
+         
             msg = client.messages.create(
                 from_=f'whatsapp:{twilio_whatsapp_number}',
                 body=message,
@@ -5482,7 +5477,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
             )
 
         # Save Twilio SID
-        frappe.log_error("msg twilio",[msg.error_code, msg.error_message])
+       
         new_message_doc.whatsapp_message_id = msg.sid
         new_message_doc.save(ignore_permissions=True)
         frappe.db.commit()
@@ -5491,8 +5486,6 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
         frappe.log_error(title="send whatsapp message Exception", message=str(e))
 
 @frappe.whitelist()
-
-
 def delete_temp_public_file(file_url,time_delay=None):
     """
     Deletes the temporary public copy created for WhatsApp media sending.
@@ -5742,19 +5735,6 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         content_variables=json.dumps(variables)
     )
     
-   
-   
-    
-    # new_message.content=html
-    # new_message.save(ignore_permissions = True)
-    # room=new_message.chat_channel
-    # results['content']=html
-    # results['last_message']=html
-    # frappe.publish_realtime(event=room, message=results, user=new_message.sender_email)
-    # frappe.publish_realtime(event="update_room", message=results, user= new_message.sender_email)
-    #send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type) 
-   
-   
     send(content=html, user=to_number, room=new_message.chat_channel, email=to_number,is_media=is_media,is_document=is_document,file_id=file_id)
    
     frappe.logger("whatsapp").info(
@@ -5768,9 +5748,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         "body_preview": body_preview,
         "doctype": doctype
     }
-    
-
-
+ 
 #========================================================================================
 @frappe.whitelist()
 def get_all_whatsapp_templates():
@@ -5838,24 +5816,20 @@ def get_chat_templates():
         frappe.log_error(frappe.get_traceback(), "Get WhatsApp Templates API Error")
         raise e
 #====================================================================================
-import frappe
-import requests
-
 @frappe.whitelist(allow_guest=False)
 def send_whatsapp_template_meta(template_name, recipient, params=None):
    
-
-    
     template = frappe.get_doc("ClefinCode WhatsApp Template", template_name)
+   
 
     if not template.whatsapp_profile:
         return {"error": "WhatsApp Profile not linked to this template"}
 
    
     profile = frappe.get_doc("ClefinCode WhatsApp Profile", template.whatsapp_profile)
-    ACCESS_TOKEN = profile.get("access_token")
+    ACCESS_TOKEN = get_access_token()
     PHONE_NUMBER_ID = profile.get("phone_number_id")
-
+    
     if not ACCESS_TOKEN or not PHONE_NUMBER_ID:
         return {"error": "Missing WhatsApp credentials in profile"}
 
@@ -5865,7 +5839,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
         "Authorization": f"Bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
     }
-
+   
     
     body_params = []
     if params:
@@ -5874,7 +5848,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
 
     
     components = []
-
+  
     # === 1. Header ===
     if template.header_type and template.header_type != "None":
         header_component = {"type": "header", "parameters": []}
@@ -5897,13 +5871,13 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
                 })
 
         components.append(header_component)
-
+   
     # === 2. Body ===
     components.append({
         "type": "body",
         "parameters": body_params
     })
-
+   
     # === 3. Buttons ===
     if template.buttons:
         button_components = {"type": "button", "sub_type": "quick_reply", "parameters": []}
@@ -5970,7 +5944,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
     # === Send Request ===
     response = requests.post(url, headers=headers, json=payload)
     result = response.json()
-
+  
     if response.status_code == 200:
         frappe.msgprint(f" Template '{template.meta_template_name}' sent successfully.")
     else:
@@ -7334,7 +7308,6 @@ def build_reply_preview(reply_message_doc, original_message_name: str, max_len=1
                 reply_message_doc.reply_preview_file_url = fdoc.file_url
             except Exception:
                 pass
-    #frappe.log_error("reply_message_doc",vars(reply_message_doc))
     return reply_message_doc.save(ignore_permissions=True)
 def reply_video_preview_job(original_message_name: str, reply_message_name: str):
 
