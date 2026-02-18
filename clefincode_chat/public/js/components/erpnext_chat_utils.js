@@ -249,7 +249,7 @@ async function send_message(message_info) {
 
   } = message_info;
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_2.api.send",
+    method: "clefincode_chat.api.api_1_3_3.api.send",
     args: {
       content: content,
       user: user,

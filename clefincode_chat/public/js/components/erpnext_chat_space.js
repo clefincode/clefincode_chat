@@ -214,7 +214,7 @@ async performSearch(query) {
   this.searchActive = true;
 
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_2.api.search_in_message_contents",
+    method: "clefincode_chat.api.api_1_3_3.api.search_in_message_contents",
     args: {
       channel: this.profile.room,
       query: query,
@@ -457,13 +457,13 @@ highlightAndScroll($msg) {
 }
 async saveReaction(messageName, emoji) {
   return frappe.call({
-    method: "clefincode_chat.api.api_1_3_2.api.add_or_update_reaction",
+    method: "clefincode_chat.api.api_1_3_3.api.add_or_update_reaction",
     args: { message_name: messageName, emoji }
   });
 }
 async getReactions(messageName) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_2.api.get_reactions_for_message",
+    method: "clefincode_chat.api.api_1_3_3.api.get_reactions_for_message",
     args: { message_name: messageName }
   });
 
@@ -1530,7 +1530,7 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
     primary_action: async (values) => {
 
       await frappe.call({
-        method: "clefincode_chat.api.api_1_3_2.api.edit_chat_message",
+        method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
         args: {
           message_name: messageName,
           new_content: "<p>" + values.content + "</p>"
@@ -1652,7 +1652,7 @@ this.$chat_space.on("click", ".delete-btn", function (e) {
     async function () {
 
       await frappe.call({
-        method: "clefincode_chat.api.api_1_3_2.api.delete_chat_message",
+        method: "clefincode_chat.api.api_1_3_3.api.delete_chat_message",
         args: {
           message_name: messageName,
           user_email: me.profile.user_email
@@ -4257,7 +4257,7 @@ async setupTypingIndicator(textValue) {
   callSetTypingAPI(user, room, isTyping,textValue) {
    
     frappe.call({
-      method: "clefincode_chat.api.api_1_3_2.api.set_typing",
+      method: "clefincode_chat.api.api_1_3_3.api.set_typing",
       args: {
         user: user,
         room: room,
@@ -4785,7 +4785,7 @@ async function get_messages(
   offset
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_2.api.get_messages",
+    method: "clefincode_chat.api.api_1_3_3.api.get_messages",
     args: {
       room: room,
       user_email: user_email,

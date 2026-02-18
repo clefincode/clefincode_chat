@@ -1201,7 +1201,7 @@ for (const t of this.selected_contacts) {
 async function get_contacts(user_email, limit = 10, offset = 0, search_text = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_2.api.get_contacts",
+    method: "clefincode_chat.api.api_1_3_3.api.get_contacts",
     args: { user_email, limit, offset, search_text  },
   });
   return res.message.results[0]; // {contacts, total, has_more, next_offset}
@@ -1220,7 +1220,7 @@ async function get_contacts_for_new_group(user_email) {
 async function get_channels_list_for_forward(email, limit, offset, query = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_2.api.get_channels_list",
+    method: "clefincode_chat.api.api_1_3_3.api.get_channels_list",
     args: {
       user_email: email,
       limit,

@@ -36,7 +36,7 @@ export default class ChatInfo {
     const me = this;
 
     frappe.call({
-        method: "clefincode_chat.api.api_1_3_2.api.get_contact_by_profile",
+        method: "clefincode_chat.api.api_1_3_3.api.get_contact_by_profile",
         args: { profile_id: me.roomname },
         callback(r) {
             if (r.message && r.message.results) {
