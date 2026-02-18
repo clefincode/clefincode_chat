@@ -4140,6 +4140,7 @@ def get_users_for_mentions(room = None):
 # ==========================================================================================
 @frappe.whitelist()
 def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app = None,text=None):
+    
     parent_channel_doc = frappe.get_doc("ClefinCode Chat Channel" , room)
     first_name = get_contact_first_name(user)
     template_option=False
@@ -4171,9 +4172,11 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
             )
             templates_clefin = []
             templates_twilio = []
+            
             if profile_whatsapp:
 
                 provider =profile_whatsapp[0].provider
+                
                 
                 if provider == "Meta":
                 
@@ -7487,6 +7490,7 @@ def edit_chat_message(message_name,  new_content):
 
     msg = frappe.get_doc("ClefinCode Chat Message", message_name)
     user_email=frappe.session.user
+    original_content=msg.content
 
 
     if msg.sender_email != user_email:
@@ -7531,9 +7535,10 @@ def edit_chat_message(message_name,  new_content):
             and member.is_removed == 0
         ):
             try:
-                original_preview = (msg.original_content or "")[:40]
+                original_preview = (original_content or "")[:40]
 
-                if len(msg.original_content or "") > 40:
+               
+                if len(original_content or "") > 40:
                     original_preview += "..."
 
                 edited_content = (
