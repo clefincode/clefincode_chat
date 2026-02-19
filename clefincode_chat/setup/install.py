@@ -17,7 +17,6 @@ def after_install():
     ensure_contact_custom_fields()
     create_roles()   
     create_users_profiles()
-    install_ffmpeg()
 # =================================================================================
 def create_roles():
     if not frappe.db.exists("Role", "Chat Support"):
@@ -99,11 +98,4 @@ def create_users_profiles():
                         }).insert(ignore_permissions=True)
                 
     frappe.db.commit()       
-# =================================================================================
-def install_ffmpeg():
-    try:
-        subprocess.run(["sudo", "apt", "update", "--fix-missing" , "-y",], check=True)
-        subprocess.run(["sudo", "apt", "install", "ffmpeg", "--fix-missing" , "-y"], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"An error occurred: {e}")
 # =================================================================================

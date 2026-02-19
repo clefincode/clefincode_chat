@@ -3077,8 +3077,8 @@ def convert_utc_to_user_timezone(utc_time, user_timezone, formatted=None):
 # ========================================================================================== 
 @frappe.whitelist()   
 def get_time_now(user_email, formatted = None):
-    return convert_utc_to_user_timezone(datetime.datetime.utcnow() , get_user_timezone(user_email)["results"][0]["time_zone"] , formatted)
-# ==========================================================================================
+    return convert_utc_to_user_timezone(datetime.datetime.utcnow() , get_user_timezone(user_email)["results"][0]["time_zone"] , formatted)        
+# ==========================================================================================    
 def sync_with_chat_profile(doc , method):    
     user_id = doc.user
     full_name = (doc.first_name if doc.first_name else "") + \
@@ -3088,7 +3088,6 @@ def sync_with_chat_profile(doc , method):
     contact_details = {}
     email_details = {}
     contact_details_list = []
-    
     for email in doc.email_ids:
         if email.email_id == user_id:
             contact_details = frappe.get_doc({
@@ -3297,7 +3296,8 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                             body = get_body_message(results)
                         else:
                             body = get_body_message_information(realtime_type)
-                        push_notifications(registration_token, results, realtime_type, user_platform, title, body)                       
+                        
+                        push_notifications(registration_token, results, realtime_type, user_platform, title, body)     
                     else:
                         push_notifications(registration_token, results, realtime_type, user_platform)                                              
     except Exception as e:
@@ -3338,7 +3338,7 @@ def get_body_message_information(realtime_type):
     elif realtime_type == "remove_topic":
         body = 'The topic has been removeed'
     elif realtime_type == "add_doctype":
-        body = 'A new doctype has been added'
+        body = 'A new doctype has been added'      
     else:
         body = 'The contributors have been changed in the conversation'
     return body
