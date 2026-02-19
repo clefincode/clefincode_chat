@@ -14,13 +14,13 @@ import mimetypes
 from mimetypes import guess_type
 from frappe.utils import random_string
 from clefincode_chat.utils.utils import choose_user_to_respond, get_access_token, get_confirm_msg_template, get_msg_template_content, check_template_status, get_access_token_instagram, get_access_token_messenger , get_auth_token_twillio
-from clefincode_chat.api.api_1_3_1.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
+from clefincode_chat.api.api_1_3_3.api import create_group, get_profile_id, send, get_profile_full_name, create_channel, get_whatsapp_channel,get_instagram_channel,get_messenger_channel, send_message_confirm_template, process_whatsapp_message, process_instagram_message,process_messenger_message, get_social_config_for_user, remove_group_member, get_last_active_sub_channel,get_telegram_channel
 import urllib.parse
 from frappe.utils.password import get_decrypted_password
 from requests.auth import HTTPBasicAuth
 
 from twilio.twiml.messaging_response import MessagingResponse
-
+import traceback
 
 @frappe.whitelist(allow_guest=True)
 def handle():
@@ -32,6 +32,17 @@ def handle():
         log_webhook(form_dict)        
 
         messages = extract_messages(form_dict)
+        reply_to_message_name=None
+        context=messages[0].get("context")
+        if context:
+            wa_id=context.get("id")
+            if wa_id:            
+                reply_to_message_name = frappe.db.get_value(
+                "ClefinCode Chat Message",
+                {"whatsapp_message_id": wa_id},
+                "name"
+            )
+
         if not messages:
             return
         
@@ -60,18 +71,18 @@ def handle():
 
             if not message_template or not template_status:
                 content = '<div class="handle-error-whatsapp" data-template="handle_error_whatsapp"><p style="color:#0089FF"> No confirmation sent in over 24 hours. Please check the template in your WhatsApp profile.</p>/div>'
-                send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")                
+                send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation",reply_to_message_name =reply_to_message_name)                
                 return
             
             content = '<div class="handle-error-whatsapp" data-template="handle_error_whatsapp"><p style="color:#FF0000"> Over 24 hours since the last reply. An automatic confirmation will be sent to check interest.</p></div>'
-            send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation")
+            send(content = content, user = sender, room = channel, email = sender_email, sub_channel = last_sub_channel, message_type = "information", message_template_type = "Send Confirmation",reply_to_message_name =reply_to_message_name)
             
             send_message_confirm_template(receiver_number, sender_number, channel, message_template)
             return
         
         message_type = messages[0]["type"] if "type" in messages[0] else None
         media_url , mime_type, file_url = None , None, None           
-
+        
         sender_number, sender_profile_name = get_sender_info(messages, form_dict)
         chat_profile = get_or_create_chat_profile(sender_number, sender_profile_name)
 
@@ -81,7 +92,7 @@ def handle():
 
         whatsapp_profile_doc = frappe.get_doc("ClefinCode WhatsApp Profile", receiver_number)
         chat_channel_info = handle_chat_channel(sender_number, receiver_number, chat_profile, whatsapp_profile_doc, messages)
-        chat_channel , pending_messages = chat_channel_info
+        chat_channel , pending_messages, sender_number  = chat_channel_info
         last_sub_channel = get_last_active_sub_channel(chat_channel)["results"][0]["last_active_sub_channel"]
 
         response = None
@@ -93,9 +104,9 @@ def handle():
                 response = "resend"
 
         if message_type == "text":
-            send(content= format_html_string(messages[0]["text"]["body"]), user = sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel)
+            send(content= format_html_string(messages[0]["text"]["body"]), user = sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,reply_to_message_name =reply_to_message_name)
         elif message_type == "button":
-            send(content= format_html_string( messages[0]["button"]["text"],True), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,message_type='information')
+            send(content= format_html_string( messages[0]["button"]["text"],True), user= sender_profile_name, room= chat_channel, email= sender_number, sub_channel= last_sub_channel,message_type='information',reply_to_message_name =reply_to_message_name)
         elif message_type in ['image' , 'sticker' , 'video', 'audio' , 'document']:
             media_id =  messages[0][message_type]["id"] 
             media_url , mime_type = retrieve_media_url(media_id)
@@ -108,7 +119,7 @@ def handle():
                 is_document=1
             else:
                 is_voice_clip=1
-            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = is_media, is_document = is_document , is_voice_clip = is_voice_clip , file_id = file_url[2])
+            send(content = content, user = sender_profile_name, room = chat_channel, email = sender_number, sub_channel= last_sub_channel, attachment = file_url[0], is_media = is_media, is_document = is_document , is_voice_clip = is_voice_clip , file_id = file_url[2],reply_to_message_name =reply_to_message_name)
         if response == "resend":
             # reset pending messages to zero
             frappe.db.set_value('ClefinCode Chat Channel User', {"parent": chat_channel , "user": sender_number, "platform_gateway": receiver_number}, 'pending_messages', 0)
@@ -118,7 +129,7 @@ def handle():
             remove_group_member(sender_number, chat_channel)
 
     except Exception as e:
-        frappe.log_error(title = "Error when handling webhook" , message = str(e))
+        frappe.log_error(title = "Error when handling webhook" , message =traceback.format_exc())
 
 def handle_attachment(file_url, file_name, message_type):
     if message_type == 'image':
@@ -230,7 +241,7 @@ def manage_support_channel(sender_number, receiver_number, chat_profile, whatsap
         if not channel_info:
             recipients_list, responder_user = build_recipients_list(chat_profile, whatsapp_profile_doc, sender_number)
             chat_channel = create_group(json.dumps(recipients_list), responder_user)["results"][0]["room"]
-            return [chat_channel , None,]
+            return [chat_channel, None, sender_number]
         else:
           chat_channel , pending_messages = channel_info 
           sender_number=f"+{sender_number}"
@@ -286,7 +297,7 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
         if not channel_info:
             chat_channel = create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number)
             
-            return [chat_channel , None]
+            return [chat_channel, None, sender_number]
         else:
            chat_channel , pending_messages = channel_info
            sender_number=f"+{sender_number}"
@@ -1607,9 +1618,17 @@ def whatsapp_twillio_webhook():
         # =============================
         # Helper: Normalize WhatsApp numbers
         # =============================
+        reply_to_message_name=None
+        if form_dict.get("OriginalRepliedMessageSid"):
+                reply_to_message_name = frappe.db.get_value(
+            "ClefinCode Chat Message",
+            {"whatsapp_message_id": form_dict.get("OriginalRepliedMessageSid")},
+            "name"
+        )
         def normalize_number(number: str) -> str:
             return number.replace("whatsapp:+", "") if number and number.startswith("whatsapp:+") else number
-
+        whatsapp_message_id=form_dict.get("MessageSid")
+      
         message_body = form_dict.get("Body")
         sender_number = normalize_number(form_dict.get("From"))
         receiver_number = normalize_number(form_dict.get("To"))
@@ -1683,6 +1702,8 @@ def whatsapp_twillio_webhook():
         if message_type == "text":
       
             send(
+                whatsapp_message_id=whatsapp_message_id,
+                reply_to_message_name=reply_to_message_name,
                 content=f"<p>{message_body}</p>",
                 user=sender_number,
                 room=chat_channel,
@@ -1711,6 +1732,8 @@ def whatsapp_twillio_webhook():
             )
 
             send(
+                whatsapp_message_id=whatsapp_message_id,
+                reply_to_message_name=reply_to_message_name,
                 content=content,
                 user=sender_number,
                 room=chat_channel,
@@ -1742,6 +1765,8 @@ def whatsapp_twillio_webhook():
             )
 
             send(
+                whatsapp_message_id=whatsapp_message_id,
+                reply_to_message_name=reply_to_message_name,
                 content=content,
                 user=sender_number,
                 room=chat_channel,
@@ -1780,7 +1805,9 @@ def whatsapp_twillio_webhook():
             is_media=is_media,
             is_document=is_document,
             is_voice_clip=is_voice_clip,
-            file_id=file_id
+            file_id=file_id,
+            whatsapp_message_id=whatsapp_message_id,
+            reply_to_message_name=reply_to_message_name,
         )
 
     except Exception:
