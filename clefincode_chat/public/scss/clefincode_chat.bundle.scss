@@ -801,6 +801,119 @@ $height: 582px;
         border-radius: 50%;
       }
     }
+    .new-contact {
+      display: flex;
+      font-size: $font-size-sm;
+      cursor: pointer;
+      position: relative;
+      padding: 10px 0;
+      border-radius: 8px;
+
+      &:hover {
+        background: var(--bg-light-gray);
+
+        /* Neat trick to add hover spacing without affecting layout */
+        border-left: 5px solid var(--bg-light-gray);
+        border-right: 5px solid var(--bg-light-gray);
+        margin: 0 -5px;
+      }
+
+      .avatar {
+        flex-shrink: 0;
+      }
+
+      .chat-profile-info {
+        margin-left: var(--margin-md);
+        margin-right: auto;
+
+        .chat-name {
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+        }
+
+        .conversation_count {
+          font-size: small;
+          font-weight: bold;
+          color: gray;
+        }
+      }
+
+      .contact-profile-info {
+        margin-left: var(--margin-md);
+        margin-right: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+
+        .contact-name {
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+          width:150px;
+          max-width:150px;
+        }
+
+        .chat-icons {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0px 15px;
+          width:100px;
+          max-width: 100px;
+
+          .icon {
+            margin:0;
+            display: flex !important;
+          }
+
+          .dropdown-toggle{
+            display: flex;
+            justify-content: center;
+            width:40px
+          }
+
+          .selected {
+            .check-icon {
+              position: relative;
+              // bottom: 16px;
+            }
+          }
+          .dropdown-toggle:after{
+            display: none !important;
+          } 
+
+          .dropdown-item{
+            display: flex;
+            align-items: center;
+          }      
+    }
+      }
+
+      .chat-date {
+        color: var(--text-muted);
+        font-size: small;
+      }
+
+      .topic-count {
+        color: gray;
+        font-weight: bold;
+        font-size: small;
+      }
+
+      .chat-latest {
+        justify-content: center;
+        align-items: center;
+        font-size: 10px;
+        width: 17px;
+        height: 17px;
+        margin-left: 10px;
+        background: var(--red-avatar-color);
+        color: white;
+        border-radius: 50%;
+      }
+    }
 
     .loading-more {
       padding: 10px 0px;
