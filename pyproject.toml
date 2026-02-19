@@ -3,15 +3,20 @@ name = "clefincode_chat"
 authors = [
     { name = "ClefinCode L.L.C-FZ", email = "info@clefincode.com"}
 ]
-
 description = "ERPNext & Frappe Business Chat: A self-hosted communication solution."
 readme = "README.md"
 dynamic = ["version"]
+
 dependencies = [
   "moviepy~=1.0.3",
   "pydub~=0.25.1",
-  "firebase-admin"
+  "firebase-admin",
+  "twilio"
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [deploy.dependencies.apt]
 packages = [
