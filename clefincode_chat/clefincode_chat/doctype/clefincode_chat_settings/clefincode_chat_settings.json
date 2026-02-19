@@ -13,6 +13,9 @@
   "enable_mobile_notifications",
   "with_message_content",
   "enable_system_notification_on_mobile_app",
+  "column_break_jxln",
+  "max_edit_time",
+  "max_delete_time",
   "section_break_4",
   "start_time",
   "end_time",
@@ -145,12 +148,28 @@
    "fieldname": "enable_system_notification_on_mobile_app",
    "fieldtype": "Check",
    "label": "Enable System Notification on Mobile App"
+  },
+  {
+   "default": "7",
+   "fieldname": "max_delete_time",
+   "fieldtype": "Int",
+   "label": "Max Delete Time"
+  },
+  {
+   "default": "7",
+   "fieldname": "max_edit_time",
+   "fieldtype": "Int",
+   "label": "Max Edit Time"
+  },
+  {
+   "fieldname": "column_break_jxln",
+   "fieldtype": "Column Break"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2025-11-16 17:57:14.112881",
+ "modified": "2026-02-17 17:49:37.458306",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Settings",

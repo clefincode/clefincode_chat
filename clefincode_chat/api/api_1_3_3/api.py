@@ -1,5 +1,6 @@
 import random
 import re
+import string
 import traceback
 import frappe, shutil, os
 import datetime
@@ -32,14 +33,16 @@ from frappe.utils.password import get_decrypted_password
 import zipfile
 from moviepy.editor import VideoFileClip
 import tempfile
-from frappe.utils import now_datetime
+from frappe.utils import cint
 from frappe.utils import get_files_path, get_url
 from frappe.utils.file_manager import save_file
 from frappe.utils.pdf import get_pdf
 import shutil
-import os
+from collections import Counter
 import threading
 import time
+
+from frappe.utils import now_datetime
 
 
 
@@ -870,7 +873,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
                     room.update({
                         'sender_email': last_message_info['sender_email'],
                         'last_message_type': last_message_info['message_type'],
-                        'last_message': last_message_info.get('content', '')
+                        # 'last_message': last_message_info.get('content', '')
                     })
             else:
                 # If channel_name exists, it's a normal channel
@@ -1011,9 +1014,18 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 ######################################## Messages ###########################################
 #############################################################################################
 @frappe.whitelist()
-def send(content, user, room , email, send_date = None , is_first_message = 0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0,reply_to_message_name=None):
+def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None, chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None):
+    
     try:
-        frappe.log_error("reply_name",reply_to_message_name)
+        
+        is_media = cint(is_media)
+        is_document = cint(is_document)
+        is_first_message = cint(is_first_message)
+        is_forwarded = cint(is_forwarded)
+        is_screenshot = cint(is_screenshot)
+        is_link = cint(is_link)
+        is_voice_clip = cint(is_voice_clip)
+       
         from packaging import version
         # Get current Frappe version
         frappe_version = frappe.__version__
@@ -1023,8 +1035,9 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             guest_room_name = "user:Guest"
         else:
             guest_room_name = f"{frappe.local.site}:user:Guest"
-            
+   
         if is_media or is_document or message_template_type == "Remove User":
+          
             time.sleep(3)
         file_type = ''
         if attachment:
@@ -1043,7 +1056,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                 "is_document": 1 if file_type == 'document' else 0,
                 "file_type": "text" if file_type == "application" else file_type,
                 "is_link" : is_link if is_link else 0,
-                "is_media" : is_media if is_media else 0,            
+                "is_med ia" : is_media if is_media else 0,            
                 "is_document" : is_document if is_document else 0,
                 "is_voice_clip" : is_voice_clip if is_voice_clip else 0,
                 "is_mention": is_mention(content),
@@ -1053,7 +1066,10 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                 "message_template_type": message_template_type,
                 "only_receive_by" : only_receive_by,
                 "reply_to_message":reply_to_message_name,
-                "chat_topic": chat_topic
+                "is_forwarded":is_forwarded,
+                "forwarded_from":forwarded_from,
+                "chat_topic": chat_topic,
+                "whatsapp_message_id":whatsapp_message_id
             }
         ).insert(ignore_permissions=True)
         
@@ -1070,8 +1086,40 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             new_message.save(ignore_permissions = True)
 
         if attachment: set_attach_message(attachment, new_message.name)
+        if reply_to_message_name:
+                try:
+                  
+                 new_message=  build_reply_preview(new_message, reply_to_message_name)
+                  
+                except Exception:
+                    frappe.log_error(title="Reply Preview Error", message=frappe.get_traceback())
+                    
+        if reply_to_message_name:
+                try:
+                    original = frappe.get_doc("ClefinCode Chat Message", reply_to_message_name)
+                    if original.is_media and getattr(original, "file_type", None) == "video" and original.file_id and not getattr(original, "thumbnail_file", None):
+                         new_message= reply_video_preview_job(original.name, new_message.name)
+                        
+                        # frappe.enqueue(
+                        #     "clefincode_chat.api.api_1_3_3.api.reply_video_preview_job",
+                        #     queue="short",
+                        #     original_message_name=original.name,
+                        #     reply_message_name=new_message.name
+                        # )
+                except Exception:
+                    frappe.log_error(title="Reply Video Thumb Enqueue Error", message=frappe.get_traceback())
+        if is_forwarded and (not attachment) and forwarded_from and (is_media  or is_document or is_voice_clip ):
+            try:
+                new_message = copy_forwarded_file_and_relink(new_message, forwarded_from)
+                # update local vars so results/channel last_message use updated content
+                content = new_message.content
+                file_id = new_message.file_id
+                file_type = new_message.file_type
+                is_media = new_message.is_media
+                is_document = new_message.is_document
+            except Exception:
+                frappe.log_error(title="Forwarded File Copy Error", message=frappe.get_traceback())
         
-
         share_everyone = 0
         if chat_topic:
             is_private = frappe.db.get_value("ClefinCode Chat Topic" , chat_topic , "is_private")
@@ -1125,7 +1173,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     member.unread_messages = 0 
         channel_doc.save(ignore_permissions=True)
         frappe.db.commit()   
-
+        
         results = {
             "file_type": file_type ,
             "content": content,
@@ -1147,11 +1195,19 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
             "message_template_type": message_template_type,
             "avatar_url": channel_doc.channel_image,
             "utc_message_date" : send_date,
-            "reply_to_message":reply_to_message_name,
+            "is_forwarded":is_forwarded,
+            
             "platform": platform 
         }
         
-
+        if reply_to_message_name :
+            results.update({"reply_to_message":reply_to_message_name,
+            "reply_preview_type": new_message.reply_preview_type ,
+            "reply_preview_file" : new_message.reply_preview_file ,
+            "reply_preview_file_url": new_message.reply_preview_file_url ,
+            "reply_preview_sender":new_message.reply_preview_sender ,
+            "reply_preview_text":new_message.reply_preview_text,})
+        
         frappe.db.set_value("ClefinCode Chat Profile", get_profile_id(email), "last_active", send_date)
         frappe.publish_realtime(event= "update_last_active", message=results)
         
@@ -1208,6 +1264,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                             push_notifications(firebase_token[0].firebase_token, results, "send_message" , user_platform[0].platform.lower() ,"ClefinCode Support" , notification_body)
         
         else:
+            
+         
             for member in channel_doc.members:
                 if member.is_removed == 0 and member.platform == "Chat":
                     if share_everyone == 0: share_doctype("ClefinCode Chat Message", new_message.name, member.user)
@@ -1215,17 +1273,18 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     results["send_date"] = convert_utc_to_user_timezone(send_date, get_user_timezone(member.user)["results"][0]["time_zone"])
                     results["time_zone"] = frappe.db.get_value("User" , member.user , "time_zone")
                     results["target_user"] = member.user
+                 
                     frappe.publish_realtime(event=room, message=results, user=member.user)  # listner in chat space      
                     frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user) # listner when initilizing app 
                     frappe.publish_realtime(event="update_room", message=results, user= member.user) # listner in chat list 
                     frappe.publish_realtime(event="receive_message", message=results, user= member.user) # listner in mobile app
                     frappe.publish_realtime(event="msg", message=results, user= member.user) # listner in full page chat
-                    
-                    
+                  
+
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
-                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results)
+                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded)
                     if member.pending_messages >= 1:
                         frappe.db.set_value('ClefinCode Chat Channel User', member.name, 'pending_messages', member.pending_messages +1)
                 elif member.platform == "Instagram" and str(email) != str(member.user) and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
@@ -1240,6 +1299,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     process_telegram_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot)
                     if member.pending_messages >= 1:
                         frappe.db.set_value('ClefinCode Chat Channel User', member.name, 'pending_messages', member.pending_messages +1)             
+        
             for contributor in channel_doc.contributors:
                 if contributor.active == 1 and contributor.platform == "Chat":                    
                     if share_everyone == 0: share_doctype("ClefinCode Chat Message", new_message.name, contributor.user)
@@ -1256,8 +1316,11 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
                     # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user)
                     frappe.publish_realtime(event="msg", message=results, user= contributor.user)
                     send_notification(contributor.user , results, "send_message", results["room_name"], message_template_type)
+           
             if new_message.message_type == "information" and new_message.message_template_type=="Send Template Public":
                         send_clefincode_chat_template(new_message)
+            
+            
         
         return  {"results" : [{"new_message_name" : new_message.name}]}
     except Exception as e:
@@ -1269,9 +1332,11 @@ def send(content, user, room , email, send_date = None , is_first_message = 0, a
         
         return {"results": [{"status": f"Error: {str(e)}"}]} 
 # ==========================================================================================
+
 @frappe.whitelist()
-def get_messages(room , user_email , room_type , chat_topic = None, remove_date = None , limit = 10 , offset = 0):
+def get_messages(room, user_email, room_type, chat_topic=None, remove_date=None, limit=10, offset=0):
     condition = ""
+    
     if chat_topic:
         condition = f"chat_topic = '{chat_topic}'"
     
@@ -1280,8 +1345,8 @@ def get_messages(room , user_email , room_type , chat_topic = None, remove_date 
             condition = f"chat_channel = '{room}'"
             if room_type == "Group":
                 if remove_date and remove_date != "":
-                    condition += f" AND send_date <='{remove_date}'"            
-        else: 
+                    condition += f" AND send_date <= '{remove_date}'"
+        else:
             sub_channels = json.loads(room)
             sub_channels_list = []
             for d in sub_channels:
@@ -1290,27 +1355,101 @@ def get_messages(room , user_email , room_type , chat_topic = None, remove_date 
             condition = f"sub_channel IN ({sub_channels_str})"
     
     
-
     results = frappe.db.sql(f"""
-    SELECT content , send_date , sender_email , sender , name AS message_name , is_media , is_document , is_voice_clip  , file_id  , message_type, message_template_type , only_receive_by,reply_to_message
-    FROM `tabClefinCode Chat Message`
-    WHERE {condition} AND (only_receive_by IS NULL OR only_receive_by = '')
-
-    UNION
-
-    SELECT content , send_date , sender_email , sender , name AS message_name , is_media , is_document , is_voice_clip  , file_id  , message_type, message_template_type , only_receive_by,reply_to_message
-    FROM `tabClefinCode Chat Message`
-    WHERE {condition} AND only_receive_by = '{user_email}'
+    SELECT 
+        msg.content, 
+        msg.send_date, 
+        msg.sender_email, 
+        msg.sender, 
+        msg.name AS message_name, 
+        msg.is_media, 
+        msg.is_document, 
+        msg.is_voice_clip, 
+        msg.file_id, 
+        msg.message_type, 
+        msg.message_template_type, 
+        msg.only_receive_by, 
+        msg.reply_to_message, 
+        msg.is_forwarded, 
+        msg.forwarded_from, 
+        msg.is_deleted, 
+        msg.reply_preview_type, 
+        msg.reply_preview_file, 
+        msg.reply_preview_file_url, 
+        msg.reply_preview_sender, 
+        msg.reply_preview_text,
+        msg.reply_preview_sender_email, 
+        msg.reactions_json, 
+        msg.is_edited,
+        backup.original_content AS original_content
+    FROM `tabClefinCode Chat Message` msg
+    LEFT JOIN `tabCiC Backup Chat Message` backup
+        ON msg.name = backup.original_message AND backup.change_type = 'Edit'
+    WHERE {condition} AND (msg.only_receive_by IS NULL OR msg.only_receive_by = '')
     
-    ORDER BY send_date DESC 
+    UNION
+    
+    SELECT 
+        msg.content, 
+        msg.send_date, 
+        msg.sender_email, 
+        msg.sender, 
+        msg.name AS message_name, 
+        msg.is_media, 
+        msg.is_document, 
+        msg.is_voice_clip, 
+        msg.file_id, 
+        msg.message_type, 
+        msg.message_template_type, 
+        msg.only_receive_by, 
+        msg.reply_to_message, 
+        msg.is_forwarded, 
+        msg.forwarded_from, 
+        msg.is_deleted, 
+        msg.reply_preview_type, 
+        msg.reply_preview_file, 
+        msg.reply_preview_file_url, 
+        msg.reply_preview_sender, 
+        msg.reply_preview_text,
+        msg.reply_preview_sender_email, 
+        msg.reactions_json, 
+        msg.is_edited,
+        backup.original_content AS original_content
+    FROM `tabClefinCode Chat Message` msg
+    LEFT JOIN `tabCiC Backup Chat Message` backup
+        ON msg.name = backup.original_message 
+    WHERE {condition} AND msg.only_receive_by = '{user_email}'
+    
+    ORDER BY 2 DESC
     LIMIT {limit} OFFSET {offset}
-    """ , as_dict = True)
+    """, as_dict=True)
+
     for message in results:
         message.utc_message_date = message.send_date
         message.send_date = convert_utc_to_user_timezone(message.send_date, get_user_timezone(user_email)["results"][0]["time_zone"])
-        message.time_zone = get_user_timezone(user_email)["results"][0]["time_zone"]         
+        message.time_zone = get_user_timezone(user_email)["results"][0]["time_zone"]
         message.get_messages = 1
-    return {"results" : sorted(results, key=lambda d: d["send_date"])}
+        
+      
+        if message.is_deleted:
+            message.content = None
+            message.file_id = None
+            message.reply_preview_file = None
+            message.reply_preview_file_url = None
+            message.reply_preview_text = None
+            message.forwarded_from = None
+            message.is_media = 0
+            message.is_document = 0
+            message.is_voice_clip = 0
+            message.is_forwarded = 0
+            message.reply_preview_type = None
+
+
+    return {"results": sorted(results, key=lambda d: d["send_date"])}
+
+
+
+
 # ==========================================================================================
 @frappe.whitelist()
 def get_messages_latest(room , user_email , room_type, remove_date = None , lastmessagedate = None):
@@ -2007,6 +2146,10 @@ def get_chat_media(channel , remove_date = None):
 # ==========================================================================================
 @frappe.whitelist()
 def get_chat_docs(channel , remove_date = None):
+
+    if channel in (None, '', 'null'):
+        return {"results": [{"results": []}]}
+    
     is_parent = frappe.db.get_value("ClefinCode Chat Channel" , channel , "is_parent")    
     condition = ""
     if is_parent == 1:
@@ -2035,6 +2178,14 @@ def get_chat_docs(channel , remove_date = None):
 #############################################################################################
 ######################################## Handling with Files ################################
 #############################################################################################
+def _get_site_file_path(file_doc):
+    """Return absolute path on disk for a File doc."""
+    file_url = (file_doc.file_url or "").lstrip("/")
+    return frappe.get_site_path(file_url)
+# ==========================================================================================
+
+# ==========================================================================================
+@frappe.whitelist()
 @frappe.whitelist()
 def get_file(file_id):
     file_doc = frappe.get_doc("File", {"name": file_id})
@@ -2077,11 +2228,15 @@ def get_file_view_size(file_id,is_video=None):
     file_path = file_doc.get_full_path()
     file_base64 = None
     duration=None
+    try:
+        resample_filter = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample_filter = Image.LANCZOS
     if is_video:
         with VideoFileClip(file_path) as clip:
             frame = clip.get_frame(0)
             image = Image.fromarray(frame, 'RGB')
-            img_downsampled = image.resize((50, 50), Image.ANTIALIAS)
+            img_downsampled = image.resize((50, 50), resample_filter)
             buffered = io.BytesIO()
             img_downsampled.save(buffered, format="JPEG")
             file_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -2089,7 +2244,7 @@ def get_file_view_size(file_id,is_video=None):
         clip.close()
     else:
         img = Image.open(file_path)
-        img_downsampled = img.resize((20, 20), Image.ANTIALIAS)
+        img_downsampled = img.resize((20, 20), resample_filter)
         img_downsampled = img_downsampled.convert('RGB')
         if img_downsampled.mode == "RGBA":
             img_downsampled = img_downsampled.convert("RGB")
@@ -2283,6 +2438,126 @@ def check_if_user_has_permission_to_file(message_name):
                 return True
 
     return False
+
+
+def _get_file_doc_by_id(file_id: str):
+    if not file_id:
+        return None
+    try:
+        return frappe.get_doc("File", file_id)
+    except Exception:
+        return None
+
+def _save_thumb_file(message_name: str, content_bytes: bytes, fname: str, is_private: int):
+    thumb_file = save_file(
+        fname=fname,
+        content=content_bytes,
+        dt="ClefinCode Chat Message",
+        dn=message_name,
+        is_private=is_private
+    )
+    return thumb_file  # File doc
+
+from PIL import Image
+
+def ensure_image_thumbnail(message_doc, size=(300, 300)):
+    if getattr(message_doc, "thumbnail_file", None):
+        return message_doc.thumbnail_file
+
+    file_doc = frappe.get_doc("File", message_doc.file_id)
+    img_path = file_doc.get_full_path()
+
+    img = Image.open(img_path)
+
+ 
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGBA")
+        background = Image.new("RGB", img.size, (255, 255, 255)) 
+        background.paste(img, mask=img.split()[3])  
+        img = background
+    else:
+        img = img.convert("RGB")
+
+    img.thumbnail(size)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=80, optimize=True)
+    buf.seek(0)
+
+    fname = f"thumb_{message_doc.name}.jpg"
+    thumb = save_file(
+        fname=fname,
+        content=buf.getvalue(),
+        dt="ClefinCode Chat Message",
+        dn=message_doc.name,
+        is_private=file_doc.is_private
+    )
+
+    message_doc.thumbnail_file = thumb.name
+    if hasattr(message_doc, "thumbnail_file_url"):
+        message_doc.thumbnail_file_url = thumb.file_url
+    message_doc.save(ignore_permissions=True)
+
+    return thumb.name
+
+
+
+def ensure_video_thumbnail(message_doc, max_size=(320, 320), quality=80):
+    
+    if getattr(message_doc, "thumbnail_file", None):
+        return message_doc.thumbnail_file
+
+    file_doc = _get_file_doc_by_id(message_doc.file_id)
+    if not file_doc:
+        return None
+
+    video_path = file_doc.get_full_path()
+
+    
+    thumb_filename = f"thumb_{message_doc.name}.jpg"
+    thumb_path = os.path.join(frappe.get_site_path("private", "files"), thumb_filename)
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss", "00:00:00.500",
+        "-i", video_path,
+        "-vframes", "1",
+        "-q:v", "5",
+        thumb_path
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    if not os.path.exists(thumb_path):
+        return None
+    try:
+        img = Image.open(thumb_path)
+        img = img.convert("RGB")           
+        img.thumbnail(max_size)            
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        buf.seek(0)
+
+        thumb = _save_thumb_file(
+            message_doc.name,
+            buf.getvalue(),
+            thumb_filename,
+            file_doc.is_private
+        )
+    except Exception:
+        frappe.log_error(title="Video Thumbnail Resize Error", message=frappe.get_traceback())
+    # with open(thumb_path, "rb") as f:
+    #     thumb = _save_thumb_file(message_doc.name, f.read(), thumb_filename, file_doc.is_private)
+    
+    message_doc.thumbnail_file = thumb.name
+    if hasattr(message_doc, "thumbnail_file_url"):
+        message_doc.thumbnail_file_url = thumb.file_url
+    message_doc.save(ignore_permissions=True)
+
+    return thumb.name
+
+
 #############################################################################################
 ######################################## ClefinCode Chat Topics ########################################
 #############################################################################################
@@ -2619,34 +2894,92 @@ def get_topic_messages(chat_topic):
 #############################################################################################
 ######################################## Contacts ###########################################
 #############################################################################################
-@frappe.whitelist()
-def get_contacts(user_email):    
-    contacts_list = frappe.db.sql(f"""
-    SELECT DISTINCT ChatProfile.name AS profile_id, ChatProfile.full_name, Contact.user AS user_id, User.enabled
-    FROM `tabClefinCode Chat Profile` AS ChatProfile
-    INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
-    LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user                     
-    WHERE (User.enabled = 1 OR User.enabled IS NULL)
-    ORDER BY Contact.user DESC
-    """, as_dict=True)
+# @frappe.whitelist()
+# def get_contacts(user_email):    
+#     contacts_list = frappe.db.sql(f"""
+#     SELECT DISTINCT ChatProfile.name AS profile_id, ChatProfile.full_name, Contact.user AS user_id, User.enabled
+#     FROM `tabClefinCode Chat Profile` AS ChatProfile
+#     INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
+#     LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user                     
+#     WHERE (User.enabled = 1 OR User.enabled IS NULL)
+#     ORDER BY Contact.user DESC
+#     """, as_dict=True)
         
-    filtered_contacts = []
+#     filtered_contacts = []
+#     if is_limited_user(user_email):
+#         filtered_contacts = [
+#             contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
+#         ]
+#     else:
+#         filtered_contacts = contacts_list
+
+#     for contact in filtered_contacts:
+#         # Fetch contact details
+#         contact['contact_details'] = frappe.db.sql("""
+#             SELECT contact_info, type AS contact_type,verified, `default`
+#             FROM `tabClefinCode Chat Profile Contact Details`
+#             WHERE parent = %s
+#         """, (contact['profile_id'],), as_dict=True)
+
+#     return {"results": [{"contacts": filtered_contacts}]}     
+@frappe.whitelist()
+def get_contacts(user_email, limit=20, offset=0, search_text=None):
+    
+    search_condition = ""
+    search_values = {}
+    if search_text:
+        search_condition = "AND ChatProfile.full_name LIKE %(search)s"
+        search_values["search"] = f"%{search_text}%"
+
+    
+    contacts_list = frappe.db.sql(f"""
+        SELECT DISTINCT
+            ChatProfile.name AS profile_id,
+            ChatProfile.full_name,
+            Contact.user AS user_id,
+            User.enabled
+        FROM `tabClefinCode Chat Profile` AS ChatProfile
+        INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
+        LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user
+        WHERE (User.enabled = 1 OR User.enabled IS NULL)
+        {search_condition}
+        ORDER BY Contact.user DESC
+    """, search_values,as_dict=True)
+
+    
     if is_limited_user(user_email):
         filtered_contacts = [
-            contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
+            c for c in contacts_list
+            if c.get("user_id") and not is_limited_user(c.get("user_id"))
         ]
     else:
         filtered_contacts = contacts_list
+    limit = int(limit)
+    offset = int(offset)
+    
+    page_slice = filtered_contacts[offset: offset + limit]
 
-    for contact in filtered_contacts:
-        # Fetch contact details
+    
+    for contact in page_slice:
         contact['contact_details'] = frappe.db.sql("""
-            SELECT contact_info, type AS contact_type,verified, `default`
+            SELECT contact_info, type AS contact_type, verified, `default`
             FROM `tabClefinCode Chat Profile Contact Details`
             WHERE parent = %s
         """, (contact['profile_id'],), as_dict=True)
 
-    return {"results": [{"contacts": filtered_contacts}]}     
+    total = len(filtered_contacts)
+    next_offset = offset + len(page_slice)
+    has_more = next_offset < total
+
+    return {
+        "results": [{
+            "contacts": page_slice,
+            "total": total,
+            "has_more": has_more,
+            "next_offset": next_offset
+        }]
+    }
+
 # ==========================================================================================
 @frappe.whitelist()
 def get_contacts_for_new_group(user_email):    
@@ -2985,29 +3318,47 @@ def search_in_message_content(user , query):
     return my_messages
 # ==========================================================================================
 @frappe.whitelist()
-def search_in_message_contents(channel , query, sub_channel = None):
+def search_in_message_contents(channel, query, sub_channel=None):
+
+    if not channel or not query:
+        return {"results": []}
+
     filters = {
-    "content": ["like", f"%{query}%"],
-    "chat_channel": channel
+        "chat_channel": channel,
+        "content": ["like", f"%{query}%"]
     }
-    
-    if sub_channel is not None:
+
+    if sub_channel:
         filters["sub_channel"] = sub_channel
 
-    try:
-        number_of_results = frappe.db.count("ClefinCode Chat Message", filters)
-        return {"results": [{"count": number_of_results}]}
-    except Exception as e:
-        frappe.log_error(f"Error in search_in_message_contents: {str(e)}")  # Log the error for debugging
-        return {"results" : [{"error" : str(e)}]}
+    results = frappe.get_all(
+        "ClefinCode Chat Message",
+        filters=filters,
+        fields=["name", "send_date","content"],
+        order_by="send_date DESC"   # 
+    )
+    clean_results = []
+
+    for msg in results:
+        plain_text = BeautifulSoup(msg.content or "", "html.parser").get_text()
+        if query.lower() in plain_text.lower():
+            clean_results.append({
+                "name": msg.name,
+                "send_date": msg.send_date
+            })
     
+    return {
+        "count": len(clean_results),
+        "results": clean_results
+    }
 # ==========================================================================================
 #############################################################################################
 ######################################## WhatsApp Functions #################################
 #############################################################################################
-def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results):    
+def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0):    
     responder_user_profile = get_profile_id(email)
     message = None
+    reply_preview_message=None
     is_group_message = (channel_doc.type == "Group" and 
                         last_responder_user and 
                         last_responder_user != responder_user_profile and 
@@ -3018,8 +3369,8 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
         message_content = process_message_template(content)
         message = f"_{BeautifulSoup(message_content, 'html.parser').get_text()}_"
     elif file_type in ["image", "video", "audio", "document"]:
-        if is_screenshot:
-            message = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "file_url")
+        if is_screenshot or is_forwarded:
+            message = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "file_url")         
         else:
             message = attachment
     else:
@@ -3027,15 +3378,57 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
             message = f"*{get_chat_profile_first_name(responder_user_profile)}*:\n{BeautifulSoup(content, 'html.parser').get_text()}"
         else:
             message = BeautifulSoup(content, 'html.parser').get_text()
+            
+    if new_message.reply_to_message:
+   
+            original_msg = frappe.get_doc(
+                "ClefinCode Chat Message",
+                new_message.reply_to_message
+            )
 
+            # Clean original content
+            original_text = BeautifulSoup(
+                original_msg.content or "",
+                "html.parser"
+            ).get_text()
+
+            # Take small preview (first 60 chars)
+            preview = original_text[:60]
+            if len(original_text) > 60:
+                preview += "..."
+
+            reply_preview_message = f"*Replying to:*\n{preview}"
+    
     provider = frappe.db.get_value("ClefinCode WhatsApp Profile", platform_gateway, "provider")
+    
     if provider == "Meta":
-        #send_whatsapp_template_meta(message_content, whatsapp_customer_number)
-        send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
+        if new_message.message_template_type=="Send Template":
+            content = new_message.content
+            soup = BeautifulSoup(content, 'html.parser')
+
+            text = soup.get_text()       # convert HTML → plain text
+            messages = text.split(',')   # now you can split safely
+
+            if len(messages) < 2:
+                template_name = content.strip()
+                docname = ""
+            else:
+                template_name = messages[0].strip()
+                docname = messages[1].strip()
+                
+            #send_message_confirm_template(platform_gateway, whatsapp_customer_number, new_message.chat_channel, template_name)
+            send_whatsapp_template_meta(template_name, whatsapp_customer_number)
+            
+        else:
+            # if reply_preview_message:
+            #     send_whatsapp_message(new_message,platform_gateway,whatsapp_customer_number,reply_preview_message,None,0)
+            send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
             send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment)
         else:
+            if reply_preview_message:
+                send_whatsapp_message_twilio(new_message, platform_gateway,whatsapp_customer_number,reply_preview_message, None, 0)
             send_whatsapp_message_twilio(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
 # ==========================================================================================
 def process_message_template(template_html):
@@ -3082,6 +3475,7 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
                 response_data = create_media_payload(receiver, media_id, message_type)
 
         else:
+         
             response_data = {
                 "messaging_product": "whatsapp",
                 "recipient_type": "individual",
@@ -3092,6 +3486,12 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
                     "body": message
                 }
             }
+        if new_message_doc.reply_to_message:
+            whatsapp_message_id=frappe.db.get_value("ClefinCode Chat Message",  new_message_doc.reply_to_message, "whatsapp_message_id")
+            
+            response_data.update({"context": {
+                    "message_id": whatsapp_message_id
+                }})
 
         response = requests.post(endpoint, json=response_data, headers=headers)
 
@@ -3107,6 +3507,7 @@ def send_whatsapp_message(new_message_doc, sender, receiver, message, message_ty
 # ==========================================================================================
 def send_message_confirm_template(platform_gateway, whatsapp_customer_number, channel, message_template):
     try:       
+      
         access_token = get_access_token()
         api_base = "https://graph.facebook.com/v23.0"
         phone_number_id = frappe.db.get_value("ClefinCode WhatsApp Profile", platform_gateway, "phone_number_id")
@@ -3130,7 +3531,7 @@ def send_message_confirm_template(platform_gateway, whatsapp_customer_number, ch
                 }
             }
         }
-
+        
         response = requests.post(endpoint, json=data, headers=headers)
 
         if response.ok:
@@ -3230,6 +3631,7 @@ def convert_to_ogg_twilio(input_file):
 
         # If file already exists, append a short random 4-digit suffix to avoid overwrite
         if os.path.exists(output_file):
+            
             suffix = ''.join(random.choices(string.digits, k=4))
             output_file = os.path.join(folder, f"{base_name}_{suffix}.ogg")
 
@@ -3417,6 +3819,7 @@ def trigger_chat_channel_status(room, is_open):
             send_notification(member.user , results, "trigger_channel_status")
 
     return {"status": "success", "message": f"Chat channel {chat_channel.chat_status.lower()}"}
+    
 # ==========================================================================================
 @frappe.whitelist()
 def check_if_contact_has_chat(user_email , contact , platform):
@@ -3737,6 +4140,7 @@ def get_users_for_mentions(room = None):
 # ==========================================================================================
 @frappe.whitelist()
 def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app = None,text=None):
+    
     parent_channel_doc = frappe.get_doc("ClefinCode Chat Channel" , room)
     first_name = get_contact_first_name(user)
     template_option=False
@@ -3764,39 +4168,48 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
             profile_whatsapp = frappe.get_all(
                     "ClefinCode WhatsApp Profile",
                     filters={"user": user},
-                    fields=["name"]
+                    fields=["name","provider"]
             )
             templates_clefin = []
             templates_twilio = []
+            
             if profile_whatsapp:
-                whatsapp_profile_name = profile_whatsapp[0].name  
 
-                templates_clefin = frappe.get_all(
-                            "ClefinCode WhatsApp Template",
-                            filters={
-                                "docstatus": 1,
-                                "whatsapp_profile": ["=", whatsapp_profile_name],  
-                                "template_status":"APPROVED"
-                            },
-                            fields=["name", "meta_template_name"]
-                        )
-                for t in templates_clefin:
-                        t["doctype"] = "ClefinCode WhatsApp Template"
+                provider =profile_whatsapp[0].provider
+                
+                
+                if provider == "Meta":
+                
+                    whatsapp_profile_name = profile_whatsapp[0].name  
+
+                    templates_clefin = frappe.get_all(
+                                "ClefinCode WhatsApp Template",
+                                filters={
+                                    "docstatus": 1,
+                                    "whatsapp_profile": ["=", whatsapp_profile_name],  
+                                    "template_status":"APPROVED"
+                                },
+                                fields=["name", "meta_template_name"]
+                            )
+                    for t in templates_clefin:
+                            t["doctype"] = "ClefinCode WhatsApp Template"
+                elif provider =="Twilio":
+                    templates_twilio = frappe.get_all(
+                        "CiC Twilio Template",
+                        filters={
+                            "whatsapp_template_id": ["is", "set"],
+                            "template_status": "APPROVED",
+                            
+                                },
+                                fields=["name", "friendly_name as meta_template_name"]
+                           )
+           
+                    for t in templates_twilio:
+                        t["doctype"] = "CiC Twilio Template"
+                
             else:
                 templates_clefin = []
             
-            templates_twilio = frappe.get_all(
-                "CiC Twilio Template",
-                filters={
-                    "whatsapp_template_id": ["is", "set"],
-                    "template_status": "APPROVED",
-                    
-                },
-                fields=["name", "friendly_name as meta_template_name"]
-            )
-           
-            for t in templates_twilio:
-                  t["doctype"] = "CiC Twilio Template"
             templates=templates_clefin + templates_twilio
             results["profile_whatsapp"] = profile_whatsapp
             results["realtime_type"]= "show_template"
@@ -3825,7 +4238,13 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user)
 # ==================================================================================================
 def send_notification(to_user , results, realtime_type, title = None, message_template_type = None):
-    try: 
+    try:
+        
+        results.pop("reactions", None)
+        results.pop("emoji_counts", None)
+        emoji=results.get("emoji")
+        
+        results.pop("emoji", None)
         if check_notifications_status():       
             if to_user:
                 registration_token = get_registration_token(to_user)   
@@ -3839,8 +4258,12 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                         if to_user == frappe.session.user:
                             push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1)
                             return                
-                        if realtime_type == "send_message": 
+                        if realtime_type == "send_message" :  
                             body = get_body_message(results)
+                        elif realtime_type == "delete_message": 
+                            body=""
+                        elif realtime_type =="reactions_message" :
+                            body=f"You received a new reaction {emoji} on your message."
                         else:
                             body = get_body_message_information(realtime_type)
                         push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type)                       
@@ -4070,6 +4493,84 @@ def is_mention(content):
     
     return False
 
+# ============================================================================
+def _replace_file_urls_in_html(html, old_url, new_url):
+    """Replace href/src that match old_url with new_url inside message HTML."""
+    if not html:
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+
+    for a in soup.find_all("a"):
+        if a.get("href") == old_url:
+            a["href"] = new_url
+
+    for img in soup.find_all("img"):
+        if img.get("src") == old_url:
+            img["src"] = new_url
+
+    return str(soup)
+
+# ============================================================================
+def copy_forwarded_file_and_relink(new_message, forwarded_from_message_name):
+    """
+    Copy original message file (File doc + bytes) and attach to new_message.
+    Also relink HTML content to new file_url.
+    """
+    if not forwarded_from_message_name:
+        return new_message
+
+    # 1) original message
+    original_msg = frappe.get_doc("ClefinCode Chat Message", forwarded_from_message_name)
+
+    # 2) get original file
+    original_file = None
+    if getattr(original_msg, "file_id", None):
+        original_file = frappe.get_doc("File", original_msg.file_id)
+    else:
+        # fallback: find file attached to original message
+        original_file_name = frappe.db.get_value(
+            "File",
+            {"attached_to_doctype": "ClefinCode Chat Message", "attached_to_name": original_msg.name},
+            "name",
+        )
+        if original_file_name:
+            original_file = frappe.get_doc("File", original_file_name)
+
+    if not original_file or not original_file.file_url:
+        return new_message
+
+    # 3) read bytes from disk
+    src_path = _get_site_file_path(original_file)
+    if not os.path.exists(src_path):
+    
+        return new_message
+
+    with open(src_path, "rb") as f:
+        file_bytes = f.read()
+
+
+    new_file = save_file(
+        original_file.file_name,
+        file_bytes,
+        "ClefinCode Chat Message",
+        new_message.name,
+        is_private=1 if original_file.is_private else 0,
+    )
+
+    # 5) update message fields + relink html
+    old_url = original_file.file_url
+    new_url = new_file.file_url
+
+    new_content = _replace_file_urls_in_html(new_message.content, old_url, new_url)
+
+    new_message.file_id = new_file.name
+    new_message.content = new_content
+    new_message.is_media = 1 if original_msg.is_media else new_message.is_media
+    new_message.is_document = 1 if original_msg.is_document else new_message.is_document
+    new_message.file_type = getattr(original_msg, "file_type", None) or new_message.file_type
+
+    new_message.save(ignore_permissions=True)
+    return new_message
 #############################################################################################
 ######################################## Instagram Functions #################################
 #############################################################################################
@@ -4239,7 +4740,7 @@ def make_file_public(file_path):
     except Exception as e:
         frappe.log_error(f"Failed to make file public: {str(e)}")
         frappe.throw(f"Failed to prepare media file for sending: {str(e)}")
-        
+       
 #=================================================================================
 def get_temp_public_url(file_url):
   
@@ -4342,8 +4843,7 @@ def get_contact_profile_full_name(sender_id):
     """ , as_dict = True)
     if full_name:
         return full_name[0].full_name        
-    
-    
+       
 #############################################################################################
 ######################################## Messenger Functions ################################
 #############################################################################################
@@ -4508,7 +5008,6 @@ def auto_fill_contact_platform(doc, method):
 #############################################################################################
 ######################################## Telegram Functions #################################
 #############################################################################################
-
 @frappe.whitelist()
 def get_telegram_profile_type(telegram_system_id):
     return frappe.db.get_value("ClefinCode Telegram Profile" , telegram_system_id, "type")
@@ -4534,7 +5033,6 @@ def get_telegram_channel(telegram_system_id, telegram_user_id):
     """ , as_dict = True)
     if results:
         return results[0].name               
-
 
 @frappe.whitelist()
 def send_telegram_message(chat_id, message, message_type="text", attachment_url=None):
@@ -4612,13 +5110,12 @@ def send_telegram_message(chat_id, message, message_type="text", attachment_url=
 
 
         response = requests.post(endpoint, json=payload)
-        frappe.log_error("api_base",[vars(response)])
+        
         if was_private:
             reset_file_to_private(public_attachment_url)
 
     except Exception as e:
         frappe.log_error(title="Telegram Response Sending Error", message=str(e))
-
 
 def process_telegram_message(platform_gateway, telegram_customer_id, email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot):    
     try:
@@ -4698,7 +5195,6 @@ def standardize_audio_to_mp3(file_path):
         frappe.log_error(title="File Registration Error", message=str(e))
 
 # =============================================================================
-
 @frappe.whitelist()
 def check_if_chat_topic_exist(channel_id):
     
@@ -4775,7 +5271,6 @@ def get_notification_log(user, start=0, limit=10):
             "data": str(e)
         }]
 # ==========================================================================================
-
 def upload_media_to_server(file_path):
     """
     Uploads a local file to the server's public directory and returns the public URL.
@@ -4790,95 +5285,6 @@ def upload_media_to_server(file_path):
     
     site_url = frappe.utils.get_url()
     return f"{site_url}/files/{file_name}"
-
-# def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
-#     try:
-#         # Retrieve Twilio credentials from Frappe database
-#         doc = frappe.get_doc("ClefinCode Twilio Integration")
-#         account_sid =doc.get("account_sid")
-#         auth_token = get_auth_token_twillio()
-#         twilio_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", sender, "whatsapp_number")
-
-#         client = Client(account_sid, auth_token)
-
-#         if message_type in ['image', 'video', 'audio', 'document']:
-#             media_url = message
-#             media_url, was_private = make_file_public(media_url)
-#             public_url=media_url
-#             site_url = frappe.utils.get_url()  
-            
-#             if is_voice_clip:
-             
-                
-#                 #media_url =frappe.utils.get_site_path(media_url.lstrip('/'))
-#                 site_name = frappe.local.site
-#                 media_url = convert_to_ogg_twilio( os.path.join(".", site_name, "public", media_url.lstrip("/")))
-               
-#                 if media_url.startswith("./"):
-#                     media_url = media_url[2:]
-
-#                 if media_url.startswith(site_name):
-#                     media_url = media_url[len(site_name+"/public"):]
-                
-#                  # --- Create Frappe File doc ---
-#                 file_doc = frappe.get_doc({
-#                 "doctype": "File",
-#                 "file_url": media_url,
-#                 "file_name": os.path.basename(media_url),
-#                 "attached_to_doctype": new_message_doc.doctype,
-#                 "attached_to_name": new_message_doc.name,
-#                 "is_private": 0  # Public
-#             })
-#                 file_doc.insert(ignore_permissions=True)
-#                 frappe.db.commit()
-
-            
-#             media_url=site_url+media_url
-#             media_url = urllib.parse.quote(media_url, safe=':/')
-           
-#             msg = client.messages.create(
-#                 from_=f'whatsapp:{twilio_whatsapp_number}',
-#                 body=message if message_type != 'image' else None,
-#                 media_url=[media_url],   # must be a list of URLs
-#                 to=f'whatsapp:{receiver}'
-#             )
-           
-#             from datetime import datetime, timedelta
-#             # Reset file to private if applicable
-#             if was_private:
-#                 run_at = frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=60)
-
-#                 # frappe.enqueue(
-#                 #         "frappe.utils.background_jobs.enqueue_one",
-#                 #         job_name=f"reset_file_{frappe.generate_hash()}",  
-#                 #         method="clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
-#                 #         kwargs={"file_path": public_url},
-#                 #         wait=60
-#                 #     )
-#                 frappe.enqueue(
-#                        "clefincode_chat.api.api_1_3_1.api.reset_file_to_private",
-#                         file_path=public_url,
-#                         time_delay=60,
-#                         queue='default',
-#                         timeout=600,
-                    
-#                     )
-#                 # reset_file_to_private(public_url)
-#         else:  # text
-            
-#             msg = client.messages.create(
-#                 from_=f'whatsapp:{twilio_whatsapp_number}',
-#                 body=message,
-#                 to=f'whatsapp:{receiver}'
-#             )
-
-#         new_message_doc.whatsapp_message_id = msg.sid
-#         new_message_doc.save(ignore_permissions=True)
-#         frappe.db.commit()
-
-#     except Exception as e:
-#         frappe.log_error(title="send whatsapp message Exception", message=str(e))
-
 
 def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
     try:
@@ -4900,6 +5306,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
         if message_type in ['image', 'video', 'audio', 'document']:
 
             original_url = message
+            
             
             site_url = frappe.utils.get_url()
 
@@ -4988,6 +5395,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
                 from_=f'whatsapp:{twilio_whatsapp_number}',
                 body=message if message_type != "image" else None,
                 media_url=[full_media_url],
+                
                 to=f'whatsapp:{receiver}'
             )
 
@@ -5009,22 +5417,25 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
             # ------------------------------------------
             # TEXT MESSAGE ONLY
             # ------------------------------------------
+         
             msg = client.messages.create(
                 from_=f'whatsapp:{twilio_whatsapp_number}',
                 body=message,
-                to=f'whatsapp:{receiver}'
+               
+                to=f'whatsapp:{receiver}',
+                
             )
 
         # Save Twilio SID
+       
         new_message_doc.whatsapp_message_id = msg.sid
         new_message_doc.save(ignore_permissions=True)
         frappe.db.commit()
 
     except Exception as e:
         frappe.log_error(title="send whatsapp message Exception", message=str(e))
+
 @frappe.whitelist()
-
-
 def delete_temp_public_file(file_url,time_delay=None):
     """
     Deletes the temporary public copy created for WhatsApp media sending.
@@ -5193,7 +5604,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                             if attach_var in variables:
                                 media_url=template.media_url.replace(f"{{{{{attach_var}}}}}", str( variables[attach_var]))
 
-                                frappe.log_error("sds",media_url)
+                                
                     
         if attachment:
             if template.media_url:
@@ -5274,19 +5685,6 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         content_variables=json.dumps(variables)
     )
     
-   
-   
-    
-    # new_message.content=html
-    # new_message.save(ignore_permissions = True)
-    # room=new_message.chat_channel
-    # results['content']=html
-    # results['last_message']=html
-    # frappe.publish_realtime(event=room, message=results, user=new_message.sender_email)
-    # frappe.publish_realtime(event="update_room", message=results, user= new_message.sender_email)
-    #send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type) 
-   
-   
     send(content=html, user=to_number, room=new_message.chat_channel, email=to_number,is_media=is_media,is_document=is_document,file_id=file_id)
    
     frappe.logger("whatsapp").info(
@@ -5300,9 +5698,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         "body_preview": body_preview,
         "doctype": doctype
     }
-    
-
-
+ 
 #========================================================================================
 @frappe.whitelist()
 def get_all_whatsapp_templates():
@@ -5370,24 +5766,20 @@ def get_chat_templates():
         frappe.log_error(frappe.get_traceback(), "Get WhatsApp Templates API Error")
         raise e
 #====================================================================================
-import frappe
-import requests
-
 @frappe.whitelist(allow_guest=False)
 def send_whatsapp_template_meta(template_name, recipient, params=None):
    
-
-    
     template = frappe.get_doc("ClefinCode WhatsApp Template", template_name)
+   
 
     if not template.whatsapp_profile:
         return {"error": "WhatsApp Profile not linked to this template"}
 
    
     profile = frappe.get_doc("ClefinCode WhatsApp Profile", template.whatsapp_profile)
-    ACCESS_TOKEN = profile.get("access_token")
+    ACCESS_TOKEN = get_access_token()
     PHONE_NUMBER_ID = profile.get("phone_number_id")
-
+    
     if not ACCESS_TOKEN or not PHONE_NUMBER_ID:
         return {"error": "Missing WhatsApp credentials in profile"}
 
@@ -5397,7 +5789,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
         "Authorization": f"Bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
     }
-
+   
     
     body_params = []
     if params:
@@ -5406,7 +5798,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
 
     
     components = []
-
+  
     # === 1. Header ===
     if template.header_type and template.header_type != "None":
         header_component = {"type": "header", "parameters": []}
@@ -5429,13 +5821,13 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
                 })
 
         components.append(header_component)
-
+   
     # === 2. Body ===
     components.append({
         "type": "body",
         "parameters": body_params
     })
-
+   
     # === 3. Buttons ===
     if template.buttons:
         button_components = {"type": "button", "sub_type": "quick_reply", "parameters": []}
@@ -5502,7 +5894,7 @@ def send_whatsapp_template_meta(template_name, recipient, params=None):
     # === Send Request ===
     response = requests.post(url, headers=headers, json=payload)
     result = response.json()
-
+  
     if response.status_code == 200:
         frappe.msgprint(f" Template '{template.meta_template_name}' sent successfully.")
     else:
@@ -6124,7 +6516,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             created_letterhead_flag = True
 
             original_ignore = frappe.flags.get('ignore_permissions', False)
-        frappe.flags.ignore_print_permissions = True
+        frappe.flags.ignore_permissions = True
         try:
             html = frappe.get_print(
                 doctype,
@@ -6134,7 +6526,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
                 no_letterhead=0
             )
         finally:
-            frappe.flags.ignore_print_permissions = True
+            frappe.flags.ignore_permissions = original_ignore  
         site_url = frappe.utils.get_url()
 
         # Convert all src="/..." to src="https://your-site.com/..."
@@ -6408,15 +6800,15 @@ def get_contact_by_profile(profile_id):
         FROM `tabClefinCode Chat Profile` AS ChatProfile
         INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
         
-        WHERE ChatProfile.name = %s
+        WHERE ChatProfile.full_name = %s
         LIMIT 1
     """, (profile_id,), as_dict=True)
 
     if not contact:
         return {"results": {}}
-
+    
     contact = contact[0]
-
+   
     # Fetch contact details
     contact["contact_details"] = frappe.db.sql("""
         SELECT 
@@ -6426,7 +6818,7 @@ def get_contact_by_profile(profile_id):
             `default`
         FROM `tabClefinCode Chat Profile Contact Details`
         WHERE parent = %s
-    """, (profile_id,), as_dict=True)
+    """, (contact['profile_id'],), as_dict=True)
 
     return {"results": contact}
 import subprocess
@@ -6491,6 +6883,7 @@ def generate_pdf_with_getpdf(
         frappe.flags.current_letterhead = letterhead
 
     
+    
     frappe.flags.ignore_print_permissions = True
     try:
         html = frappe.get_print(
@@ -6502,11 +6895,9 @@ def generate_pdf_with_getpdf(
         )
     finally:
         frappe.flags.ignore_print_permissions = False
+       
 
-    frappe.log_error(
-    message=f"Current user: {frappe.session.user}",
-    title="PDF Test"
-)
+    
     pdf_data = get_pdf(html)
 
     # Save file
@@ -6623,7 +7014,7 @@ def get_message_index(room, user_email, room_type, message_name, chat_topic=None
             sub_channels_str = ", ".join([frappe.db.escape(ch) for ch in sub_channels])
             condition = f"sub_channel IN ({sub_channels_str})"
 
-    # تأكد الرسالة ضمن نفس scope + منطق only_receive_by
+    #
     msg = frappe.db.sql(
         f"""
         SELECT name, send_date
@@ -6645,7 +7036,7 @@ def get_message_index(room, user_email, room_type, message_name, chat_topic=None
 
     target_send_date = msg[0]["send_date"]
 
-    # احسب عدد الرسائل "الأحدث" حسب نفس منطق get_messages
+
     index = frappe.db.sql(
         f"""
         SELECT COUNT(*) AS c
@@ -6705,7 +7096,7 @@ def get_single_message(
     if not msg:
         return None
 
-    # # 🔐 permission check (أساسي)
+   
     # allowed = frappe.db.exists(
     #     "ClefinCode Chat Channel Member",
     #     {
@@ -6717,7 +7108,7 @@ def get_single_message(
     # if not allowed:
     #     frappe.throw("Not permitted", frappe.PermissionError)
 
-    # ⛔ تجاهل رسائل النظام
+   
     if msg.message_type == "information":
         return None
 
@@ -6727,3 +7118,493 @@ def get_single_message(
         "content": msg.content,
         "send_date": msg.send_date,
     }
+#======================================================
+@frappe.whitelist()
+def delete_chat_message(message_name, user_email):
+    msg = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+    if msg.sender_email != user_email:
+        frappe.throw("Not allowed")
+    settings = frappe.get_single("ClefinCode Chat Settings")
+    max_delete_time = settings.max_delete_time or 0
+
+    if max_delete_time > 0:
+        
+
+        creation_time = msg.creation
+        current_time = now_datetime()
+        time_diff = (current_time - creation_time).total_seconds()
+
+        if time_diff > (max_delete_time * 60):
+            frappe.throw("Editing time has expired for this message.")
+        if msg.is_edited:
+            frappe.throw("This message has already been edited and cannot be edited again.")
+    new_message = frappe.get_doc(
+            {
+                "doctype": "CiC Backup Chat Message",
+                "original_content":msg.content,
+                "original_message":msg.name,
+                "change_type":"Delete"
+            }).insert(ignore_permissions=True)
+    frappe.db.commit()
+    msg.is_deleted = 1
+   
+    msg.content="<p>This message was deleted</p>"
+    msg.save(ignore_permissions=True)
+    results={
+            "realtime_type": "delete_message",
+            "channel_name":msg.chat_channel,
+            "message_name": message_name,
+        }
+
+    frappe.publish_realtime(
+        event=msg.chat_channel,
+        message=results
+    )
+    channel=frappe.get_doc("ClefinCode Chat Channel",msg.chat_channel)
+    
+    for member in channel.members:
+       
+       results['target_user']=member.user
+       send_notification(member.user , results, "delete_message")    
+    last_message = frappe.get_all(
+        "ClefinCode Chat Message",
+        filters={
+            "chat_channel": msg.chat_channel,
+            
+        },
+        fields=["name"],
+        order_by="creation desc",
+        limit=1
+    )
+   
+
+    is_last_message = last_message and last_message[0].name == msg.name
+    if is_last_message:
+        
+        frappe.db.set_value(
+            "ClefinCode Chat Channel",
+            msg.chat_channel,
+            "last_message",
+            "This message was deleted"
+        )
+        frappe.db.commit()
+
+
+    return True
+
+def build_reply_preview(reply_message_doc, original_message_name: str, max_len=120):
+  
+    if not original_message_name:
+        return
+
+    original = frappe.get_doc("ClefinCode Chat Message", original_message_name)
+
+    #reply_message_doc.reply_preview_message_name = original.name
+    reply_message_doc.reply_preview_sender = original.sender
+    reply_message_doc.reply_preview_sender_email=original.sender_email
+
+
+    o_type = "text"
+    if original.is_voice_clip:
+        o_type = "voice"
+    elif original.is_document:
+        o_type = "document"
+    elif original.is_media:
+        
+        if getattr(original, "file_type", None) == "video":
+            o_type = "video"
+        elif getattr(original, "file_type", None) == "image":
+            o_type = "image"
+        else:
+            o_type = "media"
+
+    reply_message_doc.reply_preview_type = o_type
+
+  
+    text = frappe.utils.strip_html(original.content or "").strip()
+    if not text:
+        # fallback
+        if o_type == "image":
+            text = "📷 Photo"
+        elif o_type == "video":
+            text = "🎬 Video"
+        elif o_type == "document":
+            text = "📎 Document"
+        elif o_type == "voice":
+            text = "🎤 Voice message"
+        else:
+            text = "[Attachment]"
+
+    if len(text) > max_len:
+        text = text[:max_len] + "…"
+
+    reply_message_doc.reply_preview_text = text
+
+    # thumbnail
+    thumb_file_name = None
+    if o_type == "image":
+        thumb_file_name = ensure_image_thumbnail(original)
+    elif o_type == "video":
+        
+        thumb_file_name = getattr(original, "thumbnail_file", None)
+
+    if thumb_file_name:
+        reply_message_doc.reply_preview_file = thumb_file_name
+        if hasattr(reply_message_doc, "reply_preview_file_url"):
+          
+            try:
+                fdoc = frappe.get_doc("File", thumb_file_name)
+                reply_message_doc.reply_preview_file_url = fdoc.file_url
+            except Exception:
+                pass
+    return reply_message_doc.save(ignore_permissions=True)
+def reply_video_preview_job(original_message_name: str, reply_message_name: str):
+
+    original = frappe.get_doc("ClefinCode Chat Message", original_message_name)
+
+
+    ensure_video_thumbnail(original)
+
+    values = {}
+
+    thumb = getattr(original, "thumbnail_file", None)
+
+    if thumb:
+        values["reply_preview_file"] = thumb
+
+        try:
+            fdoc = frappe.get_doc("File", thumb)
+            values["reply_preview_file_url"] = fdoc.file_url
+        except Exception:
+            pass
+
+    if not values:
+        return
+
+    frappe.db.set_value(
+        "ClefinCode Chat Message",
+        reply_message_name,
+        values,
+        update_modified=False
+    )
+
+    frappe.db.commit()
+
+    return frappe.get_doc("ClefinCode Chat Message", reply_message_name)
+    
+
+    # reply_doc = frappe.get_doc("ClefinCode Chat Message", reply_message_name)
+
+    
+    # room = reply_doc.sub_channel or reply_doc.chat_channel
+
+    # frappe.publish_realtime(
+    #     event=room,
+    #     message={
+    #         "realtime_type": "update_message",
+    #         "message_name": reply_message_name,
+    #         "changes": {
+    #             "reply_preview_file": values.get("reply_preview_file"),
+    #             "reply_preview_file_url": values.get("reply_preview_file_url"),
+    #             "reply_preview_type": "video"
+    #         },
+    #         "force_rebuild": False
+    #     },
+    #     room=room
+    # )
+
+
+@frappe.whitelist(allow_guest=False)
+def add_or_update_reaction(message_name, emoji):
+    sender_account = frappe.session.user
+    
+    
+    if not frappe.db.exists("ClefinCode Chat Message", message_name):
+        frappe.throw("Message not found")
+
+    doc = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+ 
+    try:
+        stored_data = json.loads(doc.reactions_json) if doc.reactions_json else []
+    except json.JSONDecodeError:
+        stored_data = []
+
+ 
+    if not stored_data:
+        stored_data = [{
+            "reactions": [],
+            "emoji_summary": {
+                "total_emojis": 0,
+                "emoji_details": {}
+            }
+        }]
+
+    reactions = stored_data[0].get("reactions", [])
+
+  
+    existing_reaction = next(
+        (r for r in reactions if r["emoji_sender"] == sender_account),
+        None
+    )
+
+    if existing_reaction:
+        if existing_reaction["emoji"] == emoji:
+      
+            reactions.remove(existing_reaction)
+        else:
+        
+            existing_reaction["emoji"] = emoji
+            existing_reaction["send_date"] = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    else:
+       
+        reactions.append({
+            "emoji_sender": sender_account,
+            "emoji": emoji,
+            "send_date": datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        })
+
+    emoji_count = {}
+    for reaction in reactions:
+        e = reaction["emoji"]
+        emoji_count[e] = emoji_count.get(e, 0) + 1
+
+    emoji_summary = {
+        "total_emojis": len(reactions),
+        "emoji_details": emoji_count
+    }
+
+   
+    stored_data[0]["reactions"] = reactions
+    stored_data[0]["emoji_summary"] = emoji_summary
+
+
+    doc.reactions_json = json.dumps(stored_data)
+
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    
+    
+    channel = frappe.get_doc("ClefinCode Chat Channel", doc.chat_channel)
+    room_name = get_room_name(channel.name,channel.type, sender_email = sender_account)
+    results={
+            "realtime_type": "reactions_message",
+            "channel_name":doc.chat_channel,
+            "message_name": message_name,
+            "reactions_json":doc.reactions_json,
+            "reactions": reactions,
+            "emoji_counts": emoji_summary["emoji_details"],
+           
+
+        }
+
+    frappe.publish_realtime(
+        event=doc.chat_channel,
+        message=results
+    )
+    for member in channel.members:
+        results['target_user'] = member.user
+        results['emoji'] = emoji
+        send_notification(member.user, results, "reactions_message",room_name)
+
+    soup = BeautifulSoup(doc.content, "html.parser")
+    clean_content = soup.get_text()
+
+ 
+    frappe.db.set_value(
+            "ClefinCode Chat Channel",
+            doc.chat_channel,
+            "last_message",
+            f"<p>{room_name} Reacted {emoji} to {clean_content[:40]}</p>"
+        )
+    frappe.db.commit()
+
+
+    return {
+        "status": "success",
+        "message": "Reaction updated or added"
+    }
+
+
+
+@frappe.whitelist(allow_guest=False)
+def get_reactions_for_message(message_name):
+
+    if not frappe.db.exists("ClefinCode Chat Message", message_name):
+        frappe.throw("Message not found")
+
+    doc = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+    if not doc.reactions_json:
+        return {
+            "message": {
+                "status": "success",
+                "message": "Reactions fetched successfully",
+                "data": {
+                    "reactions": [],
+                    "emoji_counts": {},
+                    "users_list": []
+                }
+            }
+        }
+
+    try:
+        stored_data = json.loads(doc.reactions_json)
+    except json.JSONDecodeError:
+        stored_data = []
+
+    if not stored_data or not isinstance(stored_data, list):
+        reactions = []
+    else:
+        reactions = stored_data[0].get("reactions", [])
+
+ 
+    emoji_counts = {}
+    users_list = []
+
+    for reaction in reactions:
+        emoji = reaction.get("emoji")
+        sender = reaction.get("emoji_sender")
+
+        if emoji:
+            emoji_counts[emoji] = emoji_counts.get(emoji, 0) + 1
+
+        if sender and sender not in users_list:
+            users_list.append(sender)
+
+    return {
+        "message": {
+            "status": "success",
+            "message": "Reactions fetched successfully",
+            "data": {
+                "reactions": reactions,
+                "emoji_counts": emoji_counts,
+                "users_list": users_list
+            }
+        }
+    }
+
+@frappe.whitelist()
+def edit_chat_message(message_name,  new_content):
+
+    msg = frappe.get_doc("ClefinCode Chat Message", message_name)
+    user_email=frappe.session.user
+    original_content=msg.content
+
+
+    if msg.sender_email != user_email:
+        frappe.throw("Not allowed")
+
+    settings = frappe.get_single("ClefinCode Chat Settings")
+    max_edit_time = settings.max_edit_time or 0
+
+    if max_edit_time > 0:
+        
+
+        creation_time = msg.creation
+        current_time = now_datetime()
+        time_diff = (current_time - creation_time).total_seconds()
+
+        if time_diff > (max_edit_time * 60):
+            frappe.throw("Editing time has expired for this message.")
+        if msg.is_edited:
+            frappe.throw("This message has already been edited and cannot be edited again.")
+
+
+  
+    new_message = frappe.get_doc(
+            {
+                "doctype": "CiC Backup Chat Message",
+                "original_content":msg.content,
+                "original_message":msg.name,
+                "change_type":"Edit"
+            }).insert(ignore_permissions=True)
+    frappe.db.commit()
+    
+
+    msg.content = new_content
+    msg.is_edited = 1  
+    msg.save(ignore_permissions=True)
+    channel = frappe.get_doc("ClefinCode Chat Channel", msg.chat_channel)
+
+    for member in channel.members:
+        if (
+            member.platform == "WhatsApp"
+            and member.user != msg.sender_email
+            and member.is_removed == 0
+        ):
+            try:
+                original_preview = (original_content or "")[:40]
+
+               
+                if len(original_content or "") > 40:
+                    original_preview += "..."
+
+                edited_content = (
+                    "✏️ *Edited message*\n"
+                    "────────────\n"
+                    f"*Previous:*\n{original_preview}\n"
+                    "────────────\n"
+                    f"*New:*\n{new_content}"
+                )
+                process_whatsapp_message(
+                    member.platform_gateway,
+                    member.user,
+                    msg.sender_email,
+                    channel,
+                    channel.last_responder_user,
+                    msg,                 # reuse same message doc
+                    msg.file_type,
+                    None,                # no attachment in edit
+                    edited_content,
+                    msg.is_voice_clip,
+                    0,                   # is_screenshot
+                    None,                # results not needed
+                    0                    # is_forwarded
+                )
+
+            except Exception:
+                frappe.log_error(
+                    title="WhatsApp Edit Send Error",
+                    message=frappe.get_traceback()
+                )
+
+    results = {
+        "realtime_type": "edit_message",
+        "channel_name": msg.chat_channel,
+        "message_name": message_name,
+        "content": new_content,
+    }
+
+    frappe.publish_realtime(
+        event=msg.chat_channel,
+        message=results
+    )
+
+   
+    channel = frappe.get_doc("ClefinCode Chat Channel", msg.chat_channel)
+    for member in channel.members:
+        results['target_user'] = member.user
+        send_notification(member.user, results, "edit_message")
+
+
+    last_message = frappe.get_all(
+        "ClefinCode Chat Message",
+        filters={"chat_channel": msg.chat_channel},
+        fields=["name"],
+        order_by="creation desc",
+        limit=1
+    )
+
+    is_last_message = last_message and last_message[0].name == msg.name
+    if is_last_message:
+        frappe.db.set_value(
+            "ClefinCode Chat Channel",
+            msg.chat_channel,
+            "last_message",
+            new_content  
+        )
+        frappe.db.commit()
+
+    return True

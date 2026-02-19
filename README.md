@@ -376,6 +376,103 @@ A **Chat Profile** centralizes all identifiers for a person/company (WhatsApp, T
 <img width="1402" src="screenshots/web/add_contact.gif">
 
 
+## 🖥 Web UI Features
+
+Powerful and intuitive message controls designed to enhance productivity and keep conversations structured inside ERPNext.
+
+### ↩️ Reply to Messages
+To reply to a specific message:
+1. Click directly on the message bubble.
+2. Select **Reply**.
+3. Type your response and send.
+
+Your reply will remain linked to the original message to preserve context and make conversations easier to follow.
+
+<img width="1402" src="screenshots/web/reply_message.gif">
+
+**GIF Link:** screenshots/web/reply_message.gif
+
+---
+
+### 🔁 Forward Messages
+To forward a message:
+1. Click on the message bubble.
+2. Select **Forward**.
+3. Choose the contact or channel you want to forward the message to.
+4. You can select **multiple recipients at the same time**.
+5. Confirm to send.
+
+Forwarded messages are clearly labeled for transparency.
+
+<img width="1402" src="screenshots/web/forward_message.gif">
+
+**GIF Link:** screenshots/web/forward_message.gif
+
+---
+
+### ✏️ Edit Sent Messages
+To edit a message:
+1. Click on the message bubble.
+2. Select **Edit**.
+3. Update the message content.
+4. Save the changes.
+
+⚠️ Editing is only allowed within **7 minutes** of sending the message.  
+This duration can be modified from the **Chat Settings**.
+
+<img width="1402" src="screenshots/web/edit_message.gif">
+
+**GIF Link:** screenshots/web/edit_message.gif
+
+---
+
+### 🗑 Delete Messages
+To delete a message:
+1. Click on the message bubble.
+2. Select **Delete**.
+3. Confirm the deletion.
+
+⚠️ **Important:**  
+Messages cannot be edited or deleted after **7 minutes** from the time they were sent.  
+The time limit can be customized from the **Chat Settings**.
+
+<img width="1402" src="screenshots/web/delete_message.gif">
+
+**GIF Link:** screenshots/web/delete_message.gif
+
+---
+
+### 😀 Message Reactions
+To react to a message:
+1. Press and hold (long press) on the message bubble.
+2. Select the desired emoji reaction.
+
+You can:
+- Remove a reaction by clicking the same emoji again.
+- Change your reaction by selecting a different emoji.
+
+Reactions help reduce unnecessary replies and improve collaboration speed.
+
+<img width="1402" src="screenshots/web/reactions.gif">
+
+**GIF Link:** screenshots/web/reactions.gif
+
+---
+
+### 🔎 In-Chat Search
+1. Open the desired chat (contact or channel).
+2. Click on the top area of the conversation (chat header).
+3. The chat details interface will open.
+4. Click on the **Search icon**.
+5. Enter the keyword you want to find.
+6. Navigate through the results to locate the exact message.
+
+This allows you to quickly find important details, decisions, or shared information.
+
+<img width="1402" src="screenshots/web/search.gif">
+
+**GIF Link:** screenshots/web/search.gif
+
 
 ## Reporting Bugs
 

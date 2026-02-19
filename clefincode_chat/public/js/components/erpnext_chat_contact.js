@@ -20,6 +20,40 @@ export default class ChatContact {
      window.open_manage_popup = this.open_manage_popup.bind(this);
   }
 //---------------------------------------------
+update_forward_selected_row() {
+  if (!this.chat_contact_list || this.chat_contact_list.forward != 1) return;
+
+  const hasAny = (this.chat_contact_list.selected_contacts || []).some(
+    (x) => x.profile_id === this.profile.profile_id
+  );
+
+  this.$chat_contact.toggleClass("forward-selected-contact", hasAny);
+}
+
+sync_forward_selected_items() {
+  if (!this.chat_contact_list || this.chat_contact_list.forward != 1) return;
+
+  const selected = (this.chat_contact_list.selected_contacts || []).filter(
+    (x) => x.profile_id === this.profile.profile_id
+  );
+
+
+  this.update_forward_selected_row();
+
+  
+  const $items = this.$chat_contact.find(".dropdown-menu .dropdown-item");
+  $items.each((_, el) => {
+    const $el = $(el);
+    if ($el.hasClass("manage-contact")) return;
+
+    const email = $el.data("contact");
+    const platform =
+      ["Chat","Email","WhatsApp","Instagram","Messenger","Telegram"].find(p => $el.hasClass(p)) || null;
+
+    const isSelected = selected.some((s) => s.email === email && s.platform === platform);
+    $el.toggleClass("selected", isSelected);
+  });
+}
 
 //---------------------------------------------
 
@@ -317,6 +351,8 @@ save_all_contacts(dialog) {
 
     // Set up events for this contact
     this.setup_events();
+    this.sync_forward_selected_items();
+
 }
 
 
@@ -347,12 +383,12 @@ save_all_contacts(dialog) {
       const isAdmin = frappe.session.user === "Administrator";
       const isSystemManager = frappe.user_roles.includes("System Manager");
 
+    
       // Show Manage Contact if user owns contact OR is admin OR system manager
       if (isUserContact || isAdmin || isSystemManager) {
-      console.log("Profile");
-      console.log(this.profile);
+    
       const user_contact = contact_details.find(cd => cd.contact_info === frappe.session.user);
-      console.log(user_contact);
+      
 
         html_options += `
             <div class="dropdown-divider"></div>
@@ -369,7 +405,12 @@ save_all_contacts(dialog) {
 
   setup_events() {
     const me = this;
+  
     this.$chat_contact.on("click", (e) => {
+          if (me.chat_contact_list.forward == 1) {
+    this.select_contact(e.target);
+    return;
+  }
       if (me.chat_contact_list.new_group == 0) {
         this.click_on_contact(e.target);
       } else {
@@ -379,7 +420,7 @@ save_all_contacts(dialog) {
      this.$chat_contact.on("click", "#manageContactBtn", () => {
         const user_contact = me.profile.contact_details.find(cd => cd.contact_info === frappe.session.user);
         
-        console.log("Current contact_details:", me.profile.contact_details);
+        
         me.open_manage_popup(user_contact);
     });
   }
@@ -388,6 +429,7 @@ save_all_contacts(dialog) {
     const contact_element = $(e).closest(
         ".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact, .options-icon"
     );
+  
 
     // If the element is the dropdown menu, return early
     if (contact_element.hasClass("options-icon")) {
@@ -467,8 +509,7 @@ handle_mail_icon_click(contact_element) {
 }
 
 handle_whatsapp_icon_click() {
-   console.log("erpnext_chat_app")
-    console.log(erpnext_chat_app)
+
     const default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number;
     const default_whatsapp_type = erpnext_chat_app.res.default_whatsapp_type;
 
@@ -490,6 +531,7 @@ handle_whatsapp_icon_click() {
 handle_chat_contact_click() {
   const contact = this.profile.default_contact;
   const platform = this.profile.default_platform;
+
   if (platform === "WhatsApp") {
         const default_whatsapp_number = erpnext_chat_app.res.default_whatsapp_number;
 
@@ -512,7 +554,19 @@ handle_chat_contact_click() {
   select_contact(e) {
     const me = this;
     let icon, platform;
-    const contact_element = $(e).closest(".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact,.options-icon");
+    // const contact_element = $(e).closest(".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact,.options-icon");
+    const is_forward = this.chat_contact_list && this.chat_contact_list.forward == 1;
+
+
+    const $dropdown_item = is_forward ? $(e).closest(".dropdown-menu .dropdown-item") : $();
+
+    const fallback_selector = is_forward
+      ? ".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact, .options-icon"
+      : ".chat-icon, .Chat, .mail-icon, .Email, .whatsapp-icon, .WhatsApp, .instagram-icon, .Instagram, .messenger-icon, .Messenger, .telegram-icon, .Telegram, .chat-contact,options-icon";
+
+    const contact_element = $dropdown_item.length ? $dropdown_item : $(e).closest(fallback_selector);
+
+
     if(contact_element.hasClass("options-icon")){
       return
     }else if (contact_element.length > 0) { 
@@ -531,12 +585,15 @@ handle_chat_contact_click() {
         platform = "Telegram";
       } 
       else if (contact_element.hasClass("chat-contact")) {
-        platform = "Chat"; 
-        icon = $(e).closest('.chat-contact').find('.chat-icon')    
+        platform =this.profile.default_platform;
+        // icon = $(e).closest('.contact-profile-info').find('.chat-icon');
+        icon = $(e).closest('.chat-contact').find('.chat-icons .icon').first();
+        
       } 
     }
 
-    if (icon && platform) {
+    if (icon.length > 0 && platform) {
+    
       me.select_member(icon, platform);
       if (this.chat_contact_list.selected_contacts.length > 0) {
         this.chat_contact_list.$chat_contact_list
@@ -637,9 +694,14 @@ handle_chat_contact_click() {
         element.data("contact")
       );
     }
+      this.sync_forward_selected_items();
   }
 
   get_selected_contacts_number() {
+     if (this.chat_contact_list && this.chat_contact_list.forward == 1) {
+    return this.chat_contact_list.selected_contacts.length;
+  }
+
     let uniqueEmails = new Set();
 
     this.chat_contact_list.selected_contacts.forEach((item) => {

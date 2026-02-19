@@ -23,15 +23,34 @@
   "type",
   "file_id",
   "file_type",
+  "section_break_kpqj",
   "is_media",
   "is_document",
   "is_link",
   "is_voice_clip",
   "is_mention",
+  "column_break_xpog",
   "is_screenshot",
+  "is_forwarded",
+  "is_deleted",
+  "is_edited",
+  "section_break_zavw",
   "whatsapp_message_id",
   "instagram_message_id",
-  "messenger_message_id"
+  "messenger_message_id",
+  "column_break_aimo",
+  "reply_to_message",
+  "forwarded_from",
+  "reply_section",
+  "reply_preview_type",
+  "reply_preview_file",
+  "reply_preview_file_url",
+  "reply_preview_sender",
+  "column_break_fmtm",
+  "reply_preview_text",
+  "reply_preview_sender_email",
+  "section_break_ycxf",
+  "reactions_json"
  ],
  "fields": [
   {
@@ -150,7 +169,6 @@
   {
    "fieldname": "whatsapp_message_id",
    "fieldtype": "Data",
-   "hidden": 1,
    "label": "Whatsapp Message Id"
   },
   {
@@ -174,12 +192,107 @@
    "fieldname": "messenger_message_id",
    "fieldtype": "Data",
    "label": "Messenger Message Id"
+  },
+  {
+   "fieldname": "reply_to_message",
+   "fieldtype": "Link",
+   "label": "Reply To Message",
+   "options": "ClefinCode Chat Message"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_forwarded",
+   "fieldtype": "Check",
+   "label": "Is Forwarded"
+  },
+  {
+   "fieldname": "forwarded_from",
+   "fieldtype": "Link",
+   "label": "Forwarded From",
+   "options": "ClefinCode Chat Message"
+  },
+  {
+   "fieldname": "section_break_kpqj",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_xpog",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_deleted",
+   "fieldtype": "Check",
+   "label": "Is Deleted"
+  },
+  {
+   "fieldname": "section_break_zavw",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_aimo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reply_section",
+   "fieldtype": "Section Break",
+   "label": "Reply"
+  },
+  {
+   "fieldname": "reply_preview_type",
+   "fieldtype": "Data",
+   "label": "Reply Preview Type"
+  },
+  {
+   "fieldname": "column_break_fmtm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reply_preview_text",
+   "fieldtype": "Small Text",
+   "label": "Reply Preview Text"
+  },
+  {
+   "fieldname": "reply_preview_file",
+   "fieldtype": "Link",
+   "label": "Reply Preview File",
+   "options": "File"
+  },
+  {
+   "fieldname": "reply_preview_file_url",
+   "fieldtype": "Data",
+   "label": "Reply Preview File Url"
+  },
+  {
+   "fieldname": "reply_preview_sender",
+   "fieldtype": "Data",
+   "label": "Reply Preview Sender"
+  },
+  {
+   "fieldname": "reply_preview_sender_email",
+   "fieldtype": "Data",
+   "label": "Reply Preview Sender Email"
+  },
+  {
+   "fieldname": "section_break_ycxf",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "reactions_json",
+   "fieldtype": "Text",
+   "label": "Reactions json"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_edited",
+   "fieldtype": "Check",
+   "label": "Is Edited"
   }
  ],
  "in_create": 1,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-13 13:26:27.013053",
+ "modified": "2026-02-17 17:59:32.652416",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Message",

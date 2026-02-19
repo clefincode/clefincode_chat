@@ -116,6 +116,15 @@ export default class ChatPortalSpace {
         }
       }
     });
+    this.$chatbot_container.on("click", ".message-bubble", function (e) {
+      console.log("Dsdsds");
+  e.stopPropagation();
+  $(".forward-btn").hide();
+  $(this).find(".forward-btn").show();
+});
+  $(document).on("click", function () {
+    $(".forward-btn").hide();
+  });
   }
 
   setup_socket() {
@@ -223,6 +232,17 @@ export default class ChatPortalSpace {
     );
 
     let $sanitized_content = __($("<div>").html(content));
+    const $forward_btn = $(`
+    <span class="forward-btn" style="
+      display:none;
+      position:absolute;
+      top:-8px;
+      right:-8px;
+      cursor:pointer;
+    ">
+      ➤
+    </span>
+  `);
 
     $message_element.append($sanitized_content);
     $recipient_element.append($message_element);

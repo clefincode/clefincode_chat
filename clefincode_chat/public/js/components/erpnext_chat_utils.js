@@ -243,9 +243,13 @@ async function send_message(message_info) {
     only_receive_by = null,
     chat_topic = null,
     is_screenshot = 0,
+    reply_to_message_name=null,
+    is_forwarded=0,
+    forwarded_from=null,
+
   } = message_info;
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_1.api.send",
+    method: "clefincode_chat.api.api_1_3_3.api.send",
     args: {
       content: content,
       user: user,
@@ -265,6 +269,9 @@ async function send_message(message_info) {
       only_receive_by: only_receive_by,
       chat_topic: chat_topic,
       is_screenshot: is_screenshot,
+      reply_to_message_name:reply_to_message_name,
+      is_forwarded:is_forwarded,
+      forwarded_from:forwarded_from,
     },
   });
   return await res.message.results[0].new_message_name;

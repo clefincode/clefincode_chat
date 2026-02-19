@@ -37,10 +37,10 @@ def run_server_script_for_doc_event(doc, event):
 
     
     # -------------------------------------------------------------------
-    if event in( "on_change"):#on_update", "on_update_after_submit",
+    if event in ( "on_change"):#on_update", "on_update_after_submit",
     
         detect_value_changes(doc, event)
-        
+       
       
 
     
@@ -51,17 +51,19 @@ def run_server_script_for_doc_event(doc, event):
             for notif_name in notifications_map.get(high_event, []):
                 if high_event == "Save" and doc.docstatus == 1:
                      continue
-                enqueue_notification_send(notif_name, doc)
+                # enqueue_notification_send(notif_name, doc)
                
-                # frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
+                frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
                
               
 
         # -------------------------------------------------------------------
     if event == "on_value_change":
         for notif_name in notifications_map.get("Value Change", []):
-            # frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
-            enqueue_notification_send(notif_name, doc)
+            frappe.get_doc("Clefincode Notification", notif_name).send_template_message(doc)
+            # 
+            #enqueue_notification_send(notif_name, doc)
+            
            
            
 
@@ -220,7 +222,7 @@ def _ensure_patch():
 
 def detect_value_changes(doc, method=None):
     
-   
+ 
    
     if not hasattr(doc, "_old_snapshot"):
         return
@@ -231,16 +233,18 @@ def detect_value_changes(doc, method=None):
 
     notifications_map = get_notifications_map().get(doc.doctype, {})
     vc_notifications = notifications_map.get("Value Change", [])
-
+    
     for notif_name in vc_notifications:
         notif = frappe.get_doc("Clefincode Notification", notif_name)
 
         field = getattr(notif, "value_changed", None)
+      
         if not field:
             continue
 
         old_value = old.get(field)
         new_value = new.get(field)
+        
         if  old_value is None:
             continue
 
