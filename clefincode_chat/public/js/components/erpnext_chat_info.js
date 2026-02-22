@@ -228,6 +228,7 @@ save_all_contacts(dialog) {
     <div class="p-2 text-center roomname">
       <div>Contact</div>
       <div>${this.chat_space.$wrapper.attr("data-contact")}</div>
+      
     </div>`);
       this.chat_space.$wrapper.append(this.$chat_info);
       this.$chat_info.find(".avatar-frame").css("font-size", "3.5em");
@@ -293,6 +294,7 @@ save_all_contacts(dialog) {
       )}</span> participants
     </div>
     `;
+     body +=`<span class="toggle-search" title="Search" style="cursor:pointer;cursor:pointer;margin-right:8px; width:20px; height:20px; margin-left:8px;">${frappe.utils.icon("search", "sm")}</span>`;
     } else if (this.roomtype == "Direct") {
       body += `<div>${this.roomname}</div>`;
       const useremail = this.user_email;
@@ -390,6 +392,7 @@ save_all_contacts(dialog) {
       var room_emails = await get_chat_members(this.room);
       if (room_emails.length > 0) {
         group_sections += `<div class="p-4 chat-info-section members-section"><div class="pb-2 font-weight-bold">Members</div>`;
+          
       }
       const checkemail = this.user_email;
       if (this.chat_space.profile.is_removed != 1) {

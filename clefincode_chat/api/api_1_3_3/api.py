@@ -1444,7 +1444,7 @@ def get_messages(room, user_email, room_type, chat_topic=None, remove_date=None,
             message.is_forwarded = 0
             message.reply_preview_type = None
 
-
+    frappe.log_error("msg", sorted(results, key=lambda d: d["send_date"]))
     return {"results": sorted(results, key=lambda d: d["send_date"])}
 
 
@@ -7137,8 +7137,7 @@ def delete_chat_message(message_name, user_email):
 
         if time_diff > (max_delete_time * 60):
             frappe.throw("Editing time has expired for this message.")
-        if msg.is_edited:
-            frappe.throw("This message has already been edited and cannot be edited again.")
+       
     new_message = frappe.get_doc(
             {
                 "doctype": "CiC Backup Chat Message",
@@ -7575,6 +7574,7 @@ def edit_chat_message(message_name,  new_content):
         "channel_name": msg.chat_channel,
         "message_name": message_name,
         "content": new_content,
+        "original_content":original_content,
     }
 
     frappe.publish_realtime(
