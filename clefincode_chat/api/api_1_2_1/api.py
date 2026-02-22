@@ -2075,25 +2075,46 @@ def get_file_size(file_id):
     return {"results" : file_size}
 # ==========================================================================================
 @frappe.whitelist()
-def calculate_voice_clip_duration(file_id, formatted = True):
-    # from pydub.utils import mediainfo
-    # info = mediainfo(file_path)
-    # duration = float(info['duration'])
+def calculate_voice_clip_duration(file_id, formatted=True):
 
-    from pydub import AudioSegment 
-    file_doc = frappe.get_doc("File", {"name": file_id})
+    major = int(frappe.__version__.split(".")[0])
+
+    file_doc = frappe.get_doc("File", file_id)
     file_path = file_doc.get_full_path()
 
     if not os.path.exists(file_path):
-        return {"error": "File does not exist at the specified path"}
+        return {"results": [{"duration": 0}]}
 
-    audio = AudioSegment.from_file(file_path)
-    # duration_in_seconds = len(audio)
-    duration_in_seconds = audio.duration_seconds
-    if formatted:
-        minutes, seconds = divmod(duration_in_seconds, 60)
-        duration_in_seconds = f"{int(minutes):02d}:{int(seconds):02d}"
-    return {"results" : [{"duration" : duration_in_seconds}]}
+    try:
+        if major >= 16:
+            cmd = [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                file_path
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            data = json.loads(result.stdout)
+            duration_in_seconds = float(data["format"]["duration"])
+
+        else:
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(file_path)
+            duration_in_seconds = audio.duration_seconds
+
+        if formatted:
+            minutes, seconds = divmod(int(duration_in_seconds), 60)
+            duration = f"{minutes:02d}:{seconds:02d}"
+        else:
+            duration = round(duration_in_seconds, 2)
+
+        return {"results": [{"duration": duration}]}
+
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Voice Duration Error")
+        return {"results": [{"duration": 0}]}
 # ==========================================================================================
 @frappe.whitelist()
 def get_file_view_size(file_id,is_video=None):

@@ -16,9 +16,16 @@ from frappe.model.utils.user_settings import get_user_settings
 from frappe.permissions import get_doc_permissions
 from frappe.utils.data import cstr
 from clefincode_chat.api.api_1_2_1.api import get_contact_full_name, check_if_user_has_permission_to_file
-from frappe.desk.form.load import run_onload ,set_link_titles, _get_communications, add_comments, update_user_info, get_attachments, get_versions, get_assignments, get_doc_permissions, get_point_logs, get_additional_timeline_content, get_milestones,is_document_followed, get_tags, get_document_email
+from frappe import __version__ as frappe_version
+from frappe.utils import cint
+from packaging import version
 
+if version.parse(frappe.__version__) < version.parse("16.0.0"):
+	from frappe.desk.form.load import get_docinfo, get_attachments, get_communications, get_comments, get_versions, get_assignments, get_tags, get_point_logs, get_additional_timeline_content, get_milestones, update_user_info, set_link_titles,run_onload,_get_communications,add_comments,get_document_email
+else:
+	from frappe.desk.form.load import get_docinfo, get_attachments, get_communications, get_comments, get_versions, get_assignments, get_tags, get_additional_timeline_content, get_milestones, update_user_info, set_link_titles,run_onload,_get_communications,add_comments,get_document_email
 
+	
 @frappe.whitelist()
 def getdoc(doctype, name, user=None):
 	"""
@@ -84,29 +91,34 @@ def get_docinfo(doc=None, doctype=None, name=None):
 
 	add_comments(doc, docinfo)
 	add_chat_topics(doc, docinfo)
-	# Ensure doc.name is always a string to avoid type issues when its int and we need it as string in other function
+
 	doc.name = str(doc.name)
-	docinfo.update(
-		{
-			"doctype": doc.doctype,
-			"name": doc.name,
-			"attachments": get_attachments(doc.doctype, doc.name),
-			"communications": communications_except_auto_messages,
-			"automated_messages": automated_messages,
-			"total_comments": len(json.loads(doc.get("_comments") or "[]")),
-			"versions": get_versions(doc),
-			"assignments": get_assignments(doc.doctype, doc.name),
-			"permissions": get_doc_permissions(doc),
-			"shared": frappe.share.get_users(doc.doctype, doc.name),
-			"views": get_view_logs(doc.doctype, doc.name),
-			"energy_point_logs": get_point_logs(doc.doctype, doc.name),
-			"additional_timeline_content": get_additional_timeline_content(doc.doctype, doc.name),
-			"milestones": get_milestones(doc.doctype, doc.name),
-			"is_document_followed": is_document_followed(doc.doctype, doc.name, frappe.session.user),
-			"tags": get_tags(doc.doctype, doc.name),
-			"document_email": get_document_email(doc.doctype, doc.name),
-		}
-	)
+
+	data = {
+		"doctype": doc.doctype,
+		"name": doc.name,
+		"attachments": get_attachments(doc.doctype, doc.name),
+		"communications": communications_except_auto_messages,
+		"automated_messages": automated_messages,
+		"total_comments": len(json.loads(doc.get("_comments") or "[]")),
+		"versions": get_versions(doc),
+		"assignments": get_assignments(doc.doctype, doc.name),
+		"permissions": get_doc_permissions(doc),
+		"shared": frappe.share.get_users(doc.doctype, doc.name),
+		"views": get_view_logs(doc.doctype, doc.name),
+		"additional_timeline_content": get_additional_timeline_content(doc.doctype, doc.name),
+		"milestones": get_milestones(doc.doctype, doc.name),
+		"is_document_followed": is_document_followed(doc.doctype, doc.name, frappe.session.user),
+		"tags": get_tags(doc.doctype, doc.name),
+		"document_email": get_document_email(doc.doctype, doc.name),
+	}
+
+	# Only add energy points if version < 16
+	major_version = cint(frappe.__version__.split(".")[0])
+	if major_version < 16:
+		data["energy_point_logs"] = get_point_logs(doc.doctype, doc.name)
+
+	docinfo.update(data)
 
 	update_user_info(docinfo)
 	frappe.response["docinfo"] = docinfo

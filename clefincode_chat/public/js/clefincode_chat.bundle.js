@@ -2,11 +2,26 @@ import { ChatBubble, ChatPortalSpace, ChatList } from "./components";
 
 frappe.provide("frappe.ErpnextChat");
 frappe.provide("frappe.ErpnextChat.settings");
+let FRAPPE_MAJOR_VERSION = null;
 
+async function initFrappeVersion() {
+  if (FRAPPE_MAJOR_VERSION !== null) return;
+
+  const r = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.get_frappe_major_version"
+  });
+
+  FRAPPE_MAJOR_VERSION = r.message;
+}
 frappe.ErpnextChat = class {
-  constructor() {
-    this.setup_app();
-  }
+constructor() {
+  this.boot();
+}
+
+async boot() {
+  await initFrappeVersion();
+  await this.setup_app();
+}
 
   async setup_app() {
     const token = localStorage.getItem("guest_token") || "";
@@ -234,19 +249,38 @@ frappe.ErpnextChat = class {
     $("#chat-bubble").append(
       '<span class="badge" id="chat-notification-count"></span>'
     );
-
-    const navbar_icon_html = `
+    let navbar_icon_html;
+    if (FRAPPE_MAJOR_VERSION == 16) {
+      navbar_icon_html = `
+        <li class='nav-item dropdown dropdown-notifications 
+        dropdown-mobile chat-navbar-icon' title="Show Chats" style="list-style: none" >
+          <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">
+        <span class="badge" id="chat-notification-count"></span>
+        </li>
+    `;
+    } else {
+      const navbar_icon_html = `
         <li class='nav-item dropdown dropdown-notifications 
         dropdown-mobile chat-navbar-icon' title="Show Chats" >
           <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">
         <span class="badge" id="chat-notification-count"></span>
         </li>
     `;
+    }
+   
 
     if (this.is_desk === true) {
-      $("header.navbar > .container > .navbar-collapse > ul").prepend(
-        navbar_icon_html
-      );
+      if (FRAPPE_MAJOR_VERSION == 16) {
+        frappe.after_ajax(() => {
+          if (!$(".chat-navbar-icon").length) {
+            $(".desktop-notifications").after(navbar_icon_html);
+          }
+        });
+      } else {
+        $("header.navbar > .container > .navbar-collapse > ul").prepend(
+          navbar_icon_html
+        );
+      }
     }
     this.setup_events();
   }
@@ -309,7 +343,7 @@ frappe.ErpnextChat = class {
         args: {
           token: localStorage.getItem("guest_token"),
           channel: this.res.channel
-          
+
         },
       });
     }
@@ -359,12 +393,21 @@ frappe.ErpnextChat = class {
       modal.has(e.target).length === 0
     );
   }
-
   setup_events() {
-    const me = this;
-    $(".chat-navbar-icon").on("click", function () {
-      me.chat_bubble.disk_chat_icon();
-    });
+    if (FRAPPE_MAJOR_VERSION == 16) {
+      const me = this;
+      $(document).on("click", ".chat-navbar-icon", function () {
+        if (me.chat_bubble) {
+          me.chat_bubble.disk_chat_icon();
+        }
+      });
+    }
+    else {
+      const me = this;
+      $(".chat-navbar-icon").on("click", function () {
+        me.chat_bubble.disk_chat_icon();
+      });
+    }
   }
 
   setup_socketio() {
@@ -463,7 +506,7 @@ frappe.ErpnextChat = class {
     });
 
     // This is a way to print data on browser console (only for testing)
-    
+
   }
 }; //End ErpnextChat Class
 
