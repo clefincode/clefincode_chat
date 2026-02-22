@@ -41,6 +41,7 @@ import shutil
 from collections import Counter
 import threading
 import time
+from .ai_agent import call_ai_service,summarize_channel_if_needed,strip_html,linkify_and_detect
 
 from frappe.utils import now_datetime
 
@@ -1282,7 +1283,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                   
 
                        
-                    send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
+                    send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)
+                    process_ai_reply_job(member,get_profile_id(email),room,new_message)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
                     process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded)
                     if member.pending_messages >= 1:
@@ -1316,7 +1318,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                     # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user)
                     frappe.publish_realtime(event="msg", message=results, user= contributor.user)
                     send_notification(contributor.user , results, "send_message", results["room_name"], message_template_type)
-           
+                    process_ai_reply_job(member,get_profile_id(email),room,new_message)
             if new_message.message_type == "information" and new_message.message_template_type=="Send Template Public":
                         send_clefincode_chat_template(new_message)
             
@@ -5285,6 +5287,153 @@ def upload_media_to_server(file_path):
     
     site_url = frappe.utils.get_url()
     return f"{site_url}/files/{file_name}"
+#===============================================================================================
+
+def process_ai_reply_job(member, sender, channel,msg):
+    """Process AI bot reply when a message is received"""
+
+    try:
+        
+        #
+        if msg.message_type=="information":
+            return
+        try:
+            sender_profile = frappe.get_doc("ClefinCode Chat Profile", sender)
+            if sender_profile.is_ai_bot:
+                return
+            # إذا بدك تتحقق من mentions
+            # if msg.is_mention:
+            #     return
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Error getting sender profile")
+            return
+
+        # لازم يكون للعضو profile_id
+        if not getattr(member, "profile_id", None):
+            return
+
+        profile = frappe.get_doc("ClefinCode Chat Profile", member.profile_id)
+
+        if profile.is_ai_bot:
+            if not profile.ai_agent_profile:
+                frappe.log_error(
+                    f"AI bot profile {profile.name} does not have ai_agent_profile linked.",
+                    "AI Bot Missing Agent Profile"
+                )
+                return
+
+            ai_agent = frappe.get_doc("ClefinCode AI Agent Profile", profile.ai_agent_profile)
+
+            system_prompt = getattr(profile, "instruction", None)
+            model = getattr(ai_agent, "model", None)
+            temperature = getattr(ai_agent, "temperature", None)
+            max_tokens = getattr(ai_agent, "max_tokens", None)
+            extra_instruction = (
+                                    "You are a helpful AI assistant. "
+                                    "Always respond directly to the user's message. "
+                                    "Do NOT repeat the phrase 'user says:' or '[sender] says:' in your reply. "
+                                    "Answer clearly and concisely."
+                                )
+
+            if system_prompt:
+                system_prompt += "\n" + extra_instruction
+            else:
+                system_prompt = extra_instruction
+
+            summary_result = summarize_channel_if_needed(channel, ai_agent.name)
+            messages = []
+
+            if isinstance(summary_result, dict):
+                summary_text = summary_result.get("summary_text", "") or ""
+                remaining_msgs = summary_result.get("messages", []) or []
+
+                if summary_text:
+                    summary_message = (
+                        "You are an intelligent assistant. "
+                        "The following text is only a summary of the previous conversation. "
+                        "Use it as a reference to answer the user's new questions, "
+                        "and do not re-summarize or rephrase it.\n\n"
+                        f"Conversation summary (past):\n{summary_text}"
+                    )
+                    messages.append({"role": "system", "content": summary_message})
+
+                for m in remaining_msgs:
+                    role = "user"
+                    try:
+                        if m.get("sender"):
+                            prof = frappe.get_all(
+                                "ClefinCode Chat Profile",
+                                filters=[["name", "=", m.get("sender")]],
+                                fields=["is_ai_bot"],
+                                limit_page_length=1
+                            )
+                            if prof and prof[0].get("is_ai_bot"):
+                                role = "assistant"
+                    except Exception:
+                        role = "user"
+
+                    messages.append({
+                        "role": role,
+                        "content": f"{m['sender']} says: {strip_html(m['content'])}" or ""
+                    })
+                
+
+            try:
+                # frappe.log_error(
+                #     message=json.dumps({
+                #         "input": {
+                #             "profile_key": ai_agent.name,
+                #             "messages": messages,
+                #             "system_prompt": system_prompt,
+                #             "model": model,
+                #             "temperature": temperature,
+                #             "max_tokens": max_tokens
+                #         }
+                #     }, default=str),
+                #     title="AI Service Call Input"
+                # )
+
+                reply = call_ai_service(
+                    profile_key=ai_agent.name,
+                    profile_doctype="ClefinCode AI Agent Profile",
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    model=model,
+                    temperature=float(temperature) if temperature is not None else None,
+                    max_tokens=int(max_tokens) if max_tokens else None,
+                    return_json=False,
+                    use_responses_endpoint=False
+                )
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "call_ai_service Error")
+                return
+
+            if reply:
+                try:
+                    # frappe.log_error(message=reply+"\n"+f"{member.profile_id.lower()} says:",title="before conditions")
+                    if "says:" in reply:
+
+                        before, after = reply.split("says:", 1)
+                        if len(before) < 20:
+                            return after.strip()
+                    reply, has=linkify_and_detect(reply)  
+                       
+                    send(
+                        content=f"<p>{reply}</p>",
+                        user=member.profile_id,   # كان memberprofile_id
+                        room=channel,        # استخدم channel.name
+                        email=getattr(member, "user", None),  # كان memberuser
+                        is_first_message=0,
+                        is_screenshot=0,
+                        is_link=has
+                    )
+                    summarize_channel_if_needed(channel, ai_agent.name)
+                except Exception as e:
+                    frappe.log_error(title="API send error", message=str(e))
+
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "process_ai_reply_job - participant loop error")
+
 
 def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):
     try:

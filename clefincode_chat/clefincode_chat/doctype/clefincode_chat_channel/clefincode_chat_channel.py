@@ -6,6 +6,7 @@ from frappe.model.document import Document
 from clefincode_chat.api.api_1_2_1.api import get_contact_first_name
 
 class ClefinCodeChatChannel(Document):
+    
 	def get_group_name(self):
 		if self.channel_name and self.channel_name != '':
 			return self.channel_name
@@ -70,3 +71,62 @@ class ClefinCodeChatChannel(Document):
 			lines.append(self.channel_name)
 		# join with newlines (or commas, or however you like)
 		self.channel_info = " ".join(lines)
+  
+  
+	# def on_change(self):
+			#frappe.msgprint("fsdfsdf")
+			#نفّذ فقط لو الحقل unread_messages تغيّر فعلاً
+			# if not self.has_value_changed("unread_messages"):
+			# 	frappe.msgprint("fsdfsdf")
+			# 	return
+
+			# حاول نجيب profile id من السجل نفسه أولاً
+			# profile_name = getattr(self, "profile_id", None)
+			# frappe.msgprint(profile_name)
+			# # لو ما كان موجود، جرّب تجيب من الدوكتايب الأب (لو السجل child row)
+			# if not profile_name and getattr(self, "parenttype", None) and getattr(self, "parent", None):
+			# 	try:
+			# 		channel_doc = frappe.get_doc("ClefinCode Chat Channel", self.parent)
+			# 		channel_members = [m.user for m in getattr(channel_doc, "members", [])]
+			# 		bot_user_emails = []
+			# 		for m in channel_members:
+			# 			profile_id = getattr(m, "profile_id", None) or getattr(m, "profile", None)
+			# 			user_email = getattr(m, "user", None) or getattr(m, "email", None)
+			# 			if not profile_id:
+			# 				continue
+			# 			try:
+			# 				prof = frappe.get_doc("ClefinCode Chat Profile", profile_id)
+			# 			except Exception:
+			# 					# إذا ما قدرنا نجيب البروفايل تجاهل هذا العضو
+			# 				continue
+						
+			# 			if getattr(prof, "is_ai_bot", False):
+			# 				if user_email:
+			# 					bot_user_emails.append(user_email)					# لو لسا ما عندنا agent_profile_key، حاول ناخذ الحقل ai_agent_profile من ClefinCode Chat Profile
+	
+			# 		if not bot_user_emails:
+			# 			return
+			# # هل المرسل بوت؟ (نستخدم sender_email أو sender كfallback)
+			# 		sender_email = getattr(self, "user", None) 
+			# 		is_sender_bot = sender_email in bot_user_emails
+
+			# # لا نريد أن نعالج رسائل الصادرة من البوت هنا (لتفادي حلقات)
+			# 		if is_sender_bot:
+			# 			return
+								
+
+			# 	except Exception:
+			# 		profile_name = None
+
+
+			
+			# 	output ="asasasasa"
+			# 	# 1) طباعة كـ popup للمستخدم (لو تبي يظهر في واجهة المستخدم)
+			# 	try:
+			# 		frappe.msgprint(output)
+			# 	except Exception:
+			# 		# لو الوضع headless أو ما نريد popup، نلوج بدلها
+			# 		pass
+
+			# 	# 2) سجل في error log/server log (مفيد للتتبع في الخلفية)
+			# 	frappe.log_error(json.dumps(output, ensure_ascii=False, indent=2), title="ClefinCodeChatChannelUser.unread_messages")

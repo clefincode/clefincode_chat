@@ -1,0 +1,97 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-08-18 18:15:18.831279",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_rdyx",
+  "chat_channel",
+  "sub_channel",
+  "chat_topic",
+  "summary_text",
+  "last_summary_number",
+  "pending_messages",
+  "column_break_lzbq",
+  "last_summarized_message",
+  "last_summarized_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_rdyx",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "chat_channel",
+   "fieldtype": "Link",
+   "label": "Chat Channel",
+   "options": "ClefinCode Chat Channel"
+  },
+  {
+   "fieldname": "sub_channel",
+   "fieldtype": "Data",
+   "label": "Sub Channel",
+   "options": "ClefinCode Chat Channel"
+  },
+  {
+   "fieldname": "chat_topic",
+   "fieldtype": "Link",
+   "label": "Chat topic",
+   "options": "ClefinCode Chat Topic"
+  },
+  {
+   "fieldname": "summary_text",
+   "fieldtype": "Long Text",
+   "label": "Summary Text"
+  },
+  {
+   "fieldname": "last_summary_number",
+   "fieldtype": "Int",
+   "label": "Last Summary Number"
+  },
+  {
+   "fieldname": "pending_messages",
+   "fieldtype": "Long Text",
+   "label": "Pending Messages"
+  },
+  {
+   "fieldname": "column_break_lzbq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_summarized_message",
+   "fieldtype": "Link",
+   "label": "Last Summarized Message",
+   "options": "ClefinCode Chat Message"
+  },
+  {
+   "fieldname": "last_summarized_at",
+   "fieldtype": "Datetime",
+   "label": "Last Summarized at"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-09-13 10:51:47.044524",
+ "modified_by": "Administrator",
+ "module": "ClefinCode Chat",
+ "name": "ClefinCode Chat Summary",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

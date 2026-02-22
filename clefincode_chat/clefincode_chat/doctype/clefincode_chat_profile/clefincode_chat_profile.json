@@ -10,17 +10,21 @@
  "field_order": [
   "is_guest",
   "is_support",
+  "is_ai_bot",
   "full_name",
   "domain",
   "contact",
   "chat_platform",
+  "ai_agent_profile",
   "token",
   "last_active",
   "contact_details",
   "registration_token",
   "platform",
   "support_token",
-  "support_channel"
+  "support_channel",
+  "instruction_tamplate",
+  "instruction"
  ],
  "fields": [
   {
@@ -100,6 +104,30 @@
    "fieldname": "chat_platform",
    "fieldtype": "Data",
    "label": "Chat Platform"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_ai_bot",
+   "fieldtype": "Check",
+   "label": "is AI bot"
+  },
+  {
+   "depends_on": "eval:doc.is_ai_bot == 1",
+   "fieldname": "ai_agent_profile",
+   "fieldtype": "Link",
+   "label": "Ai Agent Profile",
+   "options": "ClefinCode AI Agent Profile"
+  },
+  {
+   "fieldname": "instruction_tamplate",
+   "fieldtype": "Link",
+   "label": "instruction tamplate ",
+   "options": "ClefinCode AI Instructions Template"
+  },
+  {
+   "fieldname": "instruction",
+   "fieldtype": "Long Text",
+   "label": "instruction"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -110,7 +138,7 @@
    "link_fieldname": "name"
   }
  ],
- "modified": "2026-01-07 16:33:40.605746",
+ "modified": "2025-05-26 15:58:31.811186",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Profile",

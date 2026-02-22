@@ -6,3 +6,5 @@ from frappe.model.document import Document
 
 class ClefinCodeChatChannelUser(Document):
 	pass
+	# def on_change(self):
+	# 	print("adds")
