@@ -110,7 +110,6 @@ export default class ChatSpace {
 
     const parsed = JSON.parse(reactions_json);
 
-    // شكل الداتا اللي أرسلته: [ { reactions: [...], emoji_summary: { emoji_details: {...} } } ]
     const root = Array.isArray(parsed) ? (parsed[0] || {}) : parsed;
 
     const reactions = root.reactions || [];
@@ -125,18 +124,15 @@ export default class ChatSpace {
 async getReactionsForDialog(messageName) {
   const cached = this.messageCache.get(messageName) || {};
 
-  // 1) إذا عندنا payload جاهز من getReactions()
   if (cached.reactions_payload) {
     const { reactions, emoji_counts } = this.normalizeReactionsPayload(cached.reactions_payload);
     return { reactions: reactions || [], emoji_counts: emoji_counts || {} };
   }
 
-  // 2) إذا عندنا reactions_json راجعة مع الرسائل
   if (cached.reactions_json) {
     return this.parseReactionsFromReactionsJson(cached.reactions_json);
   }
 
-  // 3) fallback: نجيبها من السيرفر
   const payload = await this.getReactions(messageName);
   cached.reactions_payload = payload;
   this.messageCache.set(messageName, cached);
@@ -159,7 +155,6 @@ async openReactionsDialog(messageName, initialEmoji = null) {
     return;
   }
 
-  // emojis الموجودة بالرسالة
   const emojis = Object.keys(emoji_counts || {});
   const hasInitial = initialEmoji && emojis.includes(initialEmoji);
 
@@ -168,7 +163,6 @@ async openReactionsDialog(messageName, initialEmoji = null) {
   const renderEmoji = (emo) =>
     (window.emojione && emojione.toImage) ? emojione.toImage(emo) : emo;
 
-  // جلب أسماء المستخدمين (اختياري)
   const uniqueEmails = [...new Set(items.map(x => x.sender).filter(Boolean))];
   const nameMap = {};
   await Promise.all(uniqueEmails.map(async (email) => {
@@ -181,7 +175,6 @@ async openReactionsDialog(messageName, initialEmoji = null) {
     }
   }));
 
-  // HTML الفلاتر
   const filtersHtml = `
     <div class="rx-filters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
       <button type="button" class="rx-filter btn btn-sm ${currentFilter ? "btn-default" : "btn-primary"}" data-emoji="">
@@ -218,7 +211,6 @@ async openReactionsDialog(messageName, initialEmoji = null) {
       ? items.filter(x => x.emoji === currentFilter)
       : items;
 
-    // (اختياري) الأحدث فوق
     filtered.sort((a, b) => (b.send_date || "").localeCompare(a.send_date || ""));
 
     const rows = filtered.map(x => {
@@ -241,7 +233,6 @@ async openReactionsDialog(messageName, initialEmoji = null) {
   d.show();
   renderList();
 
-  // تفعيل أزرار الفلترة داخل الـ Dialog
   d.$wrapper.on("click", ".rx-filter", (e) => {
     const emo = $(e.currentTarget).data("emoji");
     currentFilter = emo ? String(emo) : null;
@@ -1870,18 +1861,18 @@ this.$chat_space.on("click", ".message-reactions .reaction-chip", async function
 });
 
 
-// ✅ فتح الريأكشنز للرسالة (All)
+
 this.$chat_space.on("click", ".message-reactions", async function (e) {
   e.stopPropagation();
 
-  // لو كبست على chip نفسها خلّي handler الخاص فيها يشتغل
+ 
   if ($(e.target).closest(".reaction-chip").length) return;
 
   const messageName = $(this).closest("[data-message-name]").data("message-name");
   await me.openReactionsDialog(messageName, null); // All
 });
 
-// // ✅ (اختياري) لو كبست على chip معيّنة افتح نفس dialog بس فلترها من البداية
+
 // this.$chat_space.on("click", ".message-reactions .reaction-chip", async function (e) {
 //   e.stopPropagation();
 
