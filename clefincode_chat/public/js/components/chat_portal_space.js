@@ -32,6 +32,104 @@ export default class ChatPortalSpace {
       targetMessage: null,
     };
   }
+handlePortalMessageEdit(res) {
+  const messageName = res.message_name;
+  const newHtml = res.content || "";
+  const original = res.original_content || null;
+
+  const $msg = this.$chatbot_container.find(`#msg-${messageName}`);
+  if (!$msg.length) return;
+
+  const $bubble = $msg.find(".message-bubble");
+  if (!$bubble.length) return;
+
+  const $actions = $bubble.find(".message-actions").detach();
+  const $edited = $bubble.find(".edited-label").detach();
+  const $reply = $bubble.find(".reply-link").detach();       
+  const $forwarded = $bubble.find(".forwarded-label").detach(); 
+
+
+  $bubble.find("p").remove();
+  $bubble.contents().filter((_, n) => n.nodeType === 3).remove(); // text nodes
+  
+
+
+  if ($forwarded.length) $bubble.prepend($forwarded);
+  if ($reply.length) $bubble.prepend($reply);
+
+  $bubble.append(newHtml);
+
+ 
+  $bubble.find(".edited-label").remove();
+  $bubble.append(`
+    <div class="edited-label" style="font-size:11px;opacity:0.6;margin-top:4px;">
+      Edited
+    </div>
+  `);
+
+ 
+  if ($actions.length) $bubble.append($actions);
+
+ 
+  const cached = this.messageCache.get(messageName) || {};
+  cached.content = newHtml;
+  cached.original_content = original;
+  cached.is_edited = 1;
+  this.messageCache.set(messageName, cached);
+}
+  parseReactionsFromReactionsJson(reactions_json) {
+  try {
+    if (!reactions_json) return { reactions: [], emoji_counts: {} };
+
+    const parsed = typeof reactions_json === "string"
+      ? JSON.parse(reactions_json)
+      : reactions_json;
+
+    const root = Array.isArray(parsed) ? (parsed[0] || {}) : parsed;
+    const reactions = root.reactions || [];
+    const emoji_counts = root.emoji_summary?.emoji_details || {};
+
+    return { reactions, emoji_counts };
+  } catch (e) {
+    return { reactions: [], emoji_counts: {} };
+  }
+}
+
+getReactionsForDialog(messageName) {
+
+  const cached = this.messageCache.get(messageName) || {};
+  if (cached.reactions_json) {
+    return this.parseReactionsFromReactionsJson(cached.reactions_json);
+  }
+
+  
+  const $msg = this.$chatbot_container.find(`#msg-${messageName}`);
+  const attr = $msg.attr("data-reactions");
+  if (attr) return this.parseReactionsFromReactionsJson(attr);
+
+  return { reactions: [], emoji_counts: {} };
+}
+
+renderReactionsFromJson(messageName, reactions_json) {
+  const { reactions, emoji_counts } = this.parseReactionsFromReactionsJson(reactions_json);
+
+  
+  this.renderReactions(messageName, { data: { reactions, emoji_counts } });
+
+ 
+  const $msg = this.$chatbot_container.find(`#msg-${messageName}`);
+  if ($msg.length) {
+    $msg.attr("data-reactions",
+      typeof reactions_json === "string" ? reactions_json : JSON.stringify(reactions_json)
+    );
+  }
+
+  
+  const cached = this.messageCache.get(messageName) || {};
+  cached.reactions_json =
+    typeof reactions_json === "string" ? reactions_json : JSON.stringify(reactions_json);
+  this.messageCache.set(messageName, cached);
+}
   openLocalReactionsDialog(reactions) {
 
   reactions.sort((a, b) => 
@@ -83,6 +181,79 @@ export default class ChatPortalSpace {
 
   d.show();
 }
+portalEditPrompt({ title = "Edit Message", defaultText = "", onSave }) {
+  const id = "edit_" + Math.random().toString(36).slice(2);
+
+  frappe.msgprint({
+    title,
+    message: `
+      <div>
+        <textarea id="${id}" class="form-control"
+          style="min-height:160px; white-space:pre-wrap;"
+        >${frappe.utils.escape_html(defaultText || "")}</textarea>
+
+        <div style="margin-top:10px; display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="btn btn-primary" id="${id}_save">Save</button>
+        </div>
+      </div>
+    `
+  });
+
+  const clickNs = `click.${id}`;
+
+  const handler = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const $btn = $("#" + id + "_save");
+    const $ta = $("#" + id);
+
+    if (!$btn.length || !$ta.length) return; 
+
+    try {
+      $btn.prop("disabled", true);
+      const val = $ta.val();
+      await onSave(val);
+
+      const $modal = $btn.closest(".modal");
+      if ($modal.length) $modal.modal("hide");
+    } catch (err) {
+      console.error(err);
+      frappe.msgprint("Failed to save changes.");
+    } finally {
+      $btn.prop("disabled", false);
+
+
+      $(document).off(clickNs, "#" + id + "_save");
+    }
+  };
+
+
+  $(document).off(clickNs, "#" + id + "_save");
+  $(document).on(clickNs, "#" + id + "_save", handler);
+
+
+  setTimeout(() => {
+    const $ta = $("#" + id);
+    if ($ta.length) $ta.trigger("focus");
+  }, 0);
+}
+htmlToPlainText(html) {
+  return (html || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p>/gi, "\n")
+    .replace(/<\/?p>/gi, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+plainTextToParagraphs(text) {
+  const safe = frappe.utils.escape_html(text || "");
+  return safe
+    .split("\n")
+    .map(line => `<p>${line}</p>`)
+    .join("");
+}
 clearSearchHighlights() {
   this.$chatbot_container.find(".search-highlight").each(function () {
     $(this).replaceWith($(this).text());
@@ -90,17 +261,7 @@ clearSearchHighlights() {
 }
 renderReactions(messageName, payload) {
   const $msg = this.$chatbot_container.find(`#msg-${messageName}`);
-  me.$chatbot_container.on("click.portal", ".message-reactions", async function (e) {
-  e.stopPropagation();
-  const messageName = $(this).closest("[data-message-name]").data("message-name");
-  $msg.attr("data-reactions", JSON.stringify({
-  reactions: reactions || [],
-  emoji_summary: {
-    emoji_details: emoji_counts || {}
-  }
-}));
-  await me.openReactionsDialog(messageName, null); // All + tabs
-});
+
   if (!$msg.length) return;
 
   const { reactions, emoji_counts } = this.normalizeReactionsPayload(payload);
@@ -223,11 +384,40 @@ $menu.on("click", ".emoji-item", async (e) => {
   const emoji = $(e.currentTarget).data("emoji");
 
   try {
+    const me = this;
     await this.saveReaction(messageName, emoji);
-    await this.fetchAndRenderReactions(messageName);
-  } finally {
-    this.closeEmojiMenu();
-  }
+    //await this.fetchAndRenderReactions(messageName);
+  
+      const cached = me.messageCache.get(messageName) || {};
+      const current = me.parseReactionsFromReactionsJson(cached.reactions_json);
+
+      const sender = me.profile.user_email || "Guest";
+
+      const reactions = (current.reactions || []).filter(r => r.emoji_sender !== sender);
+      reactions.push({
+        emoji_sender: sender,
+        emoji,
+        send_date: get_current_datetime ? get_current_datetime() : ""
+      });
+
+      // rebuild summary
+      const emoji_details = {};
+      reactions.forEach(r => {
+        emoji_details[r.emoji] = (emoji_details[r.emoji] || 0) + 1;
+      });
+
+      const newJsonObj = [{
+        reactions,
+        emoji_summary: {
+          total_emojis: reactions.length,
+          emoji_details
+        }
+      }];
+
+      me.renderReactionsFromJson(messageName, JSON.stringify(newJsonObj));
+        } finally {
+          this.closeEmojiMenu();
+        }
 });
 
 
@@ -253,8 +443,112 @@ async getReactions(messageName) {
 
   return res.message || res;
 }
-async openReactionsDialog(messageName, initialEmoji = null) {
-  const { reactions, emoji_counts } = await this.getReactionsForDialog(messageName);
+// async openReactionsDialog(messageName, initialEmoji = null) {
+//   const { reactions, emoji_counts } = this.getReactionsForDialog(messageName);
+
+//   const items = (reactions || []).map(r => ({
+//     emoji: r.emoji,
+//     sender: r.emoji_sender || r.sender || "",
+//     send_date: r.send_date || ""
+//   }));
+
+//   if (!items.length) {
+//     frappe.msgprint("No reactions yet.");
+//     return;
+//   }
+
+
+//   const emojis = Object.keys(emoji_counts || {});
+//   const hasInitial = initialEmoji && emojis.includes(initialEmoji);
+
+//   let currentFilter = hasInitial ? initialEmoji : null; // null = All
+
+//   const renderEmoji = (emo) =>
+//     (window.emojione && emojione.toImage) ? emojione.toImage(emo) : emo;
+
+//   const uniqueEmails = [...new Set(items.map(x => x.sender).filter(Boolean))];
+//   const nameMap = {};
+//   await Promise.all(uniqueEmails.map(async (email) => {
+//     try {
+//       nameMap[email] = (email === this.profile.user_email)
+//         ? "You"
+//         : (await get_profile_full_name(email) || email);
+//     } catch {
+//       nameMap[email] = email;
+//     }
+//   }));
+
+
+//   const filtersHtml = `
+//     <div class="rx-filters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+//       <button type="button" class="rx-filter btn btn-sm ${currentFilter ? "btn-default" : "btn-primary"}" data-emoji="">
+//         All <b>${items.length}</b>
+//       </button>
+
+//       ${emojis.map(emo => `
+//         <button type="button" class="rx-filter btn btn-sm ${currentFilter === emo ? "btn-primary" : "btn-default"}" data-emoji="${frappe.utils.escape_html(String(emo))}">
+//           ${renderEmoji(emo)} <b>${emoji_counts[emo] ?? 0}</b>
+//         </button>
+//       `).join("")}
+//     </div>
+//   `;
+
+//   const d = new frappe.ui.Dialog({
+//     title: "Reactions",
+//     size: "small",
+//     fields: [
+//       {
+//         fieldtype: "HTML",
+//         fieldname: "rx_body",
+//         options: `
+//           ${filtersHtml}
+//           <div class="rx-list" style="max-height:360px; overflow:auto; padding-right:6px;"></div>
+//         `
+//       }
+//     ],
+//     primary_action_label: "Close",
+//     primary_action() { d.hide(); }
+//   });
+
+//   const renderList = () => {
+//     const filtered = currentFilter
+//       ? items.filter(x => x.emoji === currentFilter)
+//       : items;
+
+//     filtered.sort((a, b) => (b.send_date || "").localeCompare(a.send_date || ""));
+
+//     const rows = filtered.map(x => {
+//       const displayName = frappe.utils.escape_html(nameMap[x.sender] || x.sender || "");
+//       const when = frappe.utils.escape_html(x.send_date || "");
+//       return `
+//         <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #eee;">
+//           <div style="width:28px; text-align:center; font-size:18px;">${renderEmoji(x.emoji)}</div>
+//           <div style="flex:1; min-width:0;">
+//             <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayName}</div>
+//             ${when ? `<div style="font-size:11px; opacity:.7;">${when}</div>` : ``}
+//           </div>
+//         </div>
+//       `;
+//     }).join("");
+
+//     d.$wrapper.find(".rx-list").html(rows || `<div style="opacity:.7;">No reactions</div>`);
+//   };
+
+//   d.show();
+//   renderList();
+
+//   d.$wrapper.on("click", ".rx-filter", (e) => {
+//     const emo = $(e.currentTarget).data("emoji");
+//     currentFilter = emo ? String(emo) : null;
+
+//     d.$wrapper.find(".rx-filter").removeClass("btn-primary").addClass("btn-default");
+//     $(e.currentTarget).removeClass("btn-default").addClass("btn-primary");
+
+//     renderList();
+//   });
+// }
+openReactionsDialog(messageName, initialEmoji = null) {
+  const { reactions, emoji_counts } = this.getReactionsForDialog(messageName);
 
   const items = (reactions || []).map(r => ({
     emoji: r.emoji,
@@ -267,97 +561,42 @@ async openReactionsDialog(messageName, initialEmoji = null) {
     return;
   }
 
-
-  const emojis = Object.keys(emoji_counts || {});
-  const hasInitial = initialEmoji && emojis.includes(initialEmoji);
-
-  let currentFilter = hasInitial ? initialEmoji : null; // null = All
-
   const renderEmoji = (emo) =>
     (window.emojione && emojione.toImage) ? emojione.toImage(emo) : emo;
 
-  const uniqueEmails = [...new Set(items.map(x => x.sender).filter(Boolean))];
-  const nameMap = {};
-  await Promise.all(uniqueEmails.map(async (email) => {
-    try {
-      nameMap[email] = (email === this.profile.user_email)
-        ? "You"
-        : (await get_profile_full_name(email) || email);
-    } catch {
-      nameMap[email] = email;
-    }
-  }));
+  
+  let filtered = items;
+  if (initialEmoji) filtered = items.filter(x => x.emoji === initialEmoji);
 
+  filtered.sort((a, b) => (b.send_date || "").localeCompare(a.send_date || ""));
+ 
 
-  const filtersHtml = `
-    <div class="rx-filters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-      <button type="button" class="rx-filter btn btn-sm ${currentFilter ? "btn-default" : "btn-primary"}" data-emoji="">
-        All <b>${items.length}</b>
-      </button>
-
-      ${emojis.map(emo => `
-        <button type="button" class="rx-filter btn btn-sm ${currentFilter === emo ? "btn-primary" : "btn-default"}" data-emoji="${frappe.utils.escape_html(String(emo))}">
-          ${renderEmoji(emo)} <b>${emoji_counts[emo] ?? 0}</b>
-        </button>
-      `).join("")}
-    </div>
-  `;
-
-  const d = new frappe.ui.Dialog({
-    title: "Reactions",
-    size: "small",
-    fields: [
-      {
-        fieldtype: "HTML",
-        fieldname: "rx_body",
-        options: `
-          ${filtersHtml}
-          <div class="rx-list" style="max-height:360px; overflow:auto; padding-right:6px;"></div>
-        `
-      }
-    ],
-    primary_action_label: "Close",
-    primary_action() { d.hide(); }
-  });
-
-  const renderList = () => {
-    const filtered = currentFilter
-      ? items.filter(x => x.emoji === currentFilter)
-      : items;
-
-    filtered.sort((a, b) => (b.send_date || "").localeCompare(a.send_date || ""));
-
-    const rows = filtered.map(x => {
-      const displayName = frappe.utils.escape_html(nameMap[x.sender] || x.sender || "");
-      const when = frappe.utils.escape_html(x.send_date || "");
-      return `
-        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #eee;">
-          <div style="width:28px; text-align:center; font-size:18px;">${renderEmoji(x.emoji)}</div>
-          <div style="flex:1; min-width:0;">
-            <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayName}</div>
-            ${when ? `<div style="font-size:11px; opacity:.7;">${when}</div>` : ``}
-          </div>
+  const rows = filtered.map(x => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;">
+      <div style="width:28px;text-align:center;font-size:18px;">${renderEmoji(x.emoji)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${frappe.utils.escape_html(firstNameFromEmail(x.sender) || "")}
         </div>
-      `;
-    }).join("");
+        ${x.send_date ? `<div style="font-size:11px;opacity:.7;">${frappe.utils.escape_html(x.send_date)}</div>` : ``}
+      </div>
+    </div>
+  `).join("");
 
-    d.$wrapper.find(".rx-list").html(rows || `<div style="opacity:.7;">No reactions</div>`);
-  };
+  const summary = Object.keys(emoji_counts || {}).map(emo => `
+    <span style="display:inline-flex;align-items:center;gap:6px;margin-right:10px;">
+      ${renderEmoji(emo)} <b>${emoji_counts[emo] || 0}</b>
+    </span>
+  `).join("");
 
-  d.show();
-  renderList();
-
-  d.$wrapper.on("click", ".rx-filter", (e) => {
-    const emo = $(e.currentTarget).data("emoji");
-    currentFilter = emo ? String(emo) : null;
-
-    d.$wrapper.find(".rx-filter").removeClass("btn-primary").addClass("btn-default");
-    $(e.currentTarget).removeClass("btn-default").addClass("btn-primary");
-
-    renderList();
+  frappe.msgprint({
+    title: "Reactions",
+    message: `
+      <div style="margin-bottom:10px;">${summary || ""}</div>
+      <div style="max-height:360px;overflow:auto;padding-right:6px;">${rows}</div>
+    `
   });
 }
-
 
 
 normalizeReactionsPayload(payload) {
@@ -576,6 +815,64 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
     this.$chatbot_action.find(".message-send-button").on("click", function () {
       me.handle_send_message();
     });
+    //-----------edit----------
+    me.$chatbot_container.on("click.portal", ".edit-btn", function (e) {
+  e.stopPropagation();
+
+  const $wrap = $(this).closest("[data-message-name]");
+  const messageName = $wrap.data("message-name");
+  if (!messageName) return;
+
+  const cached = me.messageCache.get(messageName) || {};
+  if (Number(cached.is_deleted || 0) === 1) return;
+
+
+  const isEditedBefore = Number(cached.is_edited || 0) === 1;
+  if (isEditedBefore) {
+    frappe.msgprint("Editing is not allowed because it was edited before.");
+    return;
+  }
+
+
+  if ((cached.sender_email || "") !== (me.profile.user_email || "")) return;
+
+  const currentText = me.htmlToPlainText(cached.content || "");
+
+  me.portalEditPrompt({
+    title: "Edit Message",
+    defaultText: currentText,
+    onSave: async (text) => {
+      const formattedContent = me.plainTextToParagraphs(text);
+
+      await frappe.call({
+        method: "clefincode_chat.api.api_1_3_3.chat_portal.edit_guest_chat_message", //
+        args: {
+          message_name: messageName,
+          new_content: formattedContent
+        }
+      });
+
+      const $bubble = $wrap.find(".message-bubble");
+      const $actions = $bubble.find(".message-actions").detach();
+
+      $bubble.find("p").remove();
+      $bubble.find(".edited-label").remove();
+
+      $bubble.append(formattedContent);
+      $bubble.append(`
+        <div class="edited-label" style="font-size:11px;opacity:0.6;margin-top:4px;">
+          Edited
+        </div>
+      `);
+
+      if ($actions.length) $bubble.append($actions);
+
+      cached.content = formattedContent;
+      cached.is_edited = 1;
+      me.messageCache.set(messageName, cached);
+    }
+  });
+});
     //-------------------------
 // me.$chatbot_container.on("click.portal", ".reaction-chip", function (e) {
 //   e.stopPropagation();
@@ -612,6 +909,14 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
 //     frappe.msgprint("No reactions");
 //   }
 // });
+me.$chatbot_container.on("click.portal", ".message-reactions, .message-reactions .reaction-chip", async function (e) {
+  e.stopPropagation();
+
+  const messageName = $(this).closest("[data-message-name]").data("message-name");
+  if (!messageName) return;
+
+  await me.openReactionsDialog(messageName, null);
+});
 //--------------------------------
 
 
@@ -771,17 +1076,46 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
 });
 }
 
-  setup_socket() {
-    const me = this;
-    frappe.realtime.on(me.profile.room, function (res) {
-      console.log("dsds");
-      console.log(res);
-      if(res.realtime_type == "send_message"){
-        me.receive_message(res, get_t(res.send_date));
-      }
+ setup_socket() {
+  const me = this;
+  console.log("me.profile.room");
+  console.log(me.profile.room);
+  frappe.realtime.on(me.profile.room, function (res) {
+    if (res.realtime_type == "send_message") {
+      me.receive_message(res, get_t(res.send_date));
+      return;
+    }
+
+    else if(res.realtime_type == "reactions_message") {      
+      const messageName = res.message_name;
+      if (!messageName) return;
+
       
-    });
-  }
+      me.renderReactions(messageName, {
+        data: { reactions: res.reactions || [], emoji_counts: res.emoji_counts || {} }
+      });
+
+     
+      const reactions_json = JSON.stringify([{
+        reactions: res.reactions || [],
+        emoji_summary: {
+          total_emojis: Object.values(res.emoji_counts || {}).reduce((a,b)=>a+(b||0), 0),
+          emoji_details: res.emoji_counts || {}
+        }
+      }]);
+
+      const cached = me.messageCache.get(messageName) || {};
+      cached.reactions_json = reactions_json;
+      me.messageCache.set(messageName, cached);
+
+      const $msg = me.$chatbot_container.find(`#msg-${messageName}`);
+      if ($msg.length) $msg.attr("data-reactions", reactions_json);
+    }    else if (res.realtime_type === "edit_message") {
+  
+  me.handlePortalMessageEdit(res);
+}
+  });
+}
 
   render() {
     this.$wrapper.append(this.$chatbot_space);
@@ -800,6 +1134,7 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
     
     this.messageCache.set(res.message_name, {
             sender: res.sender,
+            sender_email: res.sender_email,
             content: res.content,               
             is_screenshot: res.is_screenshot || 0,    
             reply_to_message:res.reply_to_message ,
@@ -969,24 +1304,25 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
   ? "/assets/clefincode_chat/icons/delete.png"
   : "/assets/clefincode_chat/icons/delete.svg";
   //  actions (Reply / Forward / Delete)
-  const $actions = $(`
-    <div class="message-actions" style="
-      display:none;
-      margin-top:6px;
-      gap:12px;
-      font-size:12px;
-      color:#6c757d;
-      cursor:pointer;
-    ">
-      <span class="reply-btn">${frappe.utils.icon("reply","sm")} Reply</span>
-     
-      <span class="delete-btn">
-      <img src="${deleteIcon}"
-       width="14" height="14"
-       style="margin-left:8px;"> Delete
+   const isMine = sender_email === this.profile.user_email;
+ const $actions = $(`
+  <div class="message-actions" style="
+    display:none;
+    margin-top:6px;
+    gap:12px;
+    font-size:12px;
+    color:#6c757d;
+    cursor:pointer;
+  ">
+    ${isMine && !is_deleted ? `
+      <span class="edit-btn">${frappe.utils.icon("edit", "sm")} Edit</span>
+    ` : ``}
+    <span class="reply-btn">${frappe.utils.icon("reply","sm")} Reply</span>
+    <span class="delete-btn">
+      <img src="${deleteIcon}" width="14" height="14" style="margin-left:8px;"> Delete
     </span>
-    </div>
-  `);
+  </div>
+`);
 
   if (!is_deleted) $message_element.append($actions);
   if (is_edited && !is_deleted) {
@@ -1000,6 +1336,10 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
         </div>
       `);
     }
+   
+
+
+if (!isMine) $actions.find(".delete-btn").remove();
 
   
   const $reactions = $(`<div class="message-reactions"></div>`);
@@ -1216,7 +1556,8 @@ const textLabel = previewText
       }
        this.messageCache.set(res.message_name, {
             sender: res.sender,
-            content: res.content,               
+            content: res.content,
+            sender_email: res.sender_email,               
             is_screenshot: res.is_screenshot || 0,    
             reply_to_message:res.reply_to_message ,
             reply_preview_type: res.reply_preview_type,
@@ -1231,7 +1572,7 @@ const textLabel = previewText
     this.$chatbot_container.append(
       await this.make_message({
         content: res.content,
-       
+        sender_email: res.sender_email,
         type: "recipient-message",
         sender: res.user,
         message_name: res.message_name,
@@ -1310,4 +1651,11 @@ async function get_respondent_user(room) {
     },
   });
   return await res.message;
+}
+function firstNameFromEmail(email) {
+  if (!email) return "";
+  const local = String(email).split("@")[0] || "";
+  const first = local.split(/[._-]/)[0] || local;
+  
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }

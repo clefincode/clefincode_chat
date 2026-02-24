@@ -1,4 +1,5 @@
 import json
+import traceback
 
 import frappe
 import datetime
@@ -7,6 +8,9 @@ from clefincode_chat.api.api_1_2_1.api import get_profile_id , convert_utc_to_us
 from clefincode_chat.api.api_1_3_3.api import build_reply_preview, get_room_name
 from frappe.utils import now_datetime
 from bs4 import BeautifulSoup
+from packaging import version
+frappe_version = frappe.__version__
+
 @frappe.whitelist(allow_guest = True)
 def create_guest_profile_and_channel(content , sender , sender_email , creation_date):    
     creation_date = datetime.datetime.utcnow()
@@ -368,3 +372,93 @@ def add_or_update_reaction(message_name, emoji):
         "message": "Reaction updated or added"
     }
 
+@frappe.whitelist(allow_guest=True)
+def edit_guest_chat_message(message_name, new_content):
+    try:
+        msg = frappe.get_doc("ClefinCode Chat Message", message_name)
+        channel = frappe.get_doc("ClefinCode Chat Channel", msg.chat_channel)
+
+    
+        if channel.type != "Guest" or not (channel.chat_profile or "").startswith("Guest"):
+            frappe.throw("Not allowed")
+
+      
+       
+
+        original_content = msg.content
+
+        
+        settings = frappe.get_single("ClefinCode Chat Settings")
+        max_edit_time = settings.max_edit_time or 0
+
+        if max_edit_time > 0:
+            creation_time = msg.creation
+            current_time = now_datetime()
+            time_diff = (current_time - creation_time).total_seconds()
+            if time_diff > (max_edit_time * 60):
+                frappe.throw("Editing time has expired for this message.")
+
+        if msg.is_edited:
+            frappe.throw("This message has already been edited and cannot be edited again.")
+
+        # ✅ Backup
+        frappe.get_doc({
+            "doctype": "CiC Backup Chat Message",
+            "original_content": original_content,
+            "original_message": msg.name,
+            "change_type": "Edit"
+        }).insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        # ✅ Save
+        msg.content = new_content
+        msg.is_edited = 1
+        msg.save(ignore_permissions=True)
+        frappe.db.commit()
+
+        # ✅ realtime guest_room_name نفس send
+        frappe_version = frappe.__version__
+        if version.parse(frappe_version) >= version.parse("15.0.0"):
+            guest_room_name = "user:Guest"
+        else:
+            guest_room_name = f"{frappe.local.site}:user:Guest"
+
+        results = {
+            "realtime_type": "edit_message",
+            "channel_name": msg.chat_channel,
+            "room": msg.chat_channel,
+            "message_name": message_name,
+            "content": new_content,
+            "original_content": original_content,
+        }
+
+   
+        frappe.publish_realtime(
+            event=msg.chat_channel,
+            message=results,
+            room=guest_room_name
+        )
+
+
+        for member in channel.members:
+            if member.user:
+                results["target_user"] = member.user
+                frappe.publish_realtime(event=msg.chat_channel, message=results, user=member.user)
+
+       
+        last_message = frappe.get_all(
+            "ClefinCode Chat Message",
+            filters={"chat_channel": msg.chat_channel},
+            fields=["name"],
+            order_by="creation desc",
+            limit=1
+        )
+        if last_message and last_message[0].name == msg.name:
+            frappe.db.set_value("ClefinCode Chat Channel", msg.chat_channel, "last_message", new_content)
+            frappe.db.commit()
+
+        return True
+
+    except Exception:
+        frappe.log_error(title="error in edit_guest_chat_message", message=traceback.format_exc())
+        frappe.throw("Failed to edit message")

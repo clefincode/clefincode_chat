@@ -140,7 +140,10 @@ async getReactionsForDialog(messageName) {
   const { reactions, emoji_counts } = this.normalizeReactionsPayload(payload);
   return { reactions: reactions || [], emoji_counts: emoji_counts || {} };
 }
-
+renderReactionsFromJson(messageName, reactions_json) {
+  const { reactions, emoji_counts } = this.parseReactionsFromReactionsJson(reactions_json);
+  this.renderReactions(messageName, { data: { reactions, emoji_counts } });
+}
 async openReactionsDialog(messageName, initialEmoji = null) {
   const { reactions, emoji_counts } = await this.getReactionsForDialog(messageName);
 
@@ -309,7 +312,7 @@ $menu.on("click", ".emoji-item", async (e) => {
 
   try {
     await this.saveReaction(messageName, emoji);
-    await this.fetchAndRenderReactions(messageName);
+   // await this.fetchAndRenderReactions(messageName);
   } finally {
     this.closeEmojiMenu();
   }
@@ -682,8 +685,15 @@ async fetchAndRenderReactions(messageName) {
   }
 }
 async hydrateReactionsForMessages(messages_list = []) {
-  const names = messages_list.map(m => m.message_name).filter(Boolean);
-  await Promise.all(names.map(n => this.fetchAndRenderReactions(n)));
+  // const names = messages_list.map(m => m.message_name).filter(Boolean);
+  // await Promise.all(names.map(n => this.fetchAndRenderReactions(n)));
+   (messages_list || []).forEach(m => {
+    if (!m?.message_name) return;
+    if (m.reactions_json) {
+      this.renderReactionsFromJson(m.message_name, m.reactions_json);
+    }
+  });
+
 }
 async fetch_single_message(messageName) {
   const args = {
@@ -1654,10 +1664,10 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
   
   const isEditedBefore = Number(cached.is_edited || 0) === 1;
 
-  const currentText =
-    $wrapper.find(".message-bubble").clone()
-      .find(".message-actions, .edited-label, .forwarded-label").remove().end()
-      .text().trim();
+  const currentText = (cached.content || "")
+  .replace(/<\/p>\s*<p>/g, "\n")
+  .replace(/<\/?p>/g, "")
+  .trim();
 
   if (isEditedBefore) {
    
@@ -1710,24 +1720,51 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
     ],
     primary_action_label: "Save",
     primary_action: async (values) => {
+      const formattedContent = values.content
+      .split("\n")
+      .map(line => `<p>${line.trim()}</p>`)
+      .join("");
       await frappe.call({
         method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
         args: {
           message_name: messageName,
-          new_content: "<p>" + values.content + "</p>"
+          new_content: formattedContent,
         }
       });
+      const $bubble = $wrapper.find(".message-bubble");
+
+      
+      const $actions = $bubble.find(".message-actions").detach();
+
+      
+      $bubble.find("p").remove();
+      $bubble.find(".edited-label").remove();
+
+      
+      // $bubble.contents().filter((_, n) => n.nodeType === 3).remove(); // text nodes
+
+    
+      $bubble.append(formattedContent);
+
+      
+      $bubble.append(`
+        <div class="edited-label" style="
+          font-size:11px;
+          opacity:0.6;
+          margin-top:4px;
+        ">Edited</div>
+      `);
+
+     
+      if ($actions.length) $bubble.append($actions);
 
  
-      $wrapper.find(".message-bubble").find("p").first().text(values.content);
-
-      
-      cached.content = "<p>" + values.content + "</p>";
-      cached.is_edited = 1;
       
 
-   
-      me.messageCache.set(messageName, cached);
+        cached.content = formattedContent;
+        cached.is_edited = 1;
+
+        me.messageCache.set(messageName, cached);
 
       d.hide();
     },
@@ -2287,6 +2324,7 @@ async setup_messages(messages_list) {
         }, 500);
       }
       this.message_html += message_content.prop("outerHTML");
+      
     }
   }
 
@@ -4122,7 +4160,15 @@ async fetchTemplateSuggestions(textValue) {
       emoji_counts: res.emoji_counts
     }
   });
-
+      const cached = me.messageCache.get(res.message_name) || {};
+        cached.reactions_json = JSON.stringify([{
+          reactions: res.reactions || [],
+          emoji_summary: {
+            total_emojis: Object.values(res.emoji_counts || {}).reduce((a,b)=>a+(b||0), 0),
+            emoji_details: res.emoji_counts || {}
+          }
+        }]);
+        me.messageCache.set(res.message_name, cached);
 }
 
 
