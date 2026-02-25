@@ -89,6 +89,7 @@ frappe.ErpnextChat = class {
   }
 
   async create_app() {
+    
     this.$app_element = $(document.createElement("div")).addClass("chat-app");
 
     this.$chat_right_section = $(document.createElement("div")).addClass(
@@ -363,6 +364,7 @@ frappe.ErpnextChat = class {
   setup_events() {
     const me = this;
     $(".chat-navbar-icon").on("click", function () {
+      $("#chat-bubble").fadeOut(150);
       me.chat_bubble.disk_chat_icon();
     });
   }
