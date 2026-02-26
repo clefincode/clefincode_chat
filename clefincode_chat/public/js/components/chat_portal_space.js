@@ -810,6 +810,7 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
     $(document).off(".portal");
     this.$chatbot_space.find(".close-chat-window").on("click", function () {
       me.chat_bubble.portal_chat_icon();
+      $("#chat-bubble").fadeIn(150);
     });
 
     this.$chatbot_action.find(".message-send-button").on("click", function () {
