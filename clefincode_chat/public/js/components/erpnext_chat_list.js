@@ -465,6 +465,7 @@ async render_messages(signal = null) {
 
     $(".close-chat-list").on("click", function () {
       erpnext_chat_app.hide_chat_widget();
+      $("#chat-bubble").fadeIn(150);
       frappe.realtime.off("update_room");
       frappe.realtime.off("add_group_member");
       frappe.realtime.off("remove_group_member");

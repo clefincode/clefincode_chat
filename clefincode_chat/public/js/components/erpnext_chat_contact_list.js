@@ -58,12 +58,12 @@ export default class ChatContactList {
         position: relative;
       }
       .chat-contact-list.forward-mode .chat-contact.forward-selected-contact {
-        background: rgba(120, 163, 8, 0.04);
+        background: rgba(119, 163, 8, 0.43);
       }
       .chat-contact-list.forward-mode .chat-contact.forward-selected-contact::after {
-        content: "✓";
+        content: "";
         position: absolute;
-        right: 12px;
+        left: 12px;
         top: 50%;
         transform: translateY(-50%);
         font-weight: 700;
