@@ -2415,3 +2415,19 @@ $height: 582px;
 
 
 
+.search-highlight {
+  background: #ffe58f;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.search-highlight-active {
+  background: #ffc107;
+  animation: pulseHighlight 0.6s ease;
+}
+
+@keyframes pulseHighlight {
+  0% { background-color: #fff3cd; }
+  50% { background-color: #ffca2c; }
+  100% { background-color: #ffc107; }
+}

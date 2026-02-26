@@ -72,6 +72,7 @@ export default class ChatBubble {
   setup_events() {
     const me = this;
     $("#chat-bubble, .chat-cross-button").on("click", () => {
+      $("#chat-bubble").hide();
       me.portal_chat_icon();
     });
   }

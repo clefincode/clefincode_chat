@@ -23,7 +23,6 @@ def initialize_firebase():
 def send_notification_via_firebase(registration_token, info, realtime_type, platform = None ,title = None, body = None, same_user = None ,message_type = None):
     initialize_firebase()    
     message=None
-
     if realtime_type in ["typing", "update_sub_channel_for_last_message"] or same_user == 1:        
         try:
             message = messaging.Message(
@@ -45,7 +44,7 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
                     for child in container.find_all('button', recursive=False):
                         child.decompose()
                 info["content"] = str(soup)
-
+            
             try:    
                 message = messaging.Message(
                     notification=messaging.Notification(title=None, body=None),
@@ -88,7 +87,7 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
                 messaging.send(message1)   
                 
             except Exception as e:
-                frappe.log_error(f"IOS Error in sending notifications: {str(e)}")
+                frappe.log_error("IOS Error in sending notifications",f"IOS Error in sending notifications: {str(e)}")
         else:            
             try:                
                 message = messaging.Message(
@@ -98,10 +97,9 @@ def send_notification_via_firebase(registration_token, info, realtime_type, plat
                 apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(content_available=True, sound="default"))),
                 )
                 messaging.send(message)
-                frappe.log("send_notification_via_firebase",message)
 
             except Exception as e:
-                frappe.log_error(f"Android Error in sending notifications: {str(e)}")
+                frappe.log_error("Android Error in sending notifications",f"Android Error in sending notifications: {str(e)}")
 # ==================================================================================
 @frappe.whitelist(allow_guest = True)
 def send_notification_log_via_firebase(registration_token,platform = None , body = None,title = 'Notification from system'):
@@ -122,7 +120,8 @@ def send_notification_log_via_firebase(registration_token,platform = None , body
                     )
                 )
             )
-            messaging.send(message1)   
+            response = messaging.send(message1)
+            frappe.log_error("FCM SUCCESS RESPONSE", response)
             
         except Exception as e:
             frappe.log_error(f"IOS Error in sending notifications: {str(e)}")
