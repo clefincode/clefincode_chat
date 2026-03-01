@@ -778,7 +778,6 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
         this.profile.room
       );
       const res = await get_messages(this.profile.room);
-      console.log(res);
       await this.setup_messages(res);
     }
   }

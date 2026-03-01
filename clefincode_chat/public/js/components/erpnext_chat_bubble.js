@@ -1,3 +1,14 @@
+let FRAPPE_MAJOR_VERSION = null;
+
+async function initFrappeVersion() {
+  if (FRAPPE_MAJOR_VERSION !== null) return;
+
+  const r = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.get_frappe_major_version"
+  });
+
+  FRAPPE_MAJOR_VERSION = r.message;
+}
 export default class ChatBubble {
   // the parent is the app object
   constructor(parent) {
@@ -10,8 +21,23 @@ export default class ChatBubble {
     let chat_icon = `<img title="Start Chat" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="50px" height="50px">`;
     this.open_title = this.parent.is_admin ? __("Show Chats") : chat_icon;
     this.closed_title = __("Close Chat");
+    let bubble_visible;
+    if (FRAPPE_MAJOR_VERSION == 16) {
+      if (this.parent.is_desk) {
+        if (frappe.router && frappe.get_route) {
+          const route = frappe.get_route();
+          const is_desk_root = route.length === 0;
+          bubble_visible = is_desk_root ? "d-none" : "";
+        } else {
+          // fallback for v15
+          bubble_visible = this.parent.is_desk === true ? "d-none" : "";
+        }
+      }
 
-    const bubble_visible = this.parent.is_desk === true ? "d-none" : "";
+    } else {
+      bubble_visible = this.parent.is_desk === true ? "d-none" : "";
+    }
+
     this.open_inner_html = `
               <div class='p-3 chat-bubble ${bubble_visible}'>                  
                   <div>${this.open_title}</div>
@@ -35,6 +61,7 @@ export default class ChatBubble {
   render() {
     this.parent.$chat_right_section.append(this.$chat_bubble);
     this.setup_events();
+    if (FRAPPE_MAJOR_VERSION == 16) {this.handle_version_visibility();}
   }
 
   disk_chat_icon(){
@@ -44,11 +71,41 @@ export default class ChatBubble {
     this.parent.is_open = !this.parent.is_open;
     this.parent.show_chat_widget();
   }
+  async handle_version_visibility() {
+  await initFrappeVersion();
 
-  portal_chat_icon() { 
+  if (FRAPPE_MAJOR_VERSION == 16 ) {
+    const path = window.location.pathname;
+    const is_desk_root = path === "/desk";
+
+    if (is_desk_root) {
+      this.$chat_bubble.find(".chat-bubble").addClass("d-none");
+    } else {
+      this.$chat_bubble.find(".chat-bubble").removeClass("d-none");
+    }
+
+    // Handle SPA navigation in v16
+    if (frappe.router) {
+      frappe.router.on("change", () => {
+        const route = frappe.get_route() || [];
+        const is_desk_root = route.length === 1 && route[0] === "";
+
+
+
+        if (is_desk_root) {
+          this.$chat_bubble.find(".chat-bubble").addClass("d-none");
+        } else {
+          this.$chat_bubble.find(".chat-bubble").removeClass("d-none");
+        }
+      });
+    }
+  }
+}
+
+  portal_chat_icon() {
     if(this.parent.res.user_type != "guest" && this.parent.is_open){
       return
-    } 
+    }
 
     this.parent.is_open = !this.parent.is_open;
     if (this.parent.res.user_type == "guest") {
@@ -66,13 +123,11 @@ export default class ChatBubble {
     }else{
       this.parent.show_chat_widget();
     }
-   
   }
 
   setup_events() {
     const me = this;
     $("#chat-bubble, .chat-cross-button").on("click", () => {
-      $("#chat-bubble").hide();
       me.portal_chat_icon();
     });
   }

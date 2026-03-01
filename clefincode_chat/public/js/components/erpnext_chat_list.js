@@ -3,7 +3,17 @@ import ChatContactList from "./erpnext_chat_contact_list";
 import ChatWindow from "./erpnext_chat_window";
 import ChatSpace from "./erpnext_chat_space";
 import { check_if_chat_window_open, get_time } from "./erpnext_chat_utils";
+let FRAPPE_MAJOR_VERSION = null;
 
+async function initFrappeVersion() {
+  if (FRAPPE_MAJOR_VERSION !== null) return;
+
+  const r = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.get_frappe_major_version"
+  });
+
+  FRAPPE_MAJOR_VERSION = r.message;
+}
 export default class ChatList {
   constructor(opts) {
     this.$wrapper = opts.$wrapper;
@@ -13,7 +23,7 @@ export default class ChatList {
     this.time_zone = opts.time_zone;
     this.user_type = opts.user_type;
     this.is_limited_user = opts.is_limited_user;
-    
+
     this.is_pined = this.get_pin_cookie();
     this.is_open = 1;
     this.limit = 10;
@@ -21,9 +31,19 @@ export default class ChatList {
     this.last_scroll_top = 0;
     this.num_of_results = 0;
     this.rest_of_results = 0;
-    this.setup();
+    if (FRAPPE_MAJOR_VERSION == 16) {
+    this.ready = this.initialize();}
+    else {
+      this.setup();
+    }
   }
 
+  async initialize() {
+    if (FRAPPE_MAJOR_VERSION == 16) {
+    await initFrappeVersion();
+    this.setup();
+    return true;} else return;
+  }
   setup() {
     this.$chat_list = $(document.createElement("div")).addClass("chat-list");
     this.setup_header();
@@ -104,7 +124,7 @@ export default class ChatList {
     this._loading = false;
   }
 
-  setup_header() {    
+  setup_header() {
     let chat_list_header_html = ``;
     if(this.user_type == "system_user"){
       chat_list_header_html = `<div class='chat-list-header'>
@@ -137,7 +157,7 @@ export default class ChatList {
     </div>
   `;
     }
-			
+
     this.$chat_list.append(chat_list_header_html);
   }
 
@@ -164,30 +184,30 @@ export default class ChatList {
   }
 
   async fetch_and_setup_rooms() {
-  try {
-    // Abort any in-flight request
-    if (this.controller) this.controller.abort();
-    this.controller = new AbortController();
-    const { signal } = this.controller;
+    try {
+      // Abort any in-flight request
+      if (this.controller) this.controller.abort();
+      this.controller = new AbortController();
+      const { signal } = this.controller;
 
-    // 1) Fetch page 1
-    const results_info = await get_channels_list(
-      this.user_email,
-      this.limit,
-      this.offset,
-      { signal }
-    );
+      // 1) Fetch page 1
+      const results_info = await get_channels_list(
+        this.user_email,
+        this.limit,
+        this.offset,
+        { signal }
+      );
 
-    // 2) Store data + total count
-    this.room_groups    = results_info.results;
-    this.num_of_results = results_info.num_of_results;
+      // 2) Store data + total count
+      this.room_groups    = results_info.results;
+      this.num_of_results = results_info.num_of_results;
 
-    // 3) Advance offset & compute “remaining”
-    this.offset += this.limit;
-    this.rest_of_results = this.num_of_results - this.offset;
+      // 3) Advance offset & compute “remaining”
+      this.offset += this.limit;
+      this.rest_of_results = this.num_of_results - this.offset;
 
-    // 4) If no channels, show empty state and bind events once
-    if (this.num_of_results == 0) {
+      // 4) If no channels, show empty state and bind events once
+      if (this.num_of_results == 0) {
         let empty_chat_list_container = ``;
         if(this.user_type == "system_user"){
           empty_chat_list_container = `
@@ -218,22 +238,22 @@ export default class ChatList {
         return;
       }
 
-    // 5) Render what we got
-    await this.setup_rooms(signal);
-    await this.render_messages(signal);
+      // 5) Render what we got
+      await this.setup_rooms(signal);
+      await this.render_messages(signal);
 
-    // 6) Insert the first loader if needed
-    this.check_if_more_results();
+      // 6) Insert the first loader if needed
+      this.check_if_more_results();
 
-    // 7) Wire up scroll + other handlers exactly once
-    this.setup_events();
+      // 7) Wire up scroll + other handlers exactly once
+      this.setup_events();
 
-  } catch (error) {
-    console.error(error);
-  } finally {
-    this.controller = null;
+    } catch (error) {
+      console.error(error);
+    } finally {
+      this.controller = null;
+    }
   }
-}
 
 
 
@@ -254,7 +274,7 @@ export default class ChatList {
     await this.setup_search();
     this.chat_room_groups = [];
     this.room_groups.forEach((element) => {
-     
+
       let profile = {
         user: this.user,
         user_email: this.user_email,
@@ -290,12 +310,12 @@ export default class ChatList {
       ]);
     });
     this.$chat_list.append(this.$chat_rooms_group_container);
-        this.$chat_rooms_group_container
+    this.$chat_rooms_group_container
       .css({ maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' });
   }
 
 
-async render_messages(signal = null) {
+  async render_messages(signal = null) {
     if (signal?.aborted || this.num_of_results == 0) return;
 
     this.$chat_rooms_group_container.empty();
@@ -327,7 +347,7 @@ async render_messages(signal = null) {
         room[1].$chat_room.show();
       }
     });
-  }  
+  }
 
   setup_events() {
     const me = this;
@@ -355,7 +375,68 @@ async render_messages(signal = null) {
       }
     });
 
-    $(".chat-list-primary-btn").on("click", function () {
+    $(".chat-list-primary-btn").on("click", async function () {
+      if (FRAPPE_MAJOR_VERSION == 16) {
+        me.is_open = 0;
+        me.$wrapper.find(".chat-list").remove();
+        const contactList = new ChatContactList({
+          $wrapper: me.$wrapper,
+          profile: {
+            user: me.user,
+            user_email: me.user_email,
+            is_admin: me.is_admin,
+            time_zone: me.time_zone,
+            user_type: me.user_type,
+            is_limited_user: me.is_limited_user,
+          },
+          new_group: 0,
+        });
+
+        await contactList.ready;
+
+        erpnext_chat_app.chat_contact_list = contactList;
+        contactList.render();
+      }
+      else {
+        me.is_open = 0;
+        erpnext_chat_app.chat_contact_list = new ChatContactList({
+          $wrapper: me.$wrapper,
+          profile: {
+            user: me.user,
+            user_email: me.user_email,
+            is_admin: me.is_admin,
+            time_zone: me.time_zone,
+            user_type: me.user_type,
+            is_limited_user: me.is_limited_user,
+          },
+          new_group: 0,
+        });
+        erpnext_chat_app.chat_contact_list.render();
+      }
+    });
+ 
+
+    if (FRAPPE_MAJOR_VERSION == 16) {
+    this.$chat_list.on("click", ".new-chat", async function () {
+      me.is_open = 0;
+      me.$wrapper.find(".chat-list").remove();
+      const contactList = new ChatContactList({
+        $wrapper: me.$wrapper,
+        profile: {
+          user: me.user,
+          user_email: me.user_email,
+          is_admin: me.is_admin,
+          time_zone: me.time_zone,
+          user_type: me.user_type,
+          is_limited_user: me.is_limited_user,
+        },
+        new_group: 0,
+      });
+      await contactList.ready;   
+      contactList.render();     
+    });}
+    else{
+      $(".new-chat").on("click", function () {
       me.is_open = 0;
       erpnext_chat_app.chat_contact_list = new ChatContactList({
         $wrapper: me.$wrapper,
@@ -371,32 +452,16 @@ async render_messages(signal = null) {
       });
       erpnext_chat_app.chat_contact_list.render();
     });
+    }
 
-    $(".new-chat").on("click", function () {
-      me.is_open = 0;
-      erpnext_chat_app.chat_contact_list = new ChatContactList({
-        $wrapper: me.$wrapper,
-        profile: {
-          user: me.user,
-          user_email: me.user_email,
-          is_admin: me.is_admin,
-          time_zone: me.time_zone,
-          user_type: me.user_type,
-          is_limited_user: me.is_limited_user,
-        },
-        new_group: 0,
-      });
-      erpnext_chat_app.chat_contact_list.render();
-    });
-
-    $(".support-icon").on("click", async function () { 
+    $(".support-icon").on("click", async function () {
       const room = await check_if_website_user_has_support_channel(me.user_email);
       let chat_window ;
       if(room){
         if (check_if_chat_window_open(room , "room")){
           $(".expand-chat-window[data-id|='"+room+"']").click();
           return
-          }
+        }
         chat_window = new ChatWindow({
           profile: {
             room: room,
@@ -406,14 +471,14 @@ async render_messages(signal = null) {
         if (check_if_chat_window_open("ClefinCode Support" , "contact")){
           $(".expand-chat-window[data-id|='ClefinCode Support']").click();
           return
-          }
+        }
         chat_window = new ChatWindow({
           profile: {
             contact:"ClefinCode Support",
           },
         });
       }
-      
+
 
       let profile = {
         is_admin: me.is_admin,
@@ -435,7 +500,7 @@ async render_messages(signal = null) {
         profile: profile,
       });
 
-    });    
+    });
 
     // ─────── infinite‐scroll for channels ───────
     this.$chat_rooms_group_container.on("scroll", () => {
@@ -465,7 +530,6 @@ async render_messages(signal = null) {
 
     $(".close-chat-list").on("click", function () {
       erpnext_chat_app.hide_chat_widget();
-      $("#chat-bubble").fadeIn(150);
       frappe.realtime.off("update_room");
       frappe.realtime.off("add_group_member");
       frappe.realtime.off("remove_group_member");
@@ -474,19 +538,19 @@ async render_messages(signal = null) {
 
   setup_socketio() {
     const me = this;
-    
+
     frappe.realtime.on("trigger_channel_status", function (res) {
-        var findChatRoomItem = () => {
-          return me.chat_room_groups.find((element) => {
-            if (res.room == element[0])
-              return element
-          });
-        };
-        let chat_room = findChatRoomItem();
-        chat_room[1].chat_status = res.status;
-        if (chat_room[1].chat_status == undefined) {
-          chat_room[0].chat_status = res.status
-        }
+      var findChatRoomItem = () => {
+        return me.chat_room_groups.find((element) => {
+          if (res.room == element[0])
+            return element
+        });
+      };
+      let chat_room = findChatRoomItem();
+      chat_room[1].chat_status = res.status;
+      if (chat_room[1].chat_status == undefined) {
+        chat_room[0].chat_status = res.status
+      }
     });
 
     frappe.realtime.on("update_room", async function (res) {
@@ -632,90 +696,90 @@ async render_messages(signal = null) {
     await this.setup_search();
     this.$chat_list.append(this.$chat_rooms_group_container);
     this.$chat_rooms_group_container.css({
-    'max-height': 'calc(100vh - 140px)',    // adjust to taste
-    'overflow-y': 'auto'
-  });
+      'max-height': 'calc(100vh - 140px)',    // adjust to taste
+      'overflow-y': 'auto'
+    });
 
     this.chat_room_groups = [];
     this.create_new_room(res);
   }
 
   async get_and_loading_more_contents() {
-    if (this._loading) return;      
+    if (this._loading) return;
     this._loading = true;
-  // 1) fetch next page
-  const { results, num_of_results } = await get_channels_list(
-    this.user_email,
-    this.limit,
-    this.offset
-  );
-
-  // 2) remove the old “loading-more” indicator
-  this.$chat_rooms_group_container.find(".loading-more").remove();
-
-  // 3) append the new rooms
-  await this.render_new_content(results);
-
-  // 4) bump offset & update total
-  this.offset  += this.limit;
-  this.num_of_results  = num_of_results;
-  this.rest_of_results = this.num_of_results - this.offset;
-
-  // 5) re-insert loader if there’s still more
-  if (this.rest_of_results > 0) {
-    this.$chat_rooms_group_container.append(
-      `<div class="loading-more">Loading Chats...</div>`
+    // 1) fetch next page
+    const { results, num_of_results } = await get_channels_list(
+      this.user_email,
+      this.limit,
+      this.offset
     );
+
+    // 2) remove the old “loading-more” indicator
+    this.$chat_rooms_group_container.find(".loading-more").remove();
+
+    // 3) append the new rooms
+    await this.render_new_content(results);
+
+    // 4) bump offset & update total
+    this.offset  += this.limit;
+    this.num_of_results  = num_of_results;
+    this.rest_of_results = this.num_of_results - this.offset;
+
+    // 5) re-insert loader if there’s still more
+    if (this.rest_of_results > 0) {
+      this.$chat_rooms_group_container.append(
+        `<div class="loading-more">Loading Chats...</div>`
+      );
+    }
+    this._loading = false;
   }
-  this._loading = false;
-}
 
 
 
   async render_new_content(rooms) {
-  for (const element of rooms) {
-    // build the same profile object you do in setup_rooms…
-    let profile = {
-      contact: element.contact,
-      user: this.user,
-      user_email: this.user_email,
-      is_admin: this.is_admin,
-      room: element.room,
-      room_type: element.type,
-      last_message: element.last_message,
-      send_date: element.send_date,
-      platform: element.platform,
-      room_name: element.room_name,
-      last_message_number: element.last_message_number,
-      user_unread_messages: element.user_unread_messages
-    };
+    for (const element of rooms) {
+      // build the same profile object you do in setup_rooms…
+      let profile = {
+        contact: element.contact,
+        user: this.user,
+        user_email: this.user_email,
+        is_admin: this.is_admin,
+        room: element.room,
+        room_type: element.type,
+        last_message: element.last_message,
+        send_date: element.send_date,
+        platform: element.platform,
+        room_name: element.room_name,
+        last_message_number: element.last_message_number,
+        user_unread_messages: element.user_unread_messages
+      };
 
-    // instantiate & render
-    const chatRoom = new ChatRoom({
-      $wrapper: this.$wrapper,
-      $chat_rooms_container: this.$chat_rooms_group_container,
-      element: profile,
-    });
-    chatRoom.render("append");
-    this.chat_room_groups.push([profile.room, chatRoom]);
+      // instantiate & render
+      const chatRoom = new ChatRoom({
+        $wrapper: this.$wrapper,
+        $chat_rooms_container: this.$chat_rooms_group_container,
+        element: profile,
+      });
+      chatRoom.render("append");
+      this.chat_room_groups.push([profile.room, chatRoom]);
+    }
   }
-}
 
 
   check_if_more_results() {
-  // recalc how many remain
-  this.rest_of_results = this.num_of_results - this.offset;
+    // recalc how many remain
+    this.rest_of_results = this.num_of_results - this.offset;
 
-  // remove any old loader
-  this.$chat_rooms_group_container.find(".loading-more").remove();
+    // remove any old loader
+    this.$chat_rooms_group_container.find(".loading-more").remove();
 
-  // if still more, append a loader div
-  if (this.rest_of_results > 0) {
-    this.$chat_rooms_group_container.append(
-      `<div class="loading-more">Loading Chats...</div>`
-    );
+    // if still more, append a loader div
+    if (this.rest_of_results > 0) {
+      this.$chat_rooms_group_container.append(
+        `<div class="loading-more">Loading Chats...</div>`
+      );
+    }
   }
-}
 
 
   get_pin_cookie() {
@@ -734,9 +798,22 @@ async render_messages(signal = null) {
     return false;
   }
 
-  render() {
-    this.$wrapper.html(this.$chat_list);
-    // this.setup_events();
+ render() {
+  if (FRAPPE_MAJOR_VERSION == 16) {
+  this.ready.then(() => {
+    let $view = this.$wrapper.find(".chat-view");
+
+    if (!$view.length) {
+      $view = $("<div class='chat-view'></div>");
+      this.$wrapper.append($view);
+    }
+
+    $view.empty().append(this.$chat_list);
+  });}
+  else{
+  this.$wrapper.html(this.$chat_list);
+  // this.setup_events();
+  }
   }
 
   create_new_room(profile) {

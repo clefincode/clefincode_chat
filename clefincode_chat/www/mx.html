@@ -1,0 +1,821 @@
+{% extends "templates/web.html" %}
+{% block content %}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>ERPNext Address Book</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card-bg: #ffffff;
+      --border: #e0e3ee;
+      --accent: #4c6fff;
+      --accent-soft: rgba(76, 111, 255, 0.08);
+      --text-main: #1f2933;
+      --text-muted: #6b7280;
+      --badge-user: #dbf4ff;
+      --badge-emp: #e0f7ec;
+      --badge-cust: #fff5db;
+      --badge-supp: #ffe4ea;
+      --shadow-soft: 0 10px 25px rgba(15, 23, 42, 0.08);
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      background: var(--bg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text-main);
+    }
+
+    .address-book-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .ab-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ab-title {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .ab-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .ab-header-right {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .ab-search {
+      position: relative;
+      min-width: 220px;
+    }
+
+    .ab-search input {
+      width: 100%;
+      padding: 6px 10px;
+      padding-left: 28px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 13px;
+      outline: none;
+      background: #fff;
+    }
+
+    .ab-search-icon {
+      position: absolute;
+      top: 50%;
+      left: 10px;
+      transform: translateY(-50%);
+      font-size: 13px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .ab-filter-select,
+    .ab-toggle {
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      font-size: 12px;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    .ab-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 900px) {
+      .ab-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .ab-card {
+      background: var(--card-bg);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-soft);
+      border: 1px solid var(--border);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .ab-list-header,
+    .ab-section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .ab-list-title,
+    .ab-section-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .ab-list-count {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .ab-list {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      background: #fff;
+      overflow: hidden;
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ab-list-header-row,
+    .ab-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
+      gap: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      align-items: center;
+    }
+
+    .ab-list-header-row {
+      background: #f9fafb;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .ab-list-scroll {
+      overflow: auto;
+      flex: 1;
+    }
+
+    .ab-row {
+      border-bottom: 1px solid #f1f2f6;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+
+    .ab-row:last-child {
+      border-bottom: none;
+    }
+
+    .ab-row:hover {
+      background: #f5f7ff;
+    }
+
+    .ab-row.selected {
+      background: var(--accent-soft);
+      border-left: 3px solid var(--accent);
+      padding-left: 7px;
+    }
+
+    .ab-name {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .ab-email,
+    .ab-phone {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ab-badge-row {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .ab-badge {
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .badge-user {
+      background: var(--badge-user);
+      color: #035388;
+    }
+
+    .badge-emp {
+      background: var(--badge-emp);
+      color: #146c43;
+    }
+
+    .badge-cust {
+      background: var(--badge-cust);
+      color: #92400e;
+    }
+
+    .badge-supp {
+      background: var(--badge-supp);
+      color: #9d174d;
+    }
+
+    .ab-kv {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .ab-kv-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .ab-kv-value {
+      font-size: 13px;
+    }
+
+    .ab-detail-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.7fr);
+      gap: 12px;
+    }
+
+    @media (max-width: 700px) {
+      .ab-detail-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .ab-section {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+
+    .ab-section + .ab-section {
+      margin-top: 4px;
+    }
+
+    .ab-section-heading {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .ab-section-note {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .ab-pill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .ab-pill {
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ab-link {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .ab-link:hover {
+      text-decoration: underline;
+    }
+
+    .ab-empty {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 24px 8px;
+    }
+
+    .ab-chip {
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #eef2ff;
+      font-size: 11px;
+      color: #3730a3;
+    }
+
+    .ab-flag-muted {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .ab-error {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+<div class="address-book-wrapper" id="erpnext-address-book">
+  <div class="ab-header">
+    <div>
+      <div class="ab-title">Address Book</div>
+      <div class="ab-subtitle">
+        Unified view of Contacts, Users, Employees, Customers &amp; Suppliers
+      </div>
+    </div>
+    <div class="ab-header-right">
+      <div class="ab-search">
+        <span class="ab-search-icon">🔍</span>
+        <input id="ab-search-input" type="text" placeholder="Search name, email, phone…" />
+      </div>
+      <select id="ab-filter-type" class="ab-filter-select">
+        <option value="all">All types</option>
+        <option value="user">Users</option>
+        <option value="employee">Employees</option>
+        <option value="customer">Customers</option>
+        <option value="supplier">Suppliers</option>
+        <option value="no_link">No links</option>
+      </select>
+      <button id="ab-refresh" class="ab-toggle">⟳ Refresh</button>
+    </div>
+  </div>
+
+  <div class="ab-layout">
+    <!-- LEFT: list -->
+    <div class="ab-card">
+      <div class="ab-list-header">
+        <div class="ab-list-title">Contacts</div>
+        <div class="ab-list-count" id="ab-list-count">0 contacts</div>
+      </div>
+      <div class="ab-list">
+        <div class="ab-list-header-row">
+          <div>Name &amp; Email</div>
+          <div>Types</div>
+          <div>Phone</div>
+        </div>
+        <div class="ab-list-scroll" id="ab-list"></div>
+      </div>
+      <div id="ab-error" class="ab-error" style="display:none;"></div>
+    </div>
+
+    <!-- RIGHT: details -->
+    <div class="ab-card">
+      <div class="ab-section-header">
+        <div class="ab-section-title">Contact details</div>
+        <div id="ab-selected-name" class="ab-flag-muted">Select a contact to view details</div>
+      </div>
+      <div id="ab-detail-container">
+        <div class="ab-empty">No contact selected.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    // Simple in-memory state
+    let allContacts = [];
+    let filteredContacts = [];
+    let selectedContactName = null;
+
+    const els = {
+      list: document.getElementById("ab-list"),
+      listCount: document.getElementById("ab-list-count"),
+      search: document.getElementById("ab-search-input"),
+      filterType: document.getElementById("ab-filter-type"),
+      refresh: document.getElementById("ab-refresh"),
+      error: document.getElementById("ab-error"),
+      selectedName: document.getElementById("ab-selected-name"),
+      detailContainer: document.getElementById("ab-detail-container"),
+    };
+
+    function setError(msg) {
+      if (!els.error) return;
+      if (msg) {
+        els.error.textContent = msg;
+        els.error.style.display = "block";
+      } else {
+        els.error.style.display = "none";
+        els.error.textContent = "";
+      }
+    }
+
+    function formatContactName(c) {
+      if (c.full_name) return c.full_name;
+      const parts = [];
+      if (c.first_name) parts.push(c.first_name);
+      if (c.last_name) parts.push(c.last_name);
+      return parts.join(" ") || c.name || "Unnamed";
+    }
+
+    function computeContactTypes(contact) {
+      const types = {
+        is_user: false,
+        is_employee: false,
+        is_customer: false,
+        is_supplier: false,
+      };
+
+      if (contact.user) {
+        types.is_user = true;
+      }
+
+      if (Array.isArray(contact.links)) {
+        contact.links.forEach((link) => {
+          if (!link.link_doctype) return;
+          const dt = link.link_doctype.toLowerCase();
+          if (dt === "employee") types.is_employee = true;
+          if (dt === "customer") types.is_customer = true;
+          if (dt === "supplier") types.is_supplier = true;
+        });
+      }
+
+      return types;
+    }
+
+    function renderList() {
+      const q = (els.search.value || "").toLowerCase();
+      const filterType = els.filterType.value;
+
+      filteredContacts = allContacts.filter((c) => {
+        const haystack =
+          (formatContactName(c) + " " + (c.email_id || "") + " " + (c.phone || "") + " " + (c.mobile_no || "")).toLowerCase();
+
+        if (q && haystack.indexOf(q) === -1) {
+          return false;
+        }
+
+        const t = computeContactTypes(c);
+        const hasAnyLink = t.is_user || t.is_employee || t.is_customer || t.is_supplier;
+
+        if (filterType === "user" && !t.is_user) return false;
+        if (filterType === "employee" && !t.is_employee) return false;
+        if (filterType === "customer" && !t.is_customer) return false;
+        if (filterType === "supplier" && !t.is_supplier) return false;
+        if (filterType === "no_link" && hasAnyLink) return false;
+
+        return true;
+      });
+
+      els.list.innerHTML = "";
+
+      if (!filteredContacts.length) {
+        const emptyRow = document.createElement("div");
+        emptyRow.className = "ab-empty";
+        emptyRow.textContent = "No contacts match your filters.";
+        els.list.appendChild(emptyRow);
+      } else {
+        filteredContacts.forEach((c) => {
+          const row = document.createElement("div");
+          row.className = "ab-row";
+          row.dataset.name = c.name;
+
+          if (c.name === selectedContactName) {
+            row.classList.add("selected");
+          }
+
+          const t = computeContactTypes(c);
+
+          row.innerHTML = `
+            <div>
+              <div class="ab-name">${formatContactName(c)}</div>
+              <div class="ab-email">${c.email_id || ""}</div>
+            </div>
+            <div>
+              <div class="ab-badge-row">
+                ${t.is_user ? '<span class="ab-badge badge-user">User</span>' : ""}
+                ${t.is_employee ? '<span class="ab-badge badge-emp">Employee</span>' : ""}
+                ${t.is_customer ? '<span class="ab-badge badge-cust">Customer</span>' : ""}
+                ${t.is_supplier ? '<span class="ab-badge badge-supp">Supplier</span>' : ""}
+                ${!t.is_user && !t.is_employee && !t.is_customer && !t.is_supplier
+                  ? '<span class="ab-badge ab-chip">No link</span>'
+                  : ""}
+              </div>
+            </div>
+            <div>
+              <div class="ab-phone">${c.phone || c.mobile_no || ""}</div>
+            </div>
+          `;
+
+          row.addEventListener("click", () => {
+            selectedContactName = c.name;
+            renderList(); // update row highlight
+            loadContactDetail(c.name);
+          });
+
+          els.list.appendChild(row);
+        });
+      }
+
+      els.listCount.textContent = `${filteredContacts.length} contact${filteredContacts.length === 1 ? "" : "s"}`;
+    }
+
+    function renderDetailSkeleton() {
+      els.selectedName.textContent = "Loading…";
+      els.detailContainer.innerHTML = `
+        <div class="ab-empty">Loading contact details…</div>
+      `;
+    }
+
+    function renderDetail(contact) {
+      const name = formatContactName(contact);
+      els.selectedName.textContent = name;
+
+      const t = computeContactTypes(contact);
+
+      // Use your actual fieldnames here for channels:
+      const channels = [
+        { label: "WhatsApp", value: contact.whatsapp_number, type: "tel", icon: "💬" },
+        { label: "Facebook", value: contact.facebook_profile, type: "url", icon: "📘" },
+        { label: "Telegram", value: contact.telegram_handle, type: "text", icon: "📨" },
+        { label: "LinkedIn", value: contact.linkedin_profile, type: "url", icon: "💼" },
+        { label: "Twitter/X", value: contact.twitter_handle, type: "text", icon: "🐦" },
+        { label: "Website", value: contact.website, type: "url", icon: "🌐" },
+      ].filter((c) => !!c.value);
+
+      const linkBadges = [];
+      if (t.is_user) linkBadges.push('<span class="ab-badge badge-user">User</span>');
+      if (t.is_employee) linkBadges.push('<span class="ab-badge badge-emp">Employee</span>');
+      if (t.is_customer) linkBadges.push('<span class="ab-badge badge-cust">Customer</span>');
+      if (t.is_supplier) linkBadges.push('<span class="ab-badge badge-supp">Supplier</span>');
+      if (!linkBadges.length) linkBadges.push('<span class="ab-badge ab-chip">No system link</span>');
+
+      const linkPills = [];
+      if (Array.isArray(contact.links)) {
+        contact.links.forEach((l) => {
+          if (!l.link_doctype || !l.link_name) return;
+          linkPills.push(
+            `<span class="ab-pill">${l.link_doctype}: ${l.link_name}</span>`
+          );
+        });
+      }
+
+      els.detailContainer.innerHTML = `
+        <div class="ab-detail-grid">
+          <div>
+            <div class="ab-section">
+              <div class="ab-section-heading">
+                <span>Basic info</span>
+              </div>
+              <div class="ab-kv">
+                <div>
+                  <div class="ab-kv-label">Name</div>
+                  <div class="ab-kv-value">${name}</div>
+                </div>
+                <div>
+                  <div class="ab-kv-label">Primary Email</div>
+                  <div class="ab-kv-value">${contact.email_id || "<span class='ab-flag-muted'>—</span>"}</div>
+                </div>
+                <div>
+                  <div class="ab-kv-label">Phone</div>
+                  <div class="ab-kv-value">${contact.phone || "<span class='ab-flag-muted'>—</span>"}</div>
+                </div>
+                <div>
+                  <div class="ab-kv-label">Mobile</div>
+                  <div class="ab-kv-value">${contact.mobile_no || "<span class='ab-flag-muted'>—</span>"}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ab-section">
+              <div class="ab-section-heading">
+                <span>System roles</span>
+                <span>${linkBadges.join(" ")}</span>
+              </div>
+              <div class="ab-kv">
+                <div>
+                  <div class="ab-kv-label">User</div>
+                  <div class="ab-kv-value">
+                    ${contact.user
+                      ? `<span class="ab-pill">${contact.user}</span>`
+                      : "<span class='ab-flag-muted'>No linked User</span>"}
+                  </div>
+                </div>
+                <div>
+                  <div class="ab-kv-label">Links</div>
+                  <div class="ab-pill-list">
+                    ${
+                      linkPills.length
+                        ? linkPills.join("")
+                        : "<span class='ab-flag-muted'>No linked Employee / Customer / Supplier</span>"
+                    }
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="ab-section">
+              <div class="ab-section-heading">
+                <span>Communication channels</span>
+                <span class="ab-section-note">Social &amp; messaging</span>
+              </div>
+              ${
+                channels.length
+                  ? `
+                    <div class="ab-kv">
+                      ${channels
+                        .map((ch) => {
+                          if (ch.type === "url") {
+                            return `
+                              <div>
+                                <div class="ab-kv-label">${ch.icon} ${ch.label}</div>
+                                <div class="ab-kv-value">
+                                  <a class="ab-link" href="${ch.value}" target="_blank" rel="noopener noreferrer">${ch.value}</a>
+                                </div>
+                              </div>`;
+                          } else {
+                            return `
+                              <div>
+                                <div class="ab-kv-label">${ch.icon} ${ch.label}</div>
+                                <div class="ab-kv-value">${ch.value}</div>
+                              </div>`;
+                          }
+                        })
+                        .join("")}
+                    </div>
+                  `
+                  : `<div class="ab-empty">No channels set for this contact. Add WhatsApp, Facebook, etc. to the Contact fields.</div>`
+              }
+            </div>
+
+            <div class="ab-section">
+              <div class="ab-section-heading">
+                <span>Meta</span>
+              </div>
+              <div class="ab-kv">
+                <div>
+                  <div class="ab-kv-label">Contact ID</div>
+                  <div class="ab-kv-value">${contact.name}</div>
+                </div>
+                <div>
+                  <div class="ab-kv-label">Last updated</div>
+                  <div class="ab-kv-value">${contact.modified || "<span class='ab-flag-muted'>—</span>"}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function loadContacts() {
+      if (!window.frappe || !frappe.call) {
+        setError("frappe.call is not available. Please use this page inside ERPNext.");
+        return;
+      }
+
+      setError(null);
+      els.list.innerHTML = '<div class="ab-empty">Loading contacts…</div>';
+      els.detailContainer.innerHTML = '<div class="ab-empty">No contact selected.</div>';
+      els.selectedName.textContent = "Select a contact to view details";
+      selectedContactName = null;
+
+      frappe.call({
+        method: "frappe.client.get_list",
+        args: {
+          doctype: "Contact",
+          fields: [
+            "name",
+            "first_name",
+            "last_name",
+            "full_name",
+            "email_id",
+            "phone",
+            "mobile_no",
+            "user",
+            "modified"
+          ],
+          limit_page_length: 500,
+          order_by: "modified desc",
+        },
+        callback: function (r) {
+          if (r.exc) {
+            console.error(r.exc);
+            setError("Failed to load contacts. Check console for details.");
+            return;
+          }
+          allContacts = r.message || [];
+          renderList();
+        },
+        error: function (err) {
+          console.error(err);
+          setError("Error while loading contacts from server.");
+        },
+      });
+    }
+
+    function loadContactDetail(name) {
+      if (!window.frappe || !frappe.call) return;
+      renderDetailSkeleton();
+
+      frappe.call({
+        method: "frappe.client.get",
+        args: {
+          doctype: "Contact",
+          name: name,
+        },
+        callback: function (r) {
+          if (r.exc) {
+            console.error(r.exc);
+            els.detailContainer.innerHTML = '<div class="ab-empty">Failed to load contact details.</div>';
+            els.selectedName.textContent = "Error loading";
+            return;
+          }
+          const contact = r.message || {};
+          renderDetail(contact);
+        },
+        error: function (err) {
+          console.error(err);
+          els.detailContainer.innerHTML = '<div class="ab-empty">Error while loading contact details.</div>';
+          els.selectedName.textContent = "Error loading";
+        },
+      });
+    }
+
+    function bindEvents() {
+      if (els.search) {
+        els.search.addEventListener("input", function () {
+          renderList();
+        });
+      }
+
+      if (els.filterType) {
+        els.filterType.addEventListener("change", function () {
+          renderList();
+        });
+      }
+
+      if (els.refresh) {
+        els.refresh.addEventListener("click", function () {
+          loadContacts();
+        });
+      }
+    }
+
+    // Initialize when DOM is ready AND frappe is ready (if available)
+    function initWhenReady() {
+      bindEvents();
+      if (window.frappe && frappe.after_ajax) {
+        frappe.after_ajax(loadContacts);
+      } else {
+        loadContacts();
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initWhenReady);
+    } else {
+      initWhenReady();
+    }
+  })();
+</script>
+</body>
+</html>
+{% endblock %}
