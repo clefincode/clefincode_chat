@@ -1,14 +1,4 @@
-let FRAPPE_MAJOR_VERSION = null;
 
-async function initFrappeVersion() {
-  if (FRAPPE_MAJOR_VERSION !== null) return;
-
-  const r = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_1.api.get_frappe_major_version"
-  });
-
-  FRAPPE_MAJOR_VERSION = r.message;
-}
 export default class ChatBubble {
   // the parent is the app object
   constructor(parent) {
@@ -22,7 +12,7 @@ export default class ChatBubble {
     this.open_title = this.parent.is_admin ? __("Show Chats") : chat_icon;
     this.closed_title = __("Close Chat");
     let bubble_visible;
-    if (FRAPPE_MAJOR_VERSION == 16) {
+    if (this.parent.frappe_version == 16) {
       if (this.parent.is_desk) {
         if (frappe.router && frappe.get_route) {
           const route = frappe.get_route();
@@ -61,7 +51,7 @@ export default class ChatBubble {
   render() {
     this.parent.$chat_right_section.append(this.$chat_bubble);
     this.setup_events();
-    if (FRAPPE_MAJOR_VERSION == 16) {this.handle_version_visibility();}
+    if (this.parent.frappe_version == 16) {this.handle_version_visibility();}
   }
 
   disk_chat_icon(){
@@ -72,9 +62,8 @@ export default class ChatBubble {
     this.parent.show_chat_widget();
   }
   async handle_version_visibility() {
-  await initFrappeVersion();
 
-  if (FRAPPE_MAJOR_VERSION == 16 ) {
+  if (this.parent.frappe_version == 16 ) {
     const path = window.location.pathname;
     const is_desk_root = path === "/desk";
 
@@ -128,6 +117,7 @@ export default class ChatBubble {
   setup_events() {
     const me = this;
     $("#chat-bubble, .chat-cross-button").on("click", () => {
+      $("#chat-bubble").hide();
       me.portal_chat_icon();
     });
   }
