@@ -4470,6 +4470,7 @@ async rebuildMessage(messageName) {
         await me.make_messages_html(res.results, 1);
         me.$chat_space_container.prepend(me.message_html);
         me.resolvePendingReplies();
+        me.hydrateReactionsForMessages(res.results);
         if (res.results.length != 0) {
           me.$chat_space_container.off("scroll");
           me.$chat_space_container.scrollTop(300);
