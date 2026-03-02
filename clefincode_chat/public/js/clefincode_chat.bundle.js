@@ -259,7 +259,7 @@ async boot() {
         </li>
     `;
     } else {
-      const navbar_icon_html = `
+      navbar_icon_html = `
         <li class='nav-item dropdown dropdown-notifications 
         dropdown-mobile chat-navbar-icon' title="Show Chats" >
           <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">

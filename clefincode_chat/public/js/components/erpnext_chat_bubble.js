@@ -13,11 +13,12 @@ export default class ChatBubble {
     let bubble_visible;
     if (this.parent.frappe_version == 16) {
       if (this.parent.is_desk) {
-        if (frappe.router && frappe.get_route) {
-          const route = frappe.get_route();
-          const is_desk_root = route.length === 0;
+           if (frappe.router && frappe.get_route) {
+          const route = frappe.get_route();        
+          const safe_route = Array.isArray(route) ? route : [];
+          const is_desk_root = safe_route.length === 0;
           bubble_visible = is_desk_root ? "d-none" : "";
-        } else {
+        }  else {
           // fallback for v15
           bubble_visible = this.parent.is_desk === true ? "d-none" : "";
         }
@@ -73,10 +74,14 @@ export default class ChatBubble {
     }
 
     // Handle SPA navigation in v16
-    if (frappe.router) {
+      if (frappe.router) {
       frappe.router.on("change", () => {
-        const route = frappe.get_route() || [];
-        const is_desk_root = route.length === 1 && route[0] === "";
+        const route = frappe.get_route();
+        const safe_route = Array.isArray(route) ? route : [];
+
+        const is_desk_root =
+            safe_route.length === 0 ||
+            (safe_route.length === 1 && safe_route[0] === "");
 
 
 
