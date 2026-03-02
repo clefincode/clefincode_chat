@@ -7138,8 +7138,7 @@ def delete_chat_message(message_name, user_email):
 
         if time_diff > (max_delete_time * 60):
             frappe.throw("Editing time has expired for this message.")
-        if msg.is_edited:
-            frappe.throw("This message has already been edited and cannot be edited again.")
+       
     new_message = frappe.get_doc(
             {
                 "doctype": "CiC Backup Chat Message",

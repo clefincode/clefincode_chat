@@ -23,7 +23,6 @@ export default class ChatList {
     this.time_zone = opts.time_zone;
     this.user_type = opts.user_type;
     this.is_limited_user = opts.is_limited_user;
-
     this.is_pined = this.get_pin_cookie();
     this.is_open = 1;
     this.limit = 10;
@@ -157,7 +156,6 @@ export default class ChatList {
     </div>
   `;
     }
-
     this.$chat_list.append(chat_list_header_html);
   }
 
@@ -274,7 +272,6 @@ export default class ChatList {
     await this.setup_search();
     this.chat_room_groups = [];
     this.room_groups.forEach((element) => {
-
       let profile = {
         user: this.user,
         user_email: this.user_email,
@@ -452,16 +449,32 @@ export default class ChatList {
       });
       erpnext_chat_app.chat_contact_list.render();
     });
-    }
 
-    $(".support-icon").on("click", async function () {
+    $(".new-chat").on("click", function () {
+      me.is_open = 0;
+      erpnext_chat_app.chat_contact_list = new ChatContactList({
+        $wrapper: me.$wrapper,
+        profile: {
+          user: me.user,
+          user_email: me.user_email,
+          is_admin: me.is_admin,
+          time_zone: me.time_zone,
+          user_type: me.user_type,
+          is_limited_user: me.is_limited_user,
+        },
+        new_group: 0,
+      });
+      erpnext_chat_app.chat_contact_list.render();
+    });
+
+    $(".support-icon").on("click", async function () { 
       const room = await check_if_website_user_has_support_channel(me.user_email);
       let chat_window ;
       if(room){
         if (check_if_chat_window_open(room , "room")){
           $(".expand-chat-window[data-id|='"+room+"']").click();
           return
-        }
+          }
         chat_window = new ChatWindow({
           profile: {
             room: room,
@@ -471,14 +484,14 @@ export default class ChatList {
         if (check_if_chat_window_open("ClefinCode Support" , "contact")){
           $(".expand-chat-window[data-id|='ClefinCode Support']").click();
           return
-        }
+          }
         chat_window = new ChatWindow({
           profile: {
             contact:"ClefinCode Support",
           },
         });
       }
-
+      
 
       let profile = {
         is_admin: me.is_admin,
@@ -500,7 +513,7 @@ export default class ChatList {
         profile: profile,
       });
 
-    });
+    });    
 
     // ─────── infinite‐scroll for channels ───────
     this.$chat_rooms_group_container.on("scroll", () => {
@@ -536,6 +549,7 @@ export default class ChatList {
       frappe.realtime.off("remove_group_member");
     });
   }
+}
 
   setup_socketio() {
     const me = this;

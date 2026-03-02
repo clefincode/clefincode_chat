@@ -1,4 +1,3 @@
-
 export default class ChatBubble {
   // the parent is the app object
   constructor(parent) {

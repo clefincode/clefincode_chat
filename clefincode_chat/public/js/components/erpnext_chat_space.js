@@ -104,7 +104,149 @@ export default class ChatSpace {
     this.messageCache = new Map();
     this.setup();
   }
-  
+ parseReactionsFromReactionsJson(reactions_json) {
+  try {
+    if (!reactions_json) return { reactions: [], emoji_counts: {} };
+
+    const parsed = JSON.parse(reactions_json);
+
+    const root = Array.isArray(parsed) ? (parsed[0] || {}) : parsed;
+
+    const reactions = root.reactions || [];
+    const emoji_counts = (root.emoji_summary && root.emoji_summary.emoji_details) ? root.emoji_summary.emoji_details : {};
+
+    return { reactions, emoji_counts };
+  } catch (e) {
+    return { reactions: [], emoji_counts: {} };
+  }
+}
+
+async getReactionsForDialog(messageName) {
+  const cached = this.messageCache.get(messageName) || {};
+
+  if (cached.reactions_payload) {
+    const { reactions, emoji_counts } = this.normalizeReactionsPayload(cached.reactions_payload);
+    return { reactions: reactions || [], emoji_counts: emoji_counts || {} };
+  }
+
+  if (cached.reactions_json) {
+    return this.parseReactionsFromReactionsJson(cached.reactions_json);
+  }
+
+  const payload = await this.getReactions(messageName);
+  cached.reactions_payload = payload;
+  this.messageCache.set(messageName, cached);
+
+  const { reactions, emoji_counts } = this.normalizeReactionsPayload(payload);
+  return { reactions: reactions || [], emoji_counts: emoji_counts || {} };
+}
+renderReactionsFromJson(messageName, reactions_json) {
+  const { reactions, emoji_counts } = this.parseReactionsFromReactionsJson(reactions_json);
+  this.renderReactions(messageName, { data: { reactions, emoji_counts } });
+}
+async openReactionsDialog(messageName, initialEmoji = null) {
+  const { reactions, emoji_counts } = await this.getReactionsForDialog(messageName);
+
+  const items = (reactions || []).map(r => ({
+    emoji: r.emoji,
+    sender: r.emoji_sender || r.sender || "",
+    send_date: r.send_date || ""
+  }));
+
+  if (!items.length) {
+    frappe.msgprint("No reactions yet.");
+    return;
+  }
+
+  const emojis = Object.keys(emoji_counts || {});
+  const hasInitial = initialEmoji && emojis.includes(initialEmoji);
+
+  let currentFilter = hasInitial ? initialEmoji : null; // null = All
+
+  const renderEmoji = (emo) =>
+    (window.emojione && emojione.toImage) ? emojione.toImage(emo) : emo;
+
+  const uniqueEmails = [...new Set(items.map(x => x.sender).filter(Boolean))];
+  const nameMap = {};
+  await Promise.all(uniqueEmails.map(async (email) => {
+    try {
+      nameMap[email] = (email === this.profile.user_email)
+        ? "You"
+        : (await get_profile_full_name(email) || email);
+    } catch {
+      nameMap[email] = email;
+    }
+  }));
+
+  const filtersHtml = `
+    <div class="rx-filters" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+      <button type="button" class="rx-filter btn btn-sm ${currentFilter ? "btn-default" : "btn-primary"}" data-emoji="">
+        All <b>${items.length}</b>
+      </button>
+
+      ${emojis.map(emo => `
+        <button type="button" class="rx-filter btn btn-sm ${currentFilter === emo ? "btn-primary" : "btn-default"}" data-emoji="${frappe.utils.escape_html(String(emo))}">
+          ${renderEmoji(emo)} <b>${emoji_counts[emo] ?? 0}</b>
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  const d = new frappe.ui.Dialog({
+    title: "Reactions",
+    size: "small",
+    fields: [
+      {
+        fieldtype: "HTML",
+        fieldname: "rx_body",
+        options: `
+          ${filtersHtml}
+          <div class="rx-list" style="max-height:360px; overflow:auto; padding-right:6px;"></div>
+        `
+      }
+    ],
+    primary_action_label: "Close",
+    primary_action() { d.hide(); }
+  });
+
+  const renderList = () => {
+    const filtered = currentFilter
+      ? items.filter(x => x.emoji === currentFilter)
+      : items;
+
+    filtered.sort((a, b) => (b.send_date || "").localeCompare(a.send_date || ""));
+
+    const rows = filtered.map(x => {
+      const displayName = frappe.utils.escape_html(nameMap[x.sender] || x.sender || "");
+      const when = frappe.utils.escape_html(x.send_date || "");
+      return `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #eee;">
+          <div style="width:28px; text-align:center; font-size:18px;">${renderEmoji(x.emoji)}</div>
+          <div style="flex:1; min-width:0;">
+            <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayName}</div>
+            ${when ? `<div style="font-size:11px; opacity:.7;">${when}</div>` : ``}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    d.$wrapper.find(".rx-list").html(rows || `<div style="opacity:.7;">No reactions</div>`);
+  };
+
+  d.show();
+  renderList();
+
+  d.$wrapper.on("click", ".rx-filter", (e) => {
+    const emo = $(e.currentTarget).data("emoji");
+    currentFilter = emo ? String(emo) : null;
+
+    d.$wrapper.find(".rx-filter").removeClass("btn-primary").addClass("btn-default");
+    $(e.currentTarget).removeClass("btn-default").addClass("btn-primary");
+
+    renderList();
+  });
+}
+
   stripHtml(html) {
   const div = document.createElement("div");
   div.innerHTML = html || "";
@@ -170,7 +312,7 @@ $menu.on("click", ".emoji-item", async (e) => {
 
   try {
     await this.saveReaction(messageName, emoji);
-    await this.fetchAndRenderReactions(messageName);
+   // await this.fetchAndRenderReactions(messageName);
   } finally {
     this.closeEmojiMenu();
   }
@@ -543,8 +685,15 @@ async fetchAndRenderReactions(messageName) {
   }
 }
 async hydrateReactionsForMessages(messages_list = []) {
-  const names = messages_list.map(m => m.message_name).filter(Boolean);
-  await Promise.all(names.map(n => this.fetchAndRenderReactions(n)));
+  // const names = messages_list.map(m => m.message_name).filter(Boolean);
+  // await Promise.all(names.map(n => this.fetchAndRenderReactions(n)));
+   (messages_list || []).forEach(m => {
+    if (!m?.message_name) return;
+    if (m.reactions_json) {
+      this.renderReactionsFromJson(m.message_name, m.reactions_json);
+    }
+  });
+
 }
 async fetch_single_message(messageName) {
   const args = {
@@ -1511,8 +1660,52 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
   const $wrapper = $(this).closest("[data-message-name]");
   const messageName = $wrapper.data("message-name");
 
-  const $content = $wrapper.find(".message-bubble p").first();
-  const currentContent = $content.text();
+  const cached = me.messageCache.get(messageName) || {};
+  
+  const isEditedBefore = Number(cached.is_edited || 0) === 1;
+
+  const currentText = (cached.content || "")
+  .replace(/<\/p>\s*<p>/g, "\n")
+  .replace(/<\/?p>/g, "")
+  .trim();
+
+  if (isEditedBefore) {
+   
+    const originalText = me.stripHtml(cached.original_content || "") || "—";
+
+    const d = new frappe.ui.Dialog({
+      title: "Edit Message",
+      fields: [
+        {
+          label: "Original Message",
+          fieldname: "original_message",
+          fieldtype: "Small Text",
+          read_only: 1,
+          default: originalText
+        },
+        {
+          label: "Current Message",
+          fieldname: "current_message",
+          fieldtype: "Small Text",
+          read_only: 1,
+          default: currentText || "—"
+        }
+      ],
+      primary_action_label: "OK",
+      primary_action: () => d.hide()
+    });
+
+    d.show();
+
+    d.$body.prepend(`
+      <div class="alert alert-warning" style="margin-bottom:10px;">
+       Editing is not allowed because it was edited before.
+      </div>
+    `);
+
+    return;
+  }
+
 
   const d = new frappe.ui.Dialog({
     title: "Edit Message",
@@ -1522,38 +1715,64 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
         fieldname: "content",
         fieldtype: "Small Text",
         reqd: 1,
-        default: currentContent
+        default: currentText || ""
       }
     ],
-
     primary_action_label: "Save",
     primary_action: async (values) => {
-
+      const formattedContent = values.content
+      .split("\n")
+      .map(line => `<p>${line.trim()}</p>`)
+      .join("");
       await frappe.call({
         method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
         args: {
           message_name: messageName,
-          new_content: "<p>" + values.content + "</p>"
+          new_content: formattedContent,
         }
       });
+      const $bubble = $wrapper.find(".message-bubble");
 
-      $content.text(values.content);
+      
+      const $actions = $bubble.find(".message-actions").detach();
+
+      
+      $bubble.find("p").remove();
+      $bubble.find(".edited-label").remove();
+
+      
+      // $bubble.contents().filter((_, n) => n.nodeType === 3).remove(); // text nodes
+
+    
+      $bubble.append(formattedContent);
+
+      
+      $bubble.append(`
+        <div class="edited-label" style="
+          font-size:11px;
+          opacity:0.6;
+          margin-top:4px;
+        ">Edited</div>
+      `);
+
+     
+      if ($actions.length) $bubble.append($actions);
+
+ 
+      
+
+        cached.content = formattedContent;
+        cached.is_edited = 1;
+
+        me.messageCache.set(messageName, cached);
 
       d.hide();
     },
-
     secondary_action_label: "Cancel",
-    secondary_action: () => {
-      d.hide();
-    }
+    secondary_action: () => d.hide()
   });
 
   d.show();
-
-
-  setTimeout(() => {
-    d.get_field("content").$input.focus();
-  }, 100);
 });
 
     // Reply button click
@@ -1668,7 +1887,36 @@ this.$chat_space.on("click", ".delete-btn", function (e) {
     }
   );
 });
+this.$chat_space.on("click", ".message-reactions .reaction-chip", async function (e) {
+  e.stopPropagation();
 
+  const $msg = $(this).closest("[data-message-name]");
+  const messageName = $msg.data("message-name");
+  const emoji = $(this).data("emoji"); 
+
+  await me.openReactionsDialog(messageName, emoji);
+});
+
+
+
+this.$chat_space.on("click", ".message-reactions", async function (e) {
+  e.stopPropagation();
+
+ 
+  if ($(e.target).closest(".reaction-chip").length) return;
+
+  const messageName = $(this).closest("[data-message-name]").data("message-name");
+  await me.openReactionsDialog(messageName, null); // All
+});
+
+
+// this.$chat_space.on("click", ".message-reactions .reaction-chip", async function (e) {
+//   e.stopPropagation();
+
+//   const messageName = $(this).closest("[data-message-name]").data("message-name");
+//   const emoji = $(this).data("emoji");
+//   await me.openReactionsDialog(messageName, emoji); // preselect emoji
+// });
   } //End setup_events
 
   async handle_upload_file(file) {
@@ -1992,9 +2240,12 @@ async setup_messages(messages_list) {
        this.messageCache.set(element.message_name, {
         sender: element.sender,
         content: element.content,
+        original_content: element.original_content || null,
+        reactions_json: element.reactions_json || null,
 
         
         is_link: element.is_link || 0,
+        is_edited: element.is_edited ||0,
         is_media: element.is_media || 0,
         is_document: element.is_document || 0,
         is_voice_clip: element.is_voice_clip || 0,
@@ -2010,6 +2261,7 @@ async setup_messages(messages_list) {
         reply_preview_sender: element.reply_preview_sender,
         reply_preview_file_url: element.reply_preview_file_url,
       });
+      
       const reply_preview = {
           type: element.reply_preview_type || null,
           text: element.reply_preview_text || null,
@@ -2018,11 +2270,13 @@ async setup_messages(messages_list) {
           file_url: element.reply_preview_file_url || null,
           file: element.reply_preview_file || null,
           original_message_name:  element.reply_to_message || null,
-          is_edited: element.is_edited || 0,
+          is_edited: element.is_edited ,
         };
+
        
       const message_content = await this.make_message({
         content: element.content,
+        original_content: element.original_content || null,
         time: get_time(
           element.send_date,
           this.profile.time_zone ? this.profile.time_zone : element.time_zone
@@ -2037,7 +2291,7 @@ async setup_messages(messages_list) {
          reply_preview,   
         is_forwarded:element.is_forwarded,
          is_deleted: element.is_deleted,
-          is_edited: element.is_edited || 0,
+          is_edited: element.is_edited ,
 
       });
        
@@ -2067,6 +2321,7 @@ async setup_messages(messages_list) {
         }, 500);
       }
       this.message_html += message_content.prop("outerHTML");
+      
     }
   }
 
@@ -2137,6 +2392,7 @@ async setup_messages(messages_list) {
       is_deleted=0,
       sender_email,
       is_edited=0,
+      original_content= null,
     } = params;
     const $recipient_element = $(document.createElement("div"))
       .addClass(type)
@@ -2243,10 +2499,16 @@ const textLabel = previewText
                previewType === "document" ? "📄" :
                previewType === "voice" ? "🎤" : "↩";
 
+  const isDark = document.documentElement.getAttribute("data-theme-mode") === "dark";
+  console.log("is dark", isDark)
+
+  const bg = isDark ? "transparent" : "#f1f3f5";
+  console.log("the bg", bg)
+
   $message_element.prepend(`
     <div class="reply-link" data-jump="${reply_to_message}" style="
       border-left:3px solid #0d6efd;
-      background:#f1f3f5;
+      background:${bg};
       padding:6px 8px;
       margin-bottom:6px;
       border-radius:6px;
@@ -2273,7 +2535,14 @@ const textLabel = previewText
     this.pendingReplies.push({ host_message: message_name, reply_message: reply_to_message });
   }
 }
+  const isDark = document.documentElement.dataset.themeMode === "dark";
+  const forwardIcon = isDark
+  ? "/assets/clefincode_chat/icons/forward.png"
+  : "/assets/clefincode_chat/icons/forward.svg";
 
+const deleteIcon = isDark
+  ? "/assets/clefincode_chat/icons/delete.png"
+  : "/assets/clefincode_chat/icons/delete.svg";
     // Forward button (hidden by default)
   const $messageActions = $(`
   <div class="message-actions" style="
@@ -2292,13 +2561,13 @@ const textLabel = previewText
       ${frappe.utils.icon("reply", "sm")} Reply
     </span>
     <span class="forward-btn">
-      <img src="/assets/clefincode_chat/icons/forward.svg"
+      <img src="${forwardIcon}"
        width="14" height="14"
        style="margin-left:8px;"> Forward
     </span>
     
     <span class="delete-btn">
-      <img src="/assets/clefincode_chat/icons/delete.svg"
+      <img src="${deleteIcon}"
        width="14" height="14"
        style="margin-left:8px;"> Delete
     </span>
@@ -3535,6 +3804,7 @@ async fetchTemplateSuggestions(textValue) {
       this.messageCache.set(res.message_name, {
         sender: res.sender,
         content: res.content,
+        original_content: res.original_content || null,
         is_link: res.is_link || 0,
         is_media: res.is_media || 0,
         is_document: res.is_document || 0,
@@ -3551,12 +3821,13 @@ async fetchTemplateSuggestions(textValue) {
         reply_preview_sender: res.reply_preview_sender,
         reply_preview_file_url: res.reply_preview_file_url,
         is_deleted:res.is_deleted,
-        is_edited: res.is_edited || 0,
+        is_edited: res.is_edited ,
 
         
       });
       let message_content = await this.make_message({
         content: res.content,
+        original_content: res.original_content || null,
         time: time,
         type: chat_type,
         sender: res.user,
@@ -3885,14 +4156,23 @@ async fetchTemplateSuggestions(textValue) {
       emoji_counts: res.emoji_counts
     }
   });
-
+      const cached = me.messageCache.get(res.message_name) || {};
+        cached.reactions_json = JSON.stringify([{
+          reactions: res.reactions || [],
+          emoji_summary: {
+            total_emojis: Object.values(res.emoji_counts || {}).reduce((a,b)=>a+(b||0), 0),
+            emoji_details: res.emoji_counts || {}
+          }
+        }]);
+        me.messageCache.set(res.message_name, cached);
 }
 
 
     });
   }
   async handleMessageEdit(res) {
-  const { message_name, content } = res;
+  
+  const { message_name, content,original_content } = res;
 
   const $msg = this.$chat_space.find(`#msg-${message_name}`);
   if (!$msg.length) return;
@@ -3924,6 +4204,7 @@ async fetchTemplateSuggestions(textValue) {
   if (cached) {
     cached.content = content;
     cached.is_edited = 1;
+    cached.original_content=original_content;
     this.messageCache.set(message_name, cached);
   }
 }
@@ -4014,6 +4295,7 @@ async rebuildMessage(messageName) {
 
   const rebuilt = await this.make_message({
     content: msg.content,
+    original_content: msg.original_content || null,
     time: get_time(msg.send_date, this.profile.time_zone),
     type: message_type,
     sender: msg.sender,
@@ -4028,7 +4310,7 @@ async rebuildMessage(messageName) {
 
     },
     is_forwarded: msg.is_forwarded,
-     is_edited: msg.is_edited || 0,
+     is_edited: msg.is_edited ,
   });
 
   const $old = this.$chat_space.find(`#msg-${messageName}`);
