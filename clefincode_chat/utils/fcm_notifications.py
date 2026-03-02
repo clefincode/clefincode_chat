@@ -120,8 +120,7 @@ def send_notification_log_via_firebase(registration_token,platform = None , body
                     )
                 )
             )
-            response = messaging.send(message1)
-            frappe.log_error("FCM SUCCESS RESPONSE", response)
+            messaging.send(message1)   
             
         except Exception as e:
             frappe.log_error(f"IOS Error in sending notifications: {str(e)}")

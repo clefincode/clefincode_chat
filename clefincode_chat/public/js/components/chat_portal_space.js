@@ -778,7 +778,6 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
         this.profile.room
       );
       const res = await get_messages(this.profile.room);
-      console.log(res);
       await this.setup_messages(res);
     }
   }
@@ -810,6 +809,7 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
     $(document).off(".portal");
     this.$chatbot_space.find(".close-chat-window").on("click", function () {
       me.chat_bubble.portal_chat_icon();
+      $("#chat-bubble").fadeIn(150);
     });
 
     this.$chatbot_action.find(".message-send-button").on("click", function () {

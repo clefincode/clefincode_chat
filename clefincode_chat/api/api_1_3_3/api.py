@@ -4029,56 +4029,92 @@ def sync_with_chat_profile(doc , method):
         chat_profile.save(ignore_permissions=True)       
 # ==========================================================================================
 @frappe.whitelist()
-def get_names_for_mentions(search_term, room = None):
+def get_names_for_mentions(search_term, room=None):
+   
+
+    # Detect Frappe version
+    frappe_version = version.parse(frappe.__version__)
+    is_v16_or_above = frappe_version >= version.parse("16.0.0")
+
     if ":" in search_term and get_user_type() == "system_user" and not is_limited_user(frappe.session.user):
+
         doctype_name_or_abbr = search_term.split(":")[0]
-        shortcuts = frappe.db.get_all("ClefinCode DocType Shortcut" , filters = {"parent" : "ClefinCode Chat Settings"}, fields =["shortcut" , "doctype_name"], order_by = "`idx` DESC")
-        
-        shorcut_exist = None
+
+        # ✅ order_by compatible with both versions
+        order_by_clause = "idx desc" if is_v16_or_above else "`idx` DESC"
+
+        shortcuts = frappe.db.get_all(
+            "ClefinCode DocType Shortcut",
+            filters={"parent": "ClefinCode Chat Settings"},
+            fields=["shortcut", "doctype_name"],
+            order_by=order_by_clause
+        )
+
+        shortcut_exist = False
+        doctype_name = doctype_name_or_abbr
+
         if shortcuts:
             for item in shortcuts:
-                if item.shortcut.lower() == doctype_name_or_abbr.lower():
-                    doctype_name = item.doctype_name
-                    shorcut_exist = True
+                if item.get("shortcut", "").lower() == doctype_name_or_abbr.lower():
+                    doctype_name = item.get("doctype_name")
+                    shortcut_exist = True
                     break
-            if not shorcut_exist:
-                doctype_name = doctype_name_or_abbr
-        else:
-            doctype_name = doctype_name_or_abbr     
-        
-        doctype_list = frappe.get_all("DocType" , "name")
-        if any(doctype['name'] == doctype_name.title() for doctype in doctype_list):
-            doc_name = search_term.split(":")[1].lower().strip()
-            reocrds_list = []
-            meta = frappe.get_meta(doctype_name.title())
-            field_title = meta.title_field if meta and meta.title_field else None          
-            records = frappe.get_all(doctype_name.title() , fields = ["name" , field_title] , as_list = True) 
-            
-            for r in records:
-                compare_with = f"{r[0]}:{r[1]}" if field_title else f"{r[0]}"                   
-                if doc_name and doc_name not in compare_with.lower():
-                    continue
-                reocrds_list.append({
-                    "id": r[0] , 
-                    "name" : r[0] , 
-                    "value" : f"<b><span class='doc-id'>{r[0]}</span></b><br><span class='doc-title'>{r[1]}</span>" if field_title else f"{r[0]}" , 
-                    "is_doctype" : 1 , 
-                    "doctype": doctype_name.title(),
-                    "link": frappe.utils.get_url_to_form(doctype_name.title(), r[0])
-                    })                                                   
-           
-            return reocrds_list
+
+        # Check Doctype existence safely
+        if not frappe.db.exists("DocType", doctype_name.title()):
+            return []
+
+        doc_name = search_term.split(":")[1].lower().strip()
+        records_list = []
+
+        meta = frappe.get_meta(doctype_name.title())
+        field_title = meta.title_field if meta and meta.title_field else None
+
+        fields = ["name"]
+        if field_title:
+            fields.append(field_title)
+
+        records = frappe.get_all(
+            doctype_name.title(),
+            fields=fields,
+            as_list=True
+        )
+
+        for r in records:
+            name = r[0]
+            title = r[1] if field_title and len(r) > 1 else ""
+
+            compare_with = f"{name}:{title}" if field_title else name
+
+            if doc_name and doc_name not in compare_with.lower():
+                continue
+
+            records_list.append({
+                "id": name,
+                "name": name,
+                "value": (
+                    f"<b><span class='doc-id'>{name}</span></b><br>"
+                    f"<span class='doc-title'>{title}</span>"
+                    if field_title else name
+                ),
+                "is_doctype": 1,
+                "doctype": doctype_name.title(),
+                "link": frappe.utils.get_url_to_form(doctype_name.title(), name)
+            })
+
+        return records_list
+
     else:
         users_for_mentions = get_users_for_mentions(room)
 
-        filtered_mentions = []
-        for mention_data in users_for_mentions:
-            if search_term.lower() not in mention_data.value.lower():
-                continue
+        filtered_mentions = [
+            mention_data
+            for mention_data in users_for_mentions
+            if search_term.lower() in mention_data.get("value", "").lower()
+        ]
 
-            filtered_mentions.append(mention_data)
-        return sorted(filtered_mentions, key=lambda d: d["value"])
-# ==========================================================================================
+        return sorted(filtered_mentions, key=lambda d: d.get("value", ""))
+# ==========================================================================================================
 def get_users_for_mentions(room = None):
     excepted_users_list = []
     excepted_users_list.append("Administrator")
@@ -7684,7 +7720,6 @@ def edit_chat_message(message_name, new_content):
                     "────────────\n"
                     f"*New:*\n{new_content}"
                 )
-
                 process_whatsapp_message(
                     member.platform_gateway,
                     member.user,
@@ -8029,3 +8064,15 @@ def _append_channel_child_identity_condition(
         f"WHERE {' AND '.join(exists_parts)}"
         ")"
     )
+@frappe.whitelist(allow_guest=True)
+def get_frappe_major_version():
+    """
+    Returns the major version of installed Frappe
+    Example: 16 (from 16.6.0)
+    """
+    try:
+        version = frappe.__version__  # e.g. "16.6.0"
+        major = int(version.split(".")[0])
+        return major
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Get Frappe Version Error")

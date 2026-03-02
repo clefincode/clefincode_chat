@@ -2204,9 +2204,6 @@ async setup_messages(messages_list) {
   }
 
   async make_messages_html(messages_list, scroll = 0) {
-       console.log("messages_list");
-    console.log(messages_list);
-   
     if (!this.prevMessage) {
       this.prevMessage = {};
     }
@@ -3803,7 +3800,6 @@ async fetchTemplateSuggestions(textValue) {
       this.messages_offset = 0;
       await this.fetch_and_setup_messages();
     } else {
-
     
       this.messageCache.set(res.message_name, {
         sender: res.sender,
@@ -4474,6 +4470,7 @@ async rebuildMessage(messageName) {
         await me.make_messages_html(res.results, 1);
         me.$chat_space_container.prepend(me.message_html);
         me.resolvePendingReplies();
+        me.hydrateReactionsForMessages(res.results);
         if (res.results.length != 0) {
           me.$chat_space_container.off("scroll");
           me.$chat_space_container.scrollTop(300);

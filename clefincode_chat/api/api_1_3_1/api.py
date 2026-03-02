@@ -114,6 +114,20 @@ def login(email , password):
             
     else:    
         return [{"status":0,"description":"User doesn't exist","data":None}]
+#==============================================================
+@frappe.whitelist(allow_guest=True)
+def get_frappe_major_version():
+    """
+    Returns the major version of installed Frappe
+    Example: 16 (from 16.6.0)
+    """
+    try:
+        version = frappe.__version__  # e.g. "16.6.0"
+        major = int(version.split(".")[0])
+        return major
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Get Frappe Version Error")
+        return 0
 # ==========================================================================================
 @frappe.whitelist()
 def get_versions():   
