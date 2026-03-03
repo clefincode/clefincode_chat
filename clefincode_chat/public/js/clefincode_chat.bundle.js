@@ -13,9 +13,15 @@ async function initFrappeVersion() {
   FRAPPE_MAJOR_VERSION = r.message;
 }
 frappe.ErpnextChat = class {
-  constructor() {
-    this.setup_app();
-  }
+constructor() {
+  this.boot();
+}
+
+async boot() {
+  await initFrappeVersion();
+  this.frappe_version = FRAPPE_MAJOR_VERSION;
+  await this.setup_app();
+}
 apply_webview_layout(enable) {
   if (enable) {
     $("body").addClass("cc-chat-webview");
@@ -270,6 +276,7 @@ this.$chat_left_section.append(this.$empty_state);
     );
     let navbar_icon_html;
     if (FRAPPE_MAJOR_VERSION == 16) {
+    
       navbar_icon_html = `
         <li class='nav-item dropdown dropdown-notifications 
         dropdown-mobile chat-navbar-icon' title="Show Chats" style="list-style: none" >
