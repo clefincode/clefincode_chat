@@ -613,7 +613,7 @@ setup_contacts_container_once() {
     .addClass("chat-contacts-container");
 
   
-  if (!this.forward && frappe.model.can_create("ClefinCode Chat Profile")) {
+  if (!this.forward && can_create_dt("ClefinCode Chat Profile")) {
     this.$chat_contacts_container.append(`
       <div class="new-contact">
         ${frappe.get_avatar("avatar-medium", "C")}
@@ -736,25 +736,25 @@ setup_scroll_event() {
       "chat-contacts-container"
     );
 
-    // New Contact button
-    if (frappe.model.can_create("ClefinCode Chat Profile")){
-      this.$chat_contacts_container.append(`
-        <div class="new-contact" style="
-            display:flex;
-            align-items:center;
-            cursor:pointer;
-            padding:10px;
-        ">
-            ${frappe.get_avatar("avatar-medium", "C")}
-            <div class="chat-profile-info" style="margin-left:10px;">
-                <div class="chat-name">New Contact</div>
-            </div>
-        </div>
-      `);
-    }
-    // New Group button (only when not already inside "new_group" mode)
-    if (this.new_group == 0) {
-      const new_group_html = `    
+  // New Contact button
+  if (can_create_dt("ClefinCode Chat Profile")){
+  this.$chat_contacts_container.append(`
+      <div class="new-contact" style="
+          display:flex;
+          align-items:center;
+          cursor:pointer;
+          padding:10px;
+      ">
+          ${frappe.get_avatar("avatar-medium", "C")}
+          <div class="chat-profile-info" style="margin-left:10px;">
+              <div class="chat-name">New Contact</div>
+          </div>
+      </div>
+  `);
+  }
+  // New Group button (only when not already inside "new_group" mode)
+  if (this.new_group == 0) {
+    const new_group_html = `    
       <div class='chat-profile-info'>
           <div class='chat-name'>
             New group
@@ -1056,6 +1056,8 @@ if (FRAPPE_MAJOR_VERSION == 16) {
     });
 
     this.$chat_contact_list.find(".close-chat-list").on("click", function () {
+
+      console.log("bbbbbbbbbb")
       if (me.forward == 1) {
       me.back_to_chat_space();
       return;
@@ -1284,11 +1286,14 @@ for (const t of this.selected_contacts) {
   }
 }
 } //END Class
-
+function can_create_dt(doctype) {
+  const list = frappe?.boot?.user?.can_create;
+  return Array.isArray(list) && list.includes(doctype);
+}
 async function get_contacts(user_email, limit = 10, offset = 0, search_text = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_3.api.get_contacts",
+    method: "clefincode_chat.api.api_1_3_3.api.get_contacts_for_website",
     args: { user_email, limit, offset, search_text  },
   });
   return res.message.results[0]; // {contacts, total, has_more, next_offset}
@@ -1357,4 +1362,9 @@ export async function add_group_member(new_members, room, last_active_sub_channe
     },
     freeze: true,
   });
+}
+function safeIncludes(haystack, needle) {
+  if (Array.isArray(haystack)) return haystack.includes(needle);
+  if (typeof haystack === "string") return haystack.includes(needle);
+  return false;
 }

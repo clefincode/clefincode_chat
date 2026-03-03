@@ -86,6 +86,8 @@ export default class ChatSpace {
     };
     this.$emojiMenu = null;
 
+    
+
     if (this.chat_topic_space) {
       this.profile.room_type = "Topic";
     }
@@ -364,11 +366,13 @@ async performSearch(query) {
     }
   });
    
-
-  this.searchResults = res.message.results || [];
+  
+ let search_res=res.message.results[0];
+ console.log(search_res);
+  this.searchResults = search_res.results || [];
   this.currentSearchIndex = -1;
 
-  const count = res.message.count || 0;
+  const count = search_res.count || 0;
 
   this.$chat_space.find(".search-count")
     .text(count ? `0 / ${count}` : "0 results");
@@ -786,31 +790,35 @@ async fetch_single_message(messageName) {
     await this.get_topic_info();
   }
 
-  setup_chat_window() {
-    var screen_width = $("body").outerWidth();
-    var right_width = $(".chat_right_section").outerWidth();
-    var left_width = $(".chat_left_section").outerWidth();
-    if (right_width + left_width > screen_width) {
-      if (screen_width < 750) {
-        $(".close-chat-list").click();
-        if (left_width > screen_width) {
-          $(".chat-window").each(function (index) {
-            if ($(this).css("display") != "none") {
-              $(".collapse-chat-window")[index].click();
-              return false;
-            }
-          });
-        }
-      } else {
-        $(".chat-window").each(function (index) {
-          if ($(this).css("display") != "none") {
-            $(".collapse-chat-window")[index].click();
-            return false;
-          }
-        });
-      }
+ setup_chat_window() {
+  const screen_width = $("body").outerWidth() || 0;
+  const right_width  = $(".chat_right_section").outerWidth() || 0;
+  const left_width   = $(".chat_left_section").outerWidth() || 0;
+
+  if (!screen_width) return;
+
+  if (right_width + left_width > screen_width) {
+  
+    if (screen_width < 750) {
+      const $closeChatList = $(".close-chat-list");
+      if ($closeChatList.length) $closeChatList.trigger("click");
     }
+
+    
+    const $currentWin = this.$wrapper.closest(".chat-window");
+
+    $(".chat-window").each(function () {
+      const $win = $(this);
+      if ($win.is($currentWin)) return;
+      if ($win.css("display") === "none") return;
+
+      const $collapse = $win.find(".collapse-chat-window");
+      if ($collapse.length) $collapse.trigger("click");
+
+      return false; // break
+    });
   }
+}
 
   async setup_header() {
     let header_title;
@@ -1419,7 +1427,23 @@ async fetch_single_message(messageName) {
           );
       }
 
-      $(this).closest(".chat-window").remove();           
+      $(this).closest(".chat-window").remove(); 
+      const app = window.erpnext_chat_app;
+if (app && app.is_webview) {
+  const $left = $(".chat_left_section");
+
+  // if bundle already created it, reuse it (do not re-create)
+  if (app.$empty_state && app.$empty_state.length) {
+    if (!$left.find(".chat-empty-state").length) {
+      $left.append(app.$empty_state);
+    }
+    app.$empty_state.show();
+  } else {
+    // fallback: in case $empty_state not available for any reason
+    $left.find(".chat-empty-state").show();
+  }
+}
+
     });
     
     this.$chat_space.find(".avatar").on("click", function () {
@@ -1439,13 +1463,16 @@ async fetch_single_message(messageName) {
     });
 
     this.$chat_space.find(".collapse-chat-window").on("click", function () {
+      
       me.is_open = 0;
       if (me.profile.room_type == "Contributor") {
+        console.log("1");
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
             (item) => item != me.profile.parent_channel
           );
       } else {
+        console.log("2");
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
             (item) => item != me.profile.room
@@ -1472,6 +1499,7 @@ async fetch_single_message(messageName) {
         .find(".chat-profile-name")
         .text();
       var chat_bottom = $(".chat_bottom");
+      console.log(id);
       chat_bottom.append(`
     <div  data-id="${id}" class="minimized-chat" style="min-width:190px; display:flex;">
       <span class="test"></span>

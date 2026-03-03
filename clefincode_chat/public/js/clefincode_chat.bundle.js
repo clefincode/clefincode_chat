@@ -13,16 +13,17 @@ async function initFrappeVersion() {
   FRAPPE_MAJOR_VERSION = r.message;
 }
 frappe.ErpnextChat = class {
-constructor() {
-  this.boot();
+  constructor() {
+    this.setup_app();
+  }
+apply_webview_layout(enable) {
+  if (enable) {
+    $("body").addClass("cc-chat-webview");
+    this.$chat_left_section?.show();     
+  } else {
+    $("body").removeClass("cc-chat-webview");
+  }
 }
-
-async boot() {
-  await initFrappeVersion();
-  this.frappe_version = FRAPPE_MAJOR_VERSION;
-  await this.setup_app();
-}
-
   async setup_app() {
     const token = localStorage.getItem("guest_token") || "";
     const res = await get_settings(token);
@@ -48,6 +49,7 @@ async boot() {
         }
       }
     } else await this.create_app();
+    this.is_webview = frappe.utils.get_url_arg("cc_webview") === "1";//this.is_desk && window.matchMedia?.("(min-width: 992px)").matches;
 
     frappe.socketio.init(res.socketio_port);
 
@@ -71,6 +73,9 @@ async boot() {
         $("#chat-notification-count").text("");
       }
       this.setup_socketio();
+          if (this.is_webview) {
+      this.show_chat_widget();
+    }
       this.setup_socketio_mobile();
     } else if (res.is_verified) {
       this.chatbot_space = new ChatPortalSpace({
@@ -113,6 +118,17 @@ async boot() {
     this.$chat_left_section = $(document.createElement("div"))
       .addClass("chat_left_section")
       .hide();
+      this.$empty_state = $(`
+  <div class="chat-empty-state">
+    <div class="empty-content">
+      <div class="empty-icon">💬</div>
+      <h3>Select a chat</h3>
+      <p>Choose a conversation from the left to start messaging</p>
+    </div>
+  </div>
+`);
+
+this.$chat_left_section.append(this.$empty_state);
 
     this.$app_element.append(this.$chat_left_section);
     this.$app_element.append(this.$chat_right_section);
@@ -223,6 +239,9 @@ async boot() {
         }
         $(".minimized-chat[data-id|='"+parameter+"']").remove();
       }
+        if ($(".chat-window:visible").length === 0) {
+  $(".chat-empty-state").show();
+}
     </script>`);
 
     this.$chat_container = $(document.createElement("div")).addClass(
@@ -356,11 +375,13 @@ async boot() {
         user_type: this.res.user_type,
         is_limited_user: this.res.is_limited_user,
       });
+      if (this.is_webview) this.apply_webview_layout(true);
       this.chat_list.render();
     }
   }
 
   hide_chat_widget() {
+    if (this.is_webview) this.apply_webview_layout(false);
     this.is_open = false;
     this.$chat_element.fadeOut(300);
     if (!this.res.is_admin && this.res.channel && this.res.user === "Guest") {

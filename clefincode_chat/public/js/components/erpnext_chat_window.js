@@ -5,7 +5,14 @@ export default class ChatWindow {
         this.setup();        
     }
 
-    setup() {        
+    setup() {     
+          if ($("body").hasClass("cc-chat-webview")) {
+                this.$wrapper.empty();
+            }
+
+            this.$chat_window = $(document.createElement('div'));
+            this.$chat_window.addClass('chat-window');
+            
         this.$chat_window = $(document.createElement('div'));
         this.$chat_window.addClass('chat-window');
         if(this.profile.contact){
