@@ -368,7 +368,7 @@ async performSearch(query) {
    
   
  let search_res=res.message.results[0];
- console.log(search_res);
+
   this.searchResults = search_res.results || [];
   this.currentSearchIndex = -1;
 
@@ -909,6 +909,69 @@ async fetch_single_message(messageName) {
   
             const $search = this.$chat_space.find(".chat-search");
             $search.hide();
+            // Hotkeys for chat search (Ctrl+Shift+F + "/" + try Ctrl+F)
+              if (!window.__chatSearchHotkeysBound) {
+                window.__chatSearchHotkeysBound = true;
+
+                window.addEventListener(
+                  "keydown",
+                  (e) => {
+                    const key = (e.key || "").toLowerCase();
+
+                    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+                    const isCtrlF = isCtrlOrCmd && key === "f";               
+                    const isCtrlShiftF = isCtrlOrCmd && e.shiftKey && key === "f"; // 
+                    const isSlash = key === "/" && !isCtrlOrCmd && !e.altKey;   // /
+
+                    const openSearch = () => {
+                      const $chat = $(".chat-space:visible").last();
+                      const $search = $chat.find(".chat-search");
+                      if (!$search.length) return;
+
+                      $search.stop(true, true).slideDown(150);
+                      setTimeout(() => {
+                        $chat.find(".chat-search-input").focus().select();
+                      }, 0);
+                    };
+
+                    const closeSearch = () => {
+                      const $chat = $(".chat-space:visible").last();
+                      const $search = $chat.find(".chat-search");
+                      if (!$search.length || !$search.is(":visible")) return;
+
+                      $search.stop(true, true).slideUp(150);
+                      $chat.find(".search-count").text("0");
+                      $chat.find(".search-highlight").each(function () {
+                        $(this).replaceWith($(this).text());
+                      });
+                    };
+
+                    if (isCtrlShiftF || isSlash) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                      openSearch();
+                      return;
+                    }
+
+                    if (isCtrlF) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                      openSearch();
+                      return;
+                    }
+
+                    if (key === "escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                      closeSearch();
+                    }
+                  },
+                  true
+                );
+              }
 
 
             this.$chat_space.find(".toggle-search").on("click", () => {
@@ -1466,13 +1529,13 @@ if (app && app.is_webview) {
       
       me.is_open = 0;
       if (me.profile.room_type == "Contributor") {
-        console.log("1");
+      
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
             (item) => item != me.profile.parent_channel
           );
       } else {
-        console.log("2");
+   
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
             (item) => item != me.profile.room
@@ -1499,7 +1562,7 @@ if (app && app.is_webview) {
         .find(".chat-profile-name")
         .text();
       var chat_bottom = $(".chat_bottom");
-      console.log(id);
+    
       chat_bottom.append(`
     <div  data-id="${id}" class="minimized-chat" style="min-width:190px; display:flex;">
       <span class="test"></span>
@@ -1829,6 +1892,22 @@ this.$chat_space.on("click", ".reply-btn", async function (e) {
   `);
 
   $host.find(".reply-preview__text").text(text);
+   setTimeout(() => {
+  
+    if (me.type_message_input?.quill) {
+      me.type_message_input.quill.focus();
+   
+      me.type_message_input.quill.setSelection(
+        me.type_message_input.quill.getLength(),
+        0
+      );
+      return;
+    }
+
+
+    const $editor = me.$chat_actions?.find(".type-message .ql-editor");
+    if ($editor?.length) $editor.trigger("focus");
+  }, 0);
 });
 
 
@@ -2528,10 +2607,10 @@ const textLabel = previewText
                previewType === "voice" ? "🎤" : "↩";
 
   const isDark = document.documentElement.getAttribute("data-theme-mode") === "dark";
-  console.log("is dark", isDark)
+  
 
   const bg = isDark ? "transparent" : "#f1f3f5";
-  console.log("the bg", bg)
+
 
   $message_element.prepend(`
     <div class="reply-link" data-jump="${reply_to_message}" style="

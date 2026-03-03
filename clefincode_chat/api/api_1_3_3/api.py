@@ -3116,7 +3116,7 @@ def get_contacts_for_adding_to_group(user_email , existing_members , existing_co
     ORDER BY ChatProfile.creation DESC
     """
     contacts_list = frappe.db.sql(contacts_query, (user_email,), as_dict=True)
-    
+   
     for contact in contacts_list:
         details_query = """
         SELECT contact_info, type AS contact_type, `default`

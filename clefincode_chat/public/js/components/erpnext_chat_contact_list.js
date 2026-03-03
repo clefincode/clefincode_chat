@@ -384,6 +384,7 @@ toggle_room_target(roomObj, $row) {
           this.chat_info.chat_space.chat_members,
           this.chat_info.chat_space.contributors
         );
+  
          this.setup_contacts(); 
       this.setup_events();
       return;
@@ -1057,7 +1058,7 @@ if (FRAPPE_MAJOR_VERSION == 16) {
 
     this.$chat_contact_list.find(".close-chat-list").on("click", function () {
 
-      console.log("bbbbbbbbbb")
+  
       if (me.forward == 1) {
       me.back_to_chat_space();
       return;
@@ -1342,7 +1343,7 @@ async function get_contacts_for_adding_to_group(
 ) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_2_1.api.get_contacts_for_adding_to_group",
+      "clefincode_chat.api.api_1_3_3.api.get_contacts_for_adding_to_group",
     args: {
       user_email: user_email,
       existing_members: existing_members,

@@ -476,34 +476,7 @@ export default class ChatList {
     });
   
 this.$chat_list.on("click", ".toggle-webview-mode", function () {
-  const app = window.erpnext_chat_app;
-  if (!app) return;
-
-  const enable = !app.is_webview;
-  app.is_webview = enable;
-
- 
-  if (typeof app.apply_webview_layout === "function") {
-    app.apply_webview_layout(enable);
-  }
-
-  
-  if (enable) {
-    if ($(".chat-window:visible").length === 0) $(".chat-empty-state").show();
-  } else {
-    $(".chat-empty-state").hide();
-  }
-
-
-  localStorage.setItem("cc_webview_mode", enable ? "1" : "0");
-
- 
-  try {
-    const url = new URL(window.location.href);
-    if (enable) url.searchParams.set("cc_webview", "1");
-    else url.searchParams.delete("cc_webview");
-    window.history.replaceState({}, "", url.toString());
-  } catch (e) {}
+    window.open("/app/clefinchat?webview=1", "_blank", "noopener,noreferrer");
 });
 
     $(".support-icon").on("click", async function () { 
@@ -581,7 +554,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
 
 
     $(".close-chat-list").on("click", function () {
-      console.log("aaaaaaaaa")
+ 
       erpnext_chat_app.hide_chat_widget();
       $("#chat-bubble").fadeIn(150);
       frappe.realtime.off("update_room");

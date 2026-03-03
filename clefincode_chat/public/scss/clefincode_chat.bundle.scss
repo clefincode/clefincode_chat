@@ -2716,6 +2716,10 @@ body.cc-chat-webview .chat-empty-state {
 body.cc-chat-webview .close-chat-list {
   display: none; 
 }
+body.cc-chat-webview .toggle-webview-mode {
+  display: none; 
+}
+
 
 body:not(.cc-chat-webview) .chat-empty-state {
   display: none !important;

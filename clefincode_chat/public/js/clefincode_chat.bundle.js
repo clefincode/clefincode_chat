@@ -49,7 +49,7 @@ apply_webview_layout(enable) {
         }
       }
     } else await this.create_app();
-    this.is_webview = frappe.utils.get_url_arg("cc_webview") === "1";//this.is_desk && window.matchMedia?.("(min-width: 992px)").matches;
+    this.is_webview = frappe.utils.get_url_arg("webview") === "1";//this.is_desk && window.matchMedia?.("(min-width: 992px)").matches;
 
     frappe.socketio.init(res.socketio_port);
 
