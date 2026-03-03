@@ -921,7 +921,7 @@ async fetch_single_message(messageName) {
                     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
                     const isCtrlF = isCtrlOrCmd && key === "f";               
                     const isCtrlShiftF = isCtrlOrCmd && e.shiftKey && key === "f"; // 
-                    const isSlash = key === "/" && !isCtrlOrCmd && !e.altKey;   // /
+                  
 
                     const openSearch = () => {
                       const $chat = $(".chat-space:visible").last();
@@ -946,7 +946,7 @@ async fetch_single_message(messageName) {
                       });
                     };
 
-                    if (isCtrlShiftF || isSlash) {
+                    if (isCtrlShiftF ) {
                       e.preventDefault();
                       e.stopPropagation();
                       if (e.stopImmediatePropagation) e.stopImmediatePropagation();

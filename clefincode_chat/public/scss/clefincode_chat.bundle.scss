@@ -2639,6 +2639,10 @@ body.cc-chat-webview .chat-window {
 body.cc-chat-webview .chat-header {
   margin-top: 0 !important;
 }
+body.cc-chat-webview .mentioned-doctype-section {
+  width: 100%;
+}
+
 body.cc-chat-webview .chat-app {
   top: 0 !important;
   height: 100vh !important;
@@ -2723,4 +2727,42 @@ body.cc-chat-webview .toggle-webview-mode {
 
 body:not(.cc-chat-webview) .chat-empty-state {
   display: none !important;
+}
+/* =========================
+   WebView Forward Overlay
+   ========================= */
+
+body.cc-chat-webview {
+
+  .chat_left_section {
+    position: relative;
+  }
+
+  /* forward overlay */
+  .chat-contact-list.forward-mode {
+    position: absolute !important;
+    inset: 0;
+    z-index: 50;
+
+    display: flex !important;
+    flex-direction: column !important;
+
+    background: var(--card-bg, #fff);
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Full height layout */
+  .chat-contact-list.forward-mode .chat-contacts-container {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+
+  .chat-contact-list.forward-mode .chat-list-header,
+  .chat-contact-list.forward-mode .chat-search {
+    flex: 0 0 auto !important;
+  }
+
 }
