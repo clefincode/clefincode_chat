@@ -53,6 +53,10 @@ def create_guest_profile_and_channel(content , sender , sender_email , creation_
 @frappe.whitelist(allow_guest=True)
 def send(content , room , sender , sender_email , send_date , respondent_user,reply_to_message_name):    
     send_date = datetime.datetime.utcnow()
+    if version.parse(frappe_version) >= version.parse("15.0.0"):
+            guest_room_name = "user:Guest"
+    else:
+            guest_room_name = f"{frappe.local.site}:user:Guest"
     new_message = frappe.get_doc({
         "doctype": "ClefinCode Chat Message",
         "content": f"<p>{content}</p>",
@@ -106,6 +110,7 @@ def send(content , room , sender , sender_email , send_date , respondent_user,re
                     results["send_date"] = convert_utc_to_user_timezone(send_date, get_user_timezone(member.user)["results"][0]["time_zone"])
                     results["time_zone"] = frappe.db.get_value("User" , member.user , "time_zone")
                     results["target_user"] = member.user  
+                    frappe.publish_realtime(event=room, message=results , room = guest_room_name)
                     if member.user:          
                         frappe.publish_realtime(event=room, message=results, user=member.user)       
                         frappe.publish_realtime(event="new_chat_notification", message=results, user= member.user)
@@ -117,7 +122,7 @@ def send(content , room , sender , sender_email , send_date , respondent_user,re
     # frappe.publish_realtime(event= "receive_message", message= results, user = respondent_user)
     # send_notification(respondent_user, results, "send_message") 
     return results
-    
+
 # ==========================================================================================
 @frappe.whitelist(allow_guest=True)
 def get_messages(room):    

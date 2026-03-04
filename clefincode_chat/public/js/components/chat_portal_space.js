@@ -1152,6 +1152,7 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
         time: time,
         type: chat_type,
         sender: res.user,
+        sender_email: res.sender_email,
         message_name: res.message_name,
         message_template_type: res.message_template_type,
         reply_to_message:res.reply_to_message,
@@ -1536,9 +1537,10 @@ const textLabel = previewText
       this.profile.respondent_user = results.respondent_user;
       this.setup_socket();
     } else {
+    
    
       const guest_message_info = {
-        content: content && content.length == 1 ? content.prop("outerHTML") : content,
+        content: content,  // && content.length == 1 ? content.prop("outerHTML") : content,
         room: this.profile.room,
         sender: this.profile.user,
         sender_email: this.profile.user_email,
@@ -1546,50 +1548,50 @@ const textLabel = previewText
         respondent_user: this.profile.respondent_user,
         reply_to_message_name:this.reply_to_message_name,
       };
+      
+      this.$chatbot_action.find(".type-message").val("");    
       res=await send_message(guest_message_info);
 
       this.reply_to_message_name = null;
       this.$chatbot_space.find(".reply-preview-host").remove();
       scroll_to_bottom(this.$chatbot_container); 
       }
-       this.messageCache.set(res.message_name, {
-            sender: res.sender,
-            content: res.content,
-            sender_email: res.sender_email,               
-            is_screenshot: res.is_screenshot || 0,    
-            reply_to_message:res.reply_to_message ,
-            reply_preview_type: res.reply_preview_type,
-            reply_preview_text: res.reply_preview_text,
-            reply_preview_sender: res.reply_preview_sender,
-            reply_preview_file_url: res.reply_preview_file_url,
-            is_deleted:res.is_deleted,
-            is_edited: res.is_edited ,
+    //    this.messageCache.set(res.message_name, {
+    //         sender: res.sender,
+    //         content: res.content,
+    //         sender_email: res.sender_email,               
+    //         is_screenshot: res.is_screenshot || 0,    
+    //         reply_to_message:res.reply_to_message ,
+    //         reply_preview_type: res.reply_preview_type,
+    //         reply_preview_text: res.reply_preview_text,
+    //         reply_preview_sender: res.reply_preview_sender,
+    //         reply_preview_file_url: res.reply_preview_file_url,
+    //         is_deleted:res.is_deleted,
+    //         is_edited: res.is_edited ,
     
             
-          });
-    this.$chatbot_container.append(
-      await this.make_message({
-        content: res.content,
-        sender_email: res.sender_email,
-        type: "recipient-message",
-        sender: res.user,
-        message_name: res.message_name,
-        message_template_type: res.message_template_type,
-        reply_to_message:res.reply_to_message,
-        reply_preview: {
-            type: res.reply_preview_type || null,
-            text: res.reply_preview_text || null,
-            sender: res.reply_preview_sender || null,
-            sender_email: res.reply_preview_sender_email || null,
-            file_url: res.reply_preview_file_url || null,
-            file: res.reply_preview_file || null,
-            original_message_name: res.reply_preview_message_name || res.reply_to_message || null,
-          },
-      })
-    );
-    scroll_to_bottom(this.$chatbot_container);
-
-    this.$chatbot_action.find(".type-message").val("");    
+    //       });
+    // this.$chatbot_container.append(
+    //   await this.make_message({
+    //     content: res.content,
+    //     sender_email: res.sender_email,
+    //     type: "recipient-message",
+    //     sender: res.user,
+    //     message_name: res.message_name,
+    //     message_template_type: res.message_template_type,
+    //     reply_to_message:res.reply_to_message,
+    //     reply_preview: {
+    //         type: res.reply_preview_type || null,
+    //         text: res.reply_preview_text || null,
+    //         sender: res.reply_preview_sender || null,
+    //         sender_email: res.reply_preview_sender_email || null,
+    //         file_url: res.reply_preview_file_url || null,
+    //         file: res.reply_preview_file || null,
+    //         original_message_name: res.reply_preview_message_name || res.reply_to_message || null,
+    //       },
+    //   })
+    // );
+    
   } //End handle_send_message
 
 } // END Class

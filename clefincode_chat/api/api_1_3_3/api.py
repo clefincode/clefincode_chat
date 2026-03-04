@@ -1483,10 +1483,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
         else ("NULL" if v is None else v)
         for k, v in params.items()
     }
-    frappe.log_error(
-    message=f"{rendered_query}",
-    title="GET_MESSAGES SQL"
-    )
+   
     results = frappe.db.sql(query, params, as_dict=True)
 
     # ---------------------------

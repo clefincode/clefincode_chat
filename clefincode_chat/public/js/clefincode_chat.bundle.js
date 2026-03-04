@@ -56,7 +56,12 @@ apply_webview_layout(enable) {
       }
     } else await this.create_app();
    // this.is_webview = frappe.utils.get_url_arg("clefinchat") === "1";//this.is_desk && window.matchMedia?.("(min-width: 992px)").matches;
-    this.is_webview = frappe.get_route()[0] === "clefinchat";
+    // this.is_webview = frappe.get_route()[0] === "clefinchat";
+    if (typeof frappe.get_route === "function") {
+          this.is_webview = frappe.get_route()[0] === "clefinchat";
+        } else {
+          this.is_webview = false;
+        }
     frappe.socketio.init(res.socketio_port);
 
     if (this.res.is_admin) {
