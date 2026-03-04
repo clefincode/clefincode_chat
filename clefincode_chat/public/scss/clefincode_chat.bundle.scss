@@ -2433,3 +2433,336 @@ $height: 582px;
   50% { background-color: #ffca2c; }
   100% { background-color: #ffc107; }
 }
+
+/* WebView / Split layout */
+body.cc-chat-webview .chat-app {
+  position: fixed;
+  top: var(--navbar-height, 0px);
+  left: 0;
+  right: 0;
+  height: calc(100vh - var(--navbar-height, 0px));
+  z-index: 1040;
+
+  display: flex;
+
+  /* هذا اللي بيخلي "الجزء اليميني" يصير عاليسار */
+  flex-direction: row-reverse;
+}
+
+/* Sidebar (قائمة المحادثات) */
+body.cc-chat-webview .chat_right_section {
+  height: 100%;
+  width: 340px;
+  min-width: 300px;
+  max-width: 420px;
+
+  display: flex;
+  flex-direction: column;
+
+  border-right: 1px solid var(--border-color, #e5e7eb);
+  background: var(--card-bg, #fff);
+}
+
+/* Main chat area */
+body.cc-chat-webview .chat_left_section {
+  display: block !important; /* لأن JS عاملها hide() */
+  flex: 1 1 auto;
+  height: 100%;
+  overflow: hidden;
+  background: var(--body-bg, #f7f7f7);
+}
+
+/* خليه داخل الـ sidebar وياخذ الطول كامل */
+body.cc-chat-webview .chat-element {
+  position: static !important;
+  display: block !important;
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* حاوية القائمة */
+body.cc-chat-webview .chat-container,
+body.cc-chat-webview .chat-list {
+  height: 100% !important;
+}
+
+/* لأن ChatList بيحط maxHeight inline بـ 100vh، نخليه 100% */
+body.cc-chat-webview .chat-rooms-group-container {
+  max-height: calc(100% - 140px) !important;
+  overflow-y: auto !important;
+}
+
+/* نافذة الشات خليها تمتد بالمساحة كلها */
+body.cc-chat-webview .chat-window {
+  position: static !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+}
+/* =========================
+   WebView: UI Fixes
+   ========================= */
+
+
+body.cc-chat-webview
+  .chat-list
+  .chat-list-header
+  .chat-list-icons
+  .close-chat-list {
+  display: none !important;
+}
+
+
+body.cc-chat-webview
+  .chat-list
+  .chat-list-header
+  .chat-list-icons
+  .fa-times {
+  display: none !important;
+}
+
+
+body.cc-chat-webview {
+  margin: 0 !important;
+  overflow: hidden;
+}
+
+body.cc-chat-webview .chat-app {
+  padding: 0 !important;          
+}
+
+body.cc-chat-webview .chat-element,
+body.cc-chat-webview .chat-window {
+  margin: 0 !important;           
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+
+body.cc-chat-webview .chat_right_section {
+  border-right: 1px solid rgba(0,0,0,0.08) !important;
+}
+
+
+body.cc-chat-webview .chat-window,
+body.cc-chat-webview .chat-space,
+body.cc-chat-webview .chat-topic-space,
+body.cc-chat-webview .chatbot-space {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+}
+
+
+body.cc-chat-webview .chat-space-container,
+body.cc-chat-webview .chat-topic-space-container,
+body.cc-chat-webview .chatbot-container {
+  height: auto !important;     
+  max-height: none !important;
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+}
+
+body.cc-chat-webview .chat-space-actions {
+  margin-top: auto !important;
+  position: sticky !important;
+  bottom: 0 !important;
+  background: var(--card-bg, #fff) !important;
+  border-top: 1px solid rgba(0,0,0,0.08) !important;
+  padding: 10px 12px !important;
+}
+
+
+body.cc-chat-webview .chat-space .ql-editor {
+  position: relative !important;
+  bottom: auto !important;
+  max-height: 120px !important;
+  min-height: 44px !important;
+}
+
+
+body.cc-chat-webview .chat-space-actions {
+  justify-content: flex-end !important;
+}
+/* =========================
+   cc-chat-webview: Rooms list full height
+   ========================= */
+
+body.cc-chat-webview .chat-list,
+body.cc-chat-webview .chat-contact-list,
+body.cc-chat-webview .conversation-list,
+body.cc-chat-webview .chat-container {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important; 
+}
+
+
+body.cc-chat-webview .chat-list-header,
+body.cc-chat-webview .chat-search {
+  flex: 0 0 auto !important;
+}
+
+
+body.cc-chat-webview .chat-rooms-group-container {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  max-height: none !important;   /* يلغي calc(100% - 140px) */
+  min-height: 0 !important;      /* يمنع مشاكل القصّ */
+  overflow-y: auto !important;
+}
+
+
+body.cc-chat-webview .chat-rooms-container,
+body.cc-chat-webview .chat-contacts-container {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+}
+
+
+body.cc-chat-webview .chat_left_section {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body.cc-chat-webview .chat-window {
+  margin: 0 !important;      
+  top: 0 !important;
+  border-radius: 0 !important;
+}
+
+
+body.cc-chat-webview .chat-header {
+  margin-top: 0 !important;
+}
+body.cc-chat-webview .mentioned-doctype-section {
+  width: 100%;
+}
+
+body.cc-chat-webview .chat-app {
+  top: 0 !important;
+  height: 100vh !important;
+}
+
+
+body.cc-chat-webview .chat_left_section,
+body.cc-chat-webview .chat-window {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+
+body.cc-chat-webview .chat-header {
+  margin: 0 !important;
+}
+body.cc-chat-webview {
+  .collapse-chat-window {
+    display: none !important;
+  }
+}
+.portal_chat_bottom{
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+
+  background: transparent;
+  max-width: calc(100vw - 24px);
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  z-index: 99999;
+  padding: 0;
+}
+
+
+/* Empty state */
+
+body.cc-chat-webview .chat_left_section {
+  position: relative;
+}
+
+body.cc-chat-webview .chat-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--body-bg, #f9fafb);
+}
+
+body.cc-chat-webview .empty-content {
+  margin-top: 25%;
+  text-align: center;
+  opacity: 0.6;
+}
+
+body.cc-chat-webview .empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.chat-empty-state {
+  display: none;
+}
+
+
+body.cc-chat-webview .chat-empty-state {
+  display: flex; 
+}
+body.cc-chat-webview .close-chat-list {
+  display: none; 
+}
+body.cc-chat-webview .toggle-webview-mode {
+  display: none; 
+}
+
+
+body:not(.cc-chat-webview) .chat-empty-state {
+  display: none !important;
+}
+/* =========================
+   WebView Forward Overlay
+   ========================= */
+
+body.cc-chat-webview {
+
+  .chat_left_section {
+    position: relative;
+  }
+
+  /* forward overlay */
+  .chat-contact-list.forward-mode {
+    position: absolute !important;
+    inset: 0;
+    z-index: 50;
+
+    display: flex !important;
+    flex-direction: column !important;
+
+    background: var(--card-bg, #fff);
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Full height layout */
+  .chat-contact-list.forward-mode .chat-contacts-container {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+
+  .chat-contact-list.forward-mode .chat-list-header,
+  .chat-contact-list.forward-mode .chat-search {
+    flex: 0 0 auto !important;
+  }
+
+}

@@ -86,6 +86,8 @@ export default class ChatSpace {
     };
     this.$emojiMenu = null;
 
+    
+
     if (this.chat_topic_space) {
       this.profile.room_type = "Topic";
     }
@@ -364,11 +366,13 @@ async performSearch(query) {
     }
   });
    
+  
+ let search_res=res.message.results[0];
 
-  this.searchResults = res.message.results || [];
+  this.searchResults = search_res.results || [];
   this.currentSearchIndex = -1;
 
-  const count = res.message.count || 0;
+  const count = search_res.count || 0;
 
   this.$chat_space.find(".search-count")
     .text(count ? `0 / ${count}` : "0 results");
@@ -786,31 +790,35 @@ async fetch_single_message(messageName) {
     await this.get_topic_info();
   }
 
-  setup_chat_window() {
-    var screen_width = $("body").outerWidth();
-    var right_width = $(".chat_right_section").outerWidth();
-    var left_width = $(".chat_left_section").outerWidth();
-    if (right_width + left_width > screen_width) {
-      if (screen_width < 750) {
-        $(".close-chat-list").click();
-        if (left_width > screen_width) {
-          $(".chat-window").each(function (index) {
-            if ($(this).css("display") != "none") {
-              $(".collapse-chat-window")[index].click();
-              return false;
-            }
-          });
-        }
-      } else {
-        $(".chat-window").each(function (index) {
-          if ($(this).css("display") != "none") {
-            $(".collapse-chat-window")[index].click();
-            return false;
-          }
-        });
-      }
+ setup_chat_window() {
+  const screen_width = $("body").outerWidth() || 0;
+  const right_width  = $(".chat_right_section").outerWidth() || 0;
+  const left_width   = $(".chat_left_section").outerWidth() || 0;
+
+  if (!screen_width) return;
+
+  if (right_width + left_width > screen_width) {
+  
+    if (screen_width < 750) {
+      const $closeChatList = $(".close-chat-list");
+      if ($closeChatList.length) $closeChatList.trigger("click");
     }
+
+    
+    const $currentWin = this.$wrapper.closest(".chat-window");
+
+    $(".chat-window").each(function () {
+      const $win = $(this);
+      if ($win.is($currentWin)) return;
+      if ($win.css("display") === "none") return;
+
+      const $collapse = $win.find(".collapse-chat-window");
+      if ($collapse.length) $collapse.trigger("click");
+
+      return false; // break
+    });
   }
+}
 
   async setup_header() {
     let header_title;
@@ -901,6 +909,69 @@ async fetch_single_message(messageName) {
   
             const $search = this.$chat_space.find(".chat-search");
             $search.hide();
+            // Hotkeys for chat search (Ctrl+Shift+F + "/" + try Ctrl+F)
+              if (!window.__chatSearchHotkeysBound) {
+                window.__chatSearchHotkeysBound = true;
+
+                window.addEventListener(
+                  "keydown",
+                  (e) => {
+                    const key = (e.key || "").toLowerCase();
+
+                    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+                    const isCtrlF = isCtrlOrCmd && key === "f";               
+                    const isCtrlShiftF = isCtrlOrCmd && e.shiftKey && key === "f"; // 
+                  
+
+                    const openSearch = () => {
+                      const $chat = $(".chat-space:visible").last();
+                      const $search = $chat.find(".chat-search");
+                      if (!$search.length) return;
+
+                      $search.stop(true, true).slideDown(150);
+                      setTimeout(() => {
+                        $chat.find(".chat-search-input").focus().select();
+                      }, 0);
+                    };
+
+                    const closeSearch = () => {
+                      const $chat = $(".chat-space:visible").last();
+                      const $search = $chat.find(".chat-search");
+                      if (!$search.length || !$search.is(":visible")) return;
+
+                      $search.stop(true, true).slideUp(150);
+                      $chat.find(".search-count").text("0");
+                      $chat.find(".search-highlight").each(function () {
+                        $(this).replaceWith($(this).text());
+                      });
+                    };
+
+                    if (isCtrlShiftF ) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                      openSearch();
+                      return;
+                    }
+
+                    if (isCtrlF) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                      openSearch();
+                      return;
+                    }
+
+                    if (key === "escape") {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                      closeSearch();
+                    }
+                  },
+                  true
+                );
+              }
 
 
             this.$chat_space.find(".toggle-search").on("click", () => {
@@ -1419,7 +1490,23 @@ async fetch_single_message(messageName) {
           );
       }
 
-      $(this).closest(".chat-window").remove();           
+      $(this).closest(".chat-window").remove(); 
+      const app = window.erpnext_chat_app;
+if (app && app.is_webview) {
+  const $left = $(".chat_left_section");
+
+  // if bundle already created it, reuse it (do not re-create)
+  if (app.$empty_state && app.$empty_state.length) {
+    if (!$left.find(".chat-empty-state").length) {
+      $left.append(app.$empty_state);
+    }
+    app.$empty_state.show();
+  } else {
+    // fallback: in case $empty_state not available for any reason
+    $left.find(".chat-empty-state").show();
+  }
+}
+
     });
     
     this.$chat_space.find(".avatar").on("click", function () {
@@ -1439,13 +1526,16 @@ async fetch_single_message(messageName) {
     });
 
     this.$chat_space.find(".collapse-chat-window").on("click", function () {
+      
       me.is_open = 0;
       if (me.profile.room_type == "Contributor") {
+      
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
             (item) => item != me.profile.parent_channel
           );
       } else {
+   
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
             (item) => item != me.profile.room
@@ -1472,6 +1562,7 @@ async fetch_single_message(messageName) {
         .find(".chat-profile-name")
         .text();
       var chat_bottom = $(".chat_bottom");
+    
       chat_bottom.append(`
     <div  data-id="${id}" class="minimized-chat" style="min-width:190px; display:flex;">
       <span class="test"></span>
@@ -1801,6 +1892,22 @@ this.$chat_space.on("click", ".reply-btn", async function (e) {
   `);
 
   $host.find(".reply-preview__text").text(text);
+   setTimeout(() => {
+  
+    if (me.type_message_input?.quill) {
+      me.type_message_input.quill.focus();
+   
+      me.type_message_input.quill.setSelection(
+        me.type_message_input.quill.getLength(),
+        0
+      );
+      return;
+    }
+
+
+    const $editor = me.$chat_actions?.find(".type-message .ql-editor");
+    if ($editor?.length) $editor.trigger("focus");
+  }, 0);
 });
 
 
@@ -2500,10 +2607,10 @@ const textLabel = previewText
                previewType === "voice" ? "🎤" : "↩";
 
   const isDark = document.documentElement.getAttribute("data-theme-mode") === "dark";
-  console.log("is dark", isDark)
+  
 
   const bg = isDark ? "transparent" : "#f1f3f5";
-  console.log("the bg", bg)
+
 
   $message_element.prepend(`
     <div class="reply-link" data-jump="${reply_to_message}" style="
