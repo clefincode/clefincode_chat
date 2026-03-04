@@ -125,22 +125,30 @@ export default class ChatList {
 
   setup_header() {
     let chat_list_header_html = ``;
-    if(this.user_type == "system_user"){
-      chat_list_header_html = `<div class='chat-list-header'>
-				<h3>${__("Chats")}</h3>
-        <div class='chat-list-icons'> 
-          <div class='new-chat' 
-              title='New Chat'>
-              ${frappe.utils.icon("add", "md")}
-          </div>          
-          <div class='close-chat-list' 
-          title='Close'>
-          ${frappe.utils.icon("close", "lg")}
+   
+
+  if (this.user_type == "system_user") {
+    chat_list_header_html = `
+      <div class='chat-list-header'>
+        <h3>${__("Chats")}</h3>
+        <div class='chat-list-icons'>
+
+          <div class='new-chat' title='New Chat'>
+            ${frappe.utils.icon("add", "md")}
           </div>
+
+          <div class='toggle-webview-mode' title='Toggle Webview'>
+            ${frappe.utils.icon("expand", "md")}
+          </div>
+
+          <div class='close-chat-list' title='Close'>
+            ${frappe.utils.icon("close", "lg")}
+          </div>
+
         </div>
-			</div>
-		`;
-    }else{
+      </div>
+    `;
+  }else{
       chat_list_header_html = `<div class='chat-list-header'>
       <h3>${__("Chats")}</h3>
       <div class='chat-list-icons'> 
@@ -466,6 +474,10 @@ export default class ChatList {
       });
       erpnext_chat_app.chat_contact_list.render();
     });
+  
+this.$chat_list.on("click", ".toggle-webview-mode", function () {
+    window.open("/app/clefinchat?webview=1", "_blank", "noopener,noreferrer");
+});
 
     $(".support-icon").on("click", async function () { 
       const room = await check_if_website_user_has_support_channel(me.user_email);
@@ -542,6 +554,7 @@ export default class ChatList {
 
 
     $(".close-chat-list").on("click", function () {
+ 
       erpnext_chat_app.hide_chat_widget();
       $("#chat-bubble").fadeIn(150);
       frappe.realtime.off("update_room");

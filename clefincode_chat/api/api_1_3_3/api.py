@@ -6,7 +6,7 @@ import frappe, shutil, os
 import datetime
 import json
 import mimetypes
-
+from frappe.utils import get_datetime
 import base64
 from PIL import Image
 from io import BytesIO
@@ -681,6 +681,7 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
 @frappe.whitelist()
 def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
     # sanitize inputs
+   
     user_email_esc = frappe.db.escape(user_email)
     limit = int(limit)
     offset = int(offset)
@@ -1334,119 +1335,199 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
         return {"results": [{"status": f"Error: {str(e)}"}]} 
 # ==========================================================================================
 
+
 @frappe.whitelist()
-def get_messages(room, user_email, room_type, chat_topic=None, remove_date=None, limit=10, offset=0):
-    condition = ""
-    
-    if chat_topic:
-        condition = f"chat_topic = '{chat_topic}'"
-    
-    if room_type != "Topic":
-        if room_type != "Contributor":
-            condition = f"chat_channel = '{room}'"
-            if room_type == "Group":
-                if remove_date and remove_date != "":
-                    condition += f" AND send_date <= '{remove_date}'"
+def get_messages(room, user_email, room_type, chat_topic=None,
+                 remove_date=None, limit=10, offset=0, since_utc=None):
+
+    limit = int(limit)
+    offset = int(offset)
+
+    params = {
+        "user_email": user_email,
+        "room": room,
+        "chat_topic": chat_topic,
+        "remove_date": remove_date,
+        "limit": limit,
+        "offset": offset,
+        "since_utc": None,
+    }
+
+    # Convert since_utc safely
+    if since_utc:
+        dt = get_datetime(since_utc)
+        params["since_utc"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    where_parts = []
+
+    # ---------------------------
+    # Room Type Logic
+    # ---------------------------
+
+    if room_type == "Topic":
+        if chat_topic:
+            where_parts.append("msg.chat_topic = %(chat_topic)s")
         else:
-            sub_channels = json.loads(room)
-            sub_channels_list = []
-            for d in sub_channels:
-                sub_channels_list.append(d)
-            sub_channels_str = ', '.join([frappe.db.escape(channel) for channel in sub_channels_list])
-            condition = f"sub_channel IN ({sub_channels_str})"
-    
-    
-    results = frappe.db.sql(f"""
-    SELECT 
-        msg.content, 
-        msg.send_date, 
-        msg.sender_email, 
-        msg.sender, 
-        msg.name AS message_name, 
-        msg.is_media, 
-        msg.is_document, 
-        msg.is_voice_clip, 
-        msg.file_id, 
-        msg.message_type, 
-        msg.message_template_type, 
-        msg.only_receive_by, 
-        msg.reply_to_message, 
-        msg.is_forwarded, 
-        msg.forwarded_from, 
-        msg.is_deleted, 
-        msg.reply_preview_type, 
-        msg.reply_preview_file, 
-        msg.reply_preview_file_url, 
-        msg.reply_preview_sender, 
-        msg.reply_preview_text,
-        msg.reply_preview_sender_email, 
-        msg.reactions_json, 
-        msg.is_edited,
-        backup.original_content AS original_content
-    FROM `tabClefinCode Chat Message` msg
-    LEFT JOIN `tabCiC Backup Chat Message` backup
-        ON msg.name = backup.original_message AND backup.change_type = 'Edit'
-    WHERE {condition} AND (msg.only_receive_by IS NULL OR msg.only_receive_by = '')
-    
-    UNION
-    
-    SELECT 
-        msg.content, 
-        msg.send_date, 
-        msg.sender_email, 
-        msg.sender, 
-        msg.name AS message_name, 
-        msg.is_media, 
-        msg.is_document, 
-        msg.is_voice_clip, 
-        msg.file_id, 
-        msg.message_type, 
-        msg.message_template_type, 
-        msg.only_receive_by, 
-        msg.reply_to_message, 
-        msg.is_forwarded, 
-        msg.forwarded_from, 
-        msg.is_deleted, 
-        msg.reply_preview_type, 
-        msg.reply_preview_file, 
-        msg.reply_preview_file_url, 
-        msg.reply_preview_sender, 
-        msg.reply_preview_text,
-        msg.reply_preview_sender_email, 
-        msg.reactions_json, 
-        msg.is_edited,
-        backup.original_content AS original_content
-    FROM `tabClefinCode Chat Message` msg
-    LEFT JOIN `tabCiC Backup Chat Message` backup
-        ON msg.name = backup.original_message 
-    WHERE {condition} AND msg.only_receive_by = '{user_email}'
-    
-    ORDER BY 2 DESC
-    LIMIT {limit} OFFSET {offset}
-    """, as_dict=True)
+            return {"results": []}
+
+    else:
+        if room_type != "Contributor":
+
+            where_parts.append("msg.chat_channel = %(room)s")
+
+            if room_type == "Group" and remove_date:
+                where_parts.append("msg.send_date <= %(remove_date)s")
+
+        else:
+            sub_channels = json.loads(room) if room else []
+            if not sub_channels:
+                return {"results": []}
+
+            # create dynamic placeholders for IN clause
+            sub_placeholders = []
+            for i, channel in enumerate(sub_channels):
+                key = f"sub_channel_{i}"
+                sub_placeholders.append(f"%({key})s")
+                params[key] = channel
+
+            where_parts.append(
+                f"msg.sub_channel IN ({', '.join(sub_placeholders)})"
+            )
+
+        if chat_topic:
+            where_parts.append("msg.chat_topic = %(chat_topic)s")
+
+    # Since filter
+    if params["since_utc"]:
+        where_parts.append("msg.send_date > %(since_utc)s")
+
+    base_condition = " AND ".join(where_parts) if where_parts else "1=1"
+
+    # ---------------------------
+    # Main Query
+    # ---------------------------
+
+    query = f"""
+        SELECT
+            msg.content,
+            msg.send_date,
+            msg.sender_email,
+            msg.sender,
+            msg.name AS message_name,
+            msg.is_media,
+            msg.is_document,
+            msg.is_voice_clip,
+            msg.file_id,
+            msg.message_type,
+            msg.message_template_type,
+            msg.only_receive_by,
+            msg.reply_to_message,
+            msg.is_forwarded,
+            msg.forwarded_from,
+            msg.is_deleted,
+            msg.reply_preview_type,
+            msg.reply_preview_file,
+            msg.reply_preview_file_url,
+            msg.reply_preview_sender,
+            msg.reply_preview_text,
+            msg.reply_preview_sender_email,
+            msg.reactions_json,
+            msg.is_edited,
+            backup.original_content AS original_content
+        FROM `tabClefinCode Chat Message` msg
+        LEFT JOIN `tabCiC Backup Chat Message` backup
+            ON msg.name = backup.original_message AND backup.change_type = 'Edit'
+        WHERE {base_condition}
+          AND (msg.only_receive_by IS NULL OR msg.only_receive_by = '')
+
+        UNION ALL
+
+        SELECT
+            msg.content,
+            msg.send_date,
+            msg.sender_email,
+            msg.sender,
+            msg.name AS message_name,
+            msg.is_media,
+            msg.is_document,
+            msg.is_voice_clip,
+            msg.file_id,
+            msg.message_type,
+            msg.message_template_type,
+            msg.only_receive_by,
+            msg.reply_to_message,
+            msg.is_forwarded,
+            msg.forwarded_from,
+            msg.is_deleted,
+            msg.reply_preview_type,
+            msg.reply_preview_file,
+            msg.reply_preview_file_url,
+            msg.reply_preview_sender,
+            msg.reply_preview_text,
+            msg.reply_preview_sender_email,
+            msg.reactions_json,
+            msg.is_edited,
+            backup.original_content AS original_content
+        FROM `tabClefinCode Chat Message` msg
+        LEFT JOIN `tabCiC Backup Chat Message` backup
+            ON msg.name = backup.original_message
+        WHERE {base_condition}
+          AND msg.only_receive_by = %(user_email)s
+
+        ORDER BY send_date DESC
+        LIMIT %(limit)s OFFSET %(offset)s
+    """
+
+    rendered_query = query % {
+        k: f"'{v}'" if isinstance(v, str)
+        else ("NULL" if v is None else v)
+        for k, v in params.items()
+    }
+    frappe.log_error(
+    message=f"{rendered_query}",
+    title="GET_MESSAGES SQL"
+    )
+    results = frappe.db.sql(query, params, as_dict=True)
+
+    # ---------------------------
+    # Timezone Handling
+    # ---------------------------
+
+    tz_data = get_user_timezone(user_email)
+    user_tz = (
+        tz_data["results"][0]["time_zone"]
+        if tz_data and tz_data.get("results")
+        else "UTC"
+    )
 
     for message in results:
-        message.utc_message_date = message.send_date
-        message.send_date = convert_utc_to_user_timezone(message.send_date, get_user_timezone(user_email)["results"][0]["time_zone"])
-        message.time_zone = get_user_timezone(user_email)["results"][0]["time_zone"]
-        message.get_messages = 1
-        
-      
-        if message.is_deleted:
-            message.content = None
-            message.file_id = None
-            message.reply_preview_file = None
-            message.reply_preview_file_url = None
-            message.reply_preview_text = None
-            message.forwarded_from = None
-            message.is_media = 0
-            message.is_document = 0
-            message.is_voice_clip = 0
-            message.is_forwarded = 0
-            message.reply_preview_type = None
+        message["utc_message_date"] = message["send_date"]
+        message["send_date"] = convert_utc_to_user_timezone(
+            message["send_date"], user_tz
+        )
+        message["time_zone"] = user_tz
+        message["get_messages"] = 1
 
-    
-    return {"results": sorted(results, key=lambda d: d["send_date"])}
+        if message.get("is_deleted"):
+            message.update({
+                "content": None,
+                "file_id": None,
+                "reply_preview_file": None,
+                "reply_preview_file_url": None,
+                "reply_preview_text": None,
+                "forwarded_from": None,
+                "is_media": 0,
+                "is_document": 0,
+                "is_voice_clip": 0,
+                "is_forwarded": 0,
+                "reply_preview_type": None,
+            })
+
+    if results:
+        return {"results": sorted(results, key=lambda d: d["send_date"])}
+
+    return {"results": []}
+
 
 
 
@@ -2895,36 +2976,37 @@ def get_topic_messages(chat_topic):
 #############################################################################################
 ######################################## Contacts ###########################################
 #############################################################################################
-# @frappe.whitelist()
-# def get_contacts(user_email):    
-#     contacts_list = frappe.db.sql(f"""
-#     SELECT DISTINCT ChatProfile.name AS profile_id, ChatProfile.full_name, Contact.user AS user_id, User.enabled
-#     FROM `tabClefinCode Chat Profile` AS ChatProfile
-#     INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
-#     LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user                     
-#     WHERE (User.enabled = 1 OR User.enabled IS NULL)
-#     ORDER BY Contact.user DESC
-#     """, as_dict=True)
-        
-#     filtered_contacts = []
-#     if is_limited_user(user_email):
-#         filtered_contacts = [
-#             contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
-#         ]
-#     else:
-#         filtered_contacts = contacts_list
-
-#     for contact in filtered_contacts:
-#         # Fetch contact details
-#         contact['contact_details'] = frappe.db.sql("""
-#             SELECT contact_info, type AS contact_type,verified, `default`
-#             FROM `tabClefinCode Chat Profile Contact Details`
-#             WHERE parent = %s
-#         """, (contact['profile_id'],), as_dict=True)
-
-#     return {"results": [{"contacts": filtered_contacts}]}     
 @frappe.whitelist()
-def get_contacts(user_email, limit=20, offset=0, search_text=None):
+def get_contacts(user_email):    
+    contacts_list = frappe.db.sql(f"""
+    SELECT DISTINCT ChatProfile.name AS profile_id, ChatProfile.full_name, Contact.user AS user_id, User.enabled
+    FROM `tabClefinCode Chat Profile` AS ChatProfile
+    INNER JOIN `tabContact` AS Contact ON Contact.name = ChatProfile.contact
+    LEFT OUTER JOIN `tabUser` AS User ON User.name = Contact.user                     
+    WHERE (User.enabled = 1 OR User.enabled IS NULL)
+    ORDER BY Contact.user DESC
+    """, as_dict=True)
+        
+    filtered_contacts = []
+    if is_limited_user(user_email):
+        filtered_contacts = [
+            contact for contact in contacts_list if contact.get("user_id") and not is_limited_user(contact.get("user_id"))
+        ]
+    else:
+        filtered_contacts = contacts_list
+
+    for contact in filtered_contacts:
+        # Fetch contact details
+        contact['contact_details'] = frappe.db.sql("""
+            SELECT contact_info, type AS contact_type,verified, `default`
+            FROM `tabClefinCode Chat Profile Contact Details`
+            WHERE parent = %s
+        """, (contact['profile_id'],), as_dict=True)
+
+    return {"results": [{"contacts": filtered_contacts}]}     
+# ==========================================================================================  
+@frappe.whitelist()
+def get_contacts_for_website(user_email, limit=20, offset=0, search_text=None):
     
     search_condition = ""
     search_values = {}
@@ -3034,7 +3116,7 @@ def get_contacts_for_adding_to_group(user_email , existing_members , existing_co
     ORDER BY ChatProfile.creation DESC
     """
     contacts_list = frappe.db.sql(contacts_query, (user_email,), as_dict=True)
-    
+   
     for contact in contacts_list:
         details_query = """
         SELECT contact_info, type AS contact_type, `default`
@@ -3347,11 +3429,8 @@ def search_in_message_contents(channel, query, sub_channel=None):
                 "name": msg.name,
                 "send_date": msg.send_date
             })
-    
-    return {
-        "count": len(clean_results),
-        "results": clean_results
-    }
+    return {"results": [{"results": clean_results,"count": len(clean_results)}]}
+  
 # ==========================================================================================
 #############################################################################################
 ######################################## WhatsApp Functions #################################
@@ -3824,6 +3903,7 @@ def trigger_chat_channel_status(room, is_open):
 # ==========================================================================================
 @frappe.whitelist()
 def check_if_contact_has_chat(user_email , contact , platform):
+   
     res = [{}]
     results = frappe.db.sql(f"""
     SELECT ChatChannel.name, ChatChannel.chat_status

@@ -3434,6 +3434,7 @@ def trigger_chat_channel_status(room, is_open):
 # ==========================================================================================
 @frappe.whitelist()
 def check_if_contact_has_chat(user_email , contact , platform):
+    
     res = [{}]
     results = frappe.db.sql(f"""
     SELECT ChatChannel.name, ChatChannel.chat_status

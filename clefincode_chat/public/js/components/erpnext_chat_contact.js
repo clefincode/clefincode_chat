@@ -381,7 +381,12 @@ save_all_contacts(dialog) {
     }   
           const isUserContact = contact_details.some(cd => cd.contact_info === frappe.session.user);
       const isAdmin = frappe.session.user === "Administrator";
-      const isSystemManager = frappe.user_roles.includes("System Manager");
+      const roles =
+  (Array.isArray(frappe?.user_roles) && frappe.user_roles) ||
+  (Array.isArray(frappe?.boot?.user?.roles) && frappe.boot.user.roles) ||
+  [];
+
+const isSystemManager = roles.includes("System Manager");
 
     
       // Show Manage Contact if user owns contact OR is admin OR system manager
@@ -873,3 +878,8 @@ export async function check_if_contact_has_whatsapp_chat(default_whatsapp_number
   return await res.message.results[0];
 };
 
+function safeIncludes(haystack, needle) {
+  if (Array.isArray(haystack)) return haystack.includes(needle);
+  if (typeof haystack === "string") return haystack.includes(needle);
+  return false;
+}

@@ -694,7 +694,7 @@ stripHtml(html) {
 
 async makeReplySnippet(replyMsgName, maxLen = 80) {
   const original = this.messageCache.get(replyMsgName);
-  console.log(replyMsgName);
+
 //   for (const [key, value] of this.messageCache.entries()) {
 //   console.log("Message:", key, value);
 // }
@@ -1078,8 +1078,7 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
 
  setup_socket() {
   const me = this;
-  console.log("me.profile.room");
-  console.log(me.profile.room);
+ 
   frappe.realtime.on(me.profile.room, function (res) {
     if (res.realtime_type == "send_message") {
       me.receive_message(res, get_t(res.send_date));
@@ -1402,8 +1401,7 @@ $recipient_element.attr(
   if (reply_to_message && !is_deleted ) {
 
   let original = this.messageCache.get(reply_to_message);
-    console.log("original");
-    console.log(original);
+ 
   // if (!original) {
   //     const msg = await this.fetch_single_message(reply_to_message);
   //     if (msg) {
@@ -1451,10 +1449,10 @@ const textLabel = previewText
                previewType === "voice" ? "🎤" : "↩";
 
   const isDark = document.documentElement.getAttribute("data-theme-mode") === "dark";
-  console.log("is dark", isDark)
+
 
   const bg = isDark ? "transparent" : "#f1f3f5";
-  console.log("the bg", bg)
+
 
   $message_element.prepend(`
     <div class="reply-link" data-jump="${reply_to_message}" style="
@@ -1549,7 +1547,7 @@ const textLabel = previewText
         reply_to_message_name:this.reply_to_message_name,
       };
       res=await send_message(guest_message_info);
-      console.log(res);
+
       this.reply_to_message_name = null;
       this.$chatbot_space.find(".reply-preview-host").remove();
       scroll_to_bottom(this.$chatbot_container); 
