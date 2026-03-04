@@ -253,32 +253,60 @@ export default class ChatRoom {
     $(this.$chat_room).prependTo(this.$chat_rooms_container);
   }
 
-  setup_events() {
-    const me = this;
-    this.$chat_room.on("click", (e) => {
-      me.click_on_chat_room();
-      if (me.expand == 1) {
-        me.expand = 0;
-        return;
-      }
+ setup_events() {
+  const me = this;
 
-      if (check_if_chat_window_open(me.profile.room, "room")) {
-        $(".expand-chat-window[data-id|='" + me.profile.room + "']").click();
-        return;
-      }
-      this.chat_window = new ChatWindow({
-        profile: {
-          room: me.profile.room,
-        },
+  this.$chat_room.on("click", (e) => {
+
+
+    const app = window.erpnext_chat_app;
+    if (app && app.is_webview) {
+      $(".chat-window").each(function () {
+        const $win = $(this);
+
+
+        const winRoom =
+          $win.attr("data-room") ||
+          $win.data("room") ||
+          $win.attr("data-id") ||
+          $win.data("id");
+
+        if (String(winRoom) !== String(me.profile.room)) {
+          const $close = $win.find(".close-chat-window");
+          if ($close.length) {
+            $close.first().trigger("click"); 
+          } else {
+          
+            $win.remove();
+          }
+        }
       });
-      this.chat_space = new ChatSpace({
-        $wrapper: this.chat_window.$chat_window,
-        profile: this.profile,
-        $chat_room: me.$chat_room,
-        chat_status: this.chat_status
-      });
+    }
+
+    me.click_on_chat_room();
+
+    if (me.expand == 1) {
+      me.expand = 0;
+      return;
+    }
+
+    if (check_if_chat_window_open(me.profile.room, "room")) {
+      $(".expand-chat-window[data-id|='" + me.profile.room + "']").click();
+      return;
+    }
+
+    this.chat_window = new ChatWindow({
+      profile: { room: me.profile.room },
     });
-  }
+
+    this.chat_space = new ChatSpace({
+      $wrapper: this.chat_window.$chat_window,
+      profile: this.profile,
+      $chat_room: me.$chat_room,
+      chat_status: this.chat_status,
+    });
+  });
+}
 
   click_on_chat_room() {
     if (this.profile.user_unread_messages <= 0) {

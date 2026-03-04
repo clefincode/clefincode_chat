@@ -1490,20 +1490,28 @@ async fetch_single_message(messageName) {
           );
       }
 
-      $(this).closest(".chat-window").remove(); 
-      const app = window.erpnext_chat_app;
+      $(this).closest(".chat-window").remove();
+
+const app = window.erpnext_chat_app;
 if (app && app.is_webview) {
   const $left = $(".chat_left_section");
 
-  // if bundle already created it, reuse it (do not re-create)
-  if (app.$empty_state && app.$empty_state.length) {
-    if (!$left.find(".chat-empty-state").length) {
-      $left.append(app.$empty_state);
+
+  const anyOpen = $(".chat-window").length > 0;
+
+  if (!anyOpen) {
+    if (app.$empty_state && app.$empty_state.length) {
+      if (!$left.find(".chat-empty-state").length) {
+        $left.append(app.$empty_state);
+      }
+      app.$empty_state.show();
+    } else {
+      $left.find(".chat-empty-state").show();
     }
-    app.$empty_state.show();
   } else {
-    // fallback: in case $empty_state not available for any reason
-    $left.find(".chat-empty-state").show();
+    
+    if (app.$empty_state && app.$empty_state.length) app.$empty_state.hide();
+    $left.find(".chat-empty-state").hide();
   }
 }
 
