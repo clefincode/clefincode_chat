@@ -32,6 +32,48 @@ export default class ChatPortalSpace {
       targetMessage: null,
     };
   }
+  renameRenderedMessage(oldName, newName) {
+  const $el = this.$chatbot_container.find(`#msg-${oldName}`);
+  if (!$el.length) return;
+
+  $el.attr("id", `msg-${newName}`);
+  $el.attr("data-message-name", newName).data("message-name", newName);
+
+  const cached = this.messageCache.get(oldName);
+  if (cached) {
+    this.messageCache.delete(oldName);
+    this.messageCache.set(newName, cached);
+  }
+}
+
+async renderLocalOutgoing(content) {
+  const tempName = `tmp-${Date.now()}`;
+
+
+  this.messageCache.set(tempName, {
+    sender: this.profile.user,
+    sender_email: this.profile.user_email,
+    content: this.plainTextToParagraphs ? this.plainTextToParagraphs(content) : content,
+    is_deleted: 0,
+    is_edited: 0,
+  });
+
+
+  this.$chatbot_container.append(
+    await this.make_message({
+      content: this.plainTextToParagraphs ? this.plainTextToParagraphs(content) : content,
+      time: get_t(get_current_datetime()),
+      type: "recipient-message",
+      sender_email: this.profile.user_email,
+      message_name: tempName,
+      is_deleted: 0,
+      is_edited: 0,
+    })
+  );
+
+  scroll_to_bottom(this.$chatbot_container);
+  return tempName;
+}
 handlePortalMessageEdit(res) {
   const messageName = res.message_name;
   const newHtml = res.content || "";
@@ -1498,13 +1540,13 @@ const textLabel = previewText
     
     let localReplyPreview = null;
     if (this.reply_to_message_name) {
-  const snip = await this.makeReplySnippet(this.reply_to_message_name, 120);
-  const safeText = frappe.utils.escape_html(snip.text || "");
-   localReplyPreview = {
-    type: "text",
-    text: snip.text,
-    sender: snip.sender,
-    original_message_name: this.reply_to_message_name,
+        const snip = await this.makeReplySnippet(this.reply_to_message_name, 120);
+        const safeText = frappe.utils.escape_html(snip.text || "");
+        localReplyPreview = {
+          type: "text",
+          text: snip.text,
+          sender: snip.sender,
+          original_message_name: this.reply_to_message_name,
   };
   // content = `
   //   <div class="reply-link" data-jump="${this.reply_to_message_name}" style="
@@ -1523,20 +1565,48 @@ const textLabel = previewText
     
     // const text_content = content
 
-    if (this.is_first_message == 1 && this.profile.is_verified == 0) {
-      this.is_first_message = 0;
-      const results = await create_guest_profile_and_channel(
-        content,
-        this.profile.user,
-        this.profile.user_email,
-        get_current_datetime()
-      );
-      localStorage.setItem("guest_token", results.token);
-      this.profile.token = results.token;
-      this.profile.room = results.room;
-      this.profile.respondent_user = results.respondent_user;
-      this.setup_socket();
-    } else {
+  if (this.is_first_message == 1 && this.profile.is_verified == 0) {
+  this.is_first_message = 0;
+   this.$chatbot_action.find(".type-message").val("");  
+
+
+  const tempName = await this.renderLocalOutgoing(content);
+
+  const results = await create_guest_profile_and_channel(
+    content,
+    this.profile.user,
+    this.profile.user_email,
+    get_current_datetime()
+  );
+
+  localStorage.setItem("guest_token", results.token);
+  this.profile.token = results.token;
+  this.profile.room = results.room;
+  this.profile.respondent_user = results.respondent_user;
+
+  this.profile.is_verified = 1;
+
+ 
+  this.setup_socket();
+
+
+  get_messages(this.profile.room).then((msgs) => {
+    const last = Array.isArray(msgs) && msgs.length ? msgs[msgs.length - 1] : null;
+    if (last?.message_name) {
+      this.renameRenderedMessage(tempName, last.message_name);
+
+   
+      const cached = this.messageCache.get(last.message_name) || {};
+      cached.content = last.content || cached.content;
+      cached.is_edited = last.is_edited || 0;
+      cached.is_deleted = last.is_deleted || 0;
+      this.messageCache.set(last.message_name, cached);
+      
+    }
+  }).catch(() => {});
+
+  return;
+} else {
     
    
       const guest_message_info = {
@@ -1556,41 +1626,6 @@ const textLabel = previewText
       this.$chatbot_space.find(".reply-preview-host").remove();
       scroll_to_bottom(this.$chatbot_container); 
       }
-    //    this.messageCache.set(res.message_name, {
-    //         sender: res.sender,
-    //         content: res.content,
-    //         sender_email: res.sender_email,               
-    //         is_screenshot: res.is_screenshot || 0,    
-    //         reply_to_message:res.reply_to_message ,
-    //         reply_preview_type: res.reply_preview_type,
-    //         reply_preview_text: res.reply_preview_text,
-    //         reply_preview_sender: res.reply_preview_sender,
-    //         reply_preview_file_url: res.reply_preview_file_url,
-    //         is_deleted:res.is_deleted,
-    //         is_edited: res.is_edited ,
-    
-            
-    //       });
-    // this.$chatbot_container.append(
-    //   await this.make_message({
-    //     content: res.content,
-    //     sender_email: res.sender_email,
-    //     type: "recipient-message",
-    //     sender: res.user,
-    //     message_name: res.message_name,
-    //     message_template_type: res.message_template_type,
-    //     reply_to_message:res.reply_to_message,
-    //     reply_preview: {
-    //         type: res.reply_preview_type || null,
-    //         text: res.reply_preview_text || null,
-    //         sender: res.reply_preview_sender || null,
-    //         sender_email: res.reply_preview_sender_email || null,
-    //         file_url: res.reply_preview_file_url || null,
-    //         file: res.reply_preview_file || null,
-    //         original_message_name: res.reply_preview_message_name || res.reply_to_message || null,
-    //       },
-    //   })
-    // );
     
   } //End handle_send_message
 
