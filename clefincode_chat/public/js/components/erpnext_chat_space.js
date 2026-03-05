@@ -919,8 +919,8 @@ async fetch_single_message(messageName) {
                     const key = (e.key || "").toLowerCase();
 
                     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-                    const isCtrlF = isCtrlOrCmd && key === "f";               
-                    const isCtrlShiftF = isCtrlOrCmd && e.shiftKey && key === "f"; // 
+                    const isCtrlF = isCtrlOrCmd && e.code === "KeyF";               
+                    const isCtrlShiftF = isCtrlOrCmd && e.shiftKey && e.code === "KeyF"; // 
                   
 
                     const openSearch = () => {
@@ -3050,6 +3050,9 @@ if (!is_deleted) {
 
     if (attachment) {
       content = await this.handle_attachment(attachment, file_name);
+
+      if (content == null) return;
+      
     } else {
       content = this.check_if_content_has_email(content);
       content = this.check_if_content_has_link(content);

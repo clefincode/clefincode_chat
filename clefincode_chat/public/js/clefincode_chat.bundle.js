@@ -20,6 +20,10 @@ constructor() {
 async boot() {
   await initFrappeVersion();
   this.frappe_version = FRAPPE_MAJOR_VERSION;
+   if (this.frappe_version == 16) {
+    $("body").addClass("cc-frappe-v16");
+  }
+
   await this.setup_app();
 }
 apply_webview_layout(enable) {
@@ -282,13 +286,14 @@ this.$chat_left_section.append(this.$empty_state);
     let navbar_icon_html;
     if (FRAPPE_MAJOR_VERSION == 16) {
     
-      navbar_icon_html = `
-        <li class='nav-item dropdown dropdown-notifications 
-        dropdown-mobile chat-navbar-icon' title="Show Chats" style="list-style: none" >
-          <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">
-        <span class="badge" id="chat-notification-count"></span>
-        </li>
-    `;
+    //   navbar_icon_html = `
+    //     <li class='nav-item dropdown dropdown-notifications 
+    //     dropdown-mobile chat-navbar-icon' title="Show Chats" style="list-style: none" >
+    //       <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">
+    //     <span class="badge" id="chat-notification-count"></span>
+    //     </li>
+    // `;
+    $(".chat-navbar-icon").remove();
     } else {
       navbar_icon_html = `
         <li class='nav-item dropdown dropdown-notifications 
@@ -302,11 +307,11 @@ this.$chat_left_section.append(this.$empty_state);
 
     if (this.is_desk === true) {
       if (FRAPPE_MAJOR_VERSION == 16) {
-        frappe.after_ajax(() => {
-          if (!$(".chat-navbar-icon").length) {
-            $(".desktop-notifications").after(navbar_icon_html);
-          }
-        });
+        // frappe.after_ajax(() => {
+        //   if (!$(".chat-navbar-icon").length) {
+        //     $(".desktop-notifications").after(navbar_icon_html);
+        //   }
+        // });
       } else {
         $("header.navbar > .container > .navbar-collapse > ul").prepend(
           navbar_icon_html
