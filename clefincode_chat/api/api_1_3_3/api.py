@@ -1228,7 +1228,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             send_notification(only_receive_by , results, "send_message", room_name, message_template_type) 
             return  {"results" : [{"new_message_name" : new_message.name}]}
 
-        if channel_doc.type == "Guest":            
+        if channel_doc.type == "Guest":  
+            frappe.publish_realtime("guest_unread_update", {}, user="Guest")          
             results["room"] = room        
             if channel_doc.chat_profile.startswith("Guest"):
                 results["send_date"] = convert_utc_to_user_timezone(send_date, get_time_zone())

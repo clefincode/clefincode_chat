@@ -2734,6 +2734,7 @@ body:not(.cc-chat-webview) .chat-empty-state {
 
 body.cc-chat-webview {
 
+
   .chat_left_section {
     position: relative;
   }
@@ -2765,4 +2766,56 @@ body.cc-chat-webview {
     flex: 0 0 auto !important;
   }
 
+}
+
+html[data-theme="dark"] {
+  .chat-empty-state {
+    background: var(--card-bg) !important;   
+    color: var(--text-color) !important;
+  }
+
+  .chat-empty-state .empty-content {
+    opacity: 0.85; 
+  }
+
+  .chat-empty-state h3 {
+    color: var(--text-color) !important;
+  }
+
+  .chat-empty-state p {
+    color: var(--text-muted) !important;
+  }
+}
+body.cc-chat-webview {
+  #chat-bubble,
+  .chat-bubble {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+body.cc-chat-webview {
+  #chat-bubble > .badge,
+  .chat-bubble .badge {
+    display: none !important;
+  }
+}
+
+
+body.cc-frappe-v16 #chat-bubble{
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  left: auto;
+  top: auto;
+  z-index: 1031;
+}
+
+
+body.cc-chat-desk #chat-bubble{
+  position: fixed ;
+  left: 24px ;
+  right: auto ;
+  bottom: 24px ;
+  top: auto ;
 }
