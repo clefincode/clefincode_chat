@@ -266,3 +266,11 @@ sounds = [
 webhooks = [
     {"from_route": "/telegram/webhook", "to_method": "clefincode_chat.webhook.telegram_webhook"}
 ]
+fixtures = [
+    {
+        "dt": "Desktop Icon",
+        "filters": [
+            ["name", "in", ["ClefinChat"]]
+        ]
+    }
+]
