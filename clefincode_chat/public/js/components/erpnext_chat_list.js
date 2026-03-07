@@ -88,6 +88,8 @@ export default class ChatList {
     await this.setup_rooms();
     await this.render_messages();
     this.setup_events();
+    // 4) Check if there's space to load more automatically after initial render
+    this.check_and_load_if_space_available();
   }
 
   // 4) New helper: load the next page of search results
@@ -121,6 +123,8 @@ export default class ChatList {
     }
 
     this._loading = false;
+    // After loading more, check if there's still space to load additional content
+    this.check_and_load_if_space_available();
   }
 
   setup_header() {
@@ -253,6 +257,9 @@ export default class ChatList {
 
       // 7) Wire up scroll + other handlers exactly once
       this.setup_events();
+
+      // 8) Check if there's space to load more automatically after initial render
+      this.check_and_load_if_space_available();
 
     } catch (error) {
       console.error(error);
@@ -561,6 +568,14 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
       frappe.realtime.off("add_group_member");
       frappe.realtime.off("remove_group_member");
     });
+
+    // Add resize event listener for zoom out/in
+    $(window).on("resize", () => {
+      if (me._resize_timeout) clearTimeout(me._resize_timeout);
+      me._resize_timeout = setTimeout(() => {
+        me.check_and_load_if_space_available();
+      }, 200); // Debounce 200ms
+    });
   }
 }
 
@@ -760,6 +775,8 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
       );
     }
     this._loading = false;
+    // After loading more, check if there's still space to load additional content
+    this.check_and_load_if_space_available();
   }
 
 
@@ -864,6 +881,28 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
       chat_room_item,
       ...this.chat_room_groups.filter((item) => item !== chat_room_item),
     ];
+  }
+
+  // New method to check if there's visible space in the container and load more if needed
+  check_and_load_if_space_available() {
+    // Wait a bit for DOM to update after render
+    setTimeout(() => {
+      if (!this.$chat_rooms_group_container || this.rest_of_results <= 0) return;
+
+      const container = this.$chat_rooms_group_container[0];
+      const scrollHeight = container.scrollHeight;
+      const clientHeight = container.clientHeight;
+      const scrollTop = container.scrollTop;
+
+      // If content height is less than or equal to visible height (plus a small buffer), load more
+      if (scrollHeight <= clientHeight + scrollTop + 20) {  // 20px buffer
+        if (this.search_query) {
+          this.get_and_loading_more_search_contents();
+        } else {
+          this.get_and_loading_more_contents();
+        }
+      }
+    }, 100);  // Small delay to ensure DOM is rendered
   }
 } // END Class
 
