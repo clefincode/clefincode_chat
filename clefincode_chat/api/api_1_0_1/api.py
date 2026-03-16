@@ -97,6 +97,7 @@ def get_versions():
     send_notification_with_content = 0
     try:
         enable_mobile_notifications = frappe.db.get_single_value("ClefinCode Chat Settings" , "enable_mobile_notifications")
+        enable_system_notification_on_mobile_app = frappe.db.get_single_value("ClefinCode Chat Settings" , "enable_system_notification_on_mobile_app")
         if enable_mobile_notifications == 1:
             send_notification_with_content = frappe.db.get_single_value("ClefinCode Chat Settings" , "with_message_content")
         installed_apps = frappe.get_installed_apps()
@@ -106,7 +107,7 @@ def get_versions():
         for app in sorted_installed_apps:
             versions.update({app : frappe.get_attr(app + ".__version__")})
 
-        versions.update({"enable_mobile_notifications" : enable_mobile_notifications , "send_notification_with_content" : send_notification_with_content})               
+        versions.update({"enable_mobile_notifications" : enable_mobile_notifications , "send_notification_with_content" : send_notification_with_content,"enable_system_notification_on_mobile_app":enable_system_notification_on_mobile_app})               
 
         return [{'status':1,"description":"Done successfully","data":[versions]}]
     except Exception as e:
