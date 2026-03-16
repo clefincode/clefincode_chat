@@ -6,20 +6,71 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "rcevier_by_filed"
+  "recipient_source",
+  "linked_phone_field",
+  "receiver_field",
+  "receiver_value_type",
+  "fixed_chat_profile",
+  "fixed_phone_number",
+  "is_required"
  ],
  "fields": [
   {
-   "fieldname": "rcevier_by_filed",
+   "fieldname": "recipient_source",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Rcevier by filed"
+   "label": "Recipient Source",
+   "options": "From Profile Field\nFrom Linked Field\nFrom Field\nFixed Value",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.recipient_source!='Fixed Value'",
+   "fieldname": "receiver_field",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Receiver Field"
+  },
+  {
+   "depends_on": "eval:doc.recipient_source=='From Linked Field'",
+   "fieldname": "linked_phone_field",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Linked Field"
+  },
+  {
+   "depends_on": "eval:doc.recipient_source=='Fixed Value'",
+   "fieldname": "receiver_value_type",
+   "fieldtype": "Select",
+   "label": "Fixed Value Type",
+   "mandatory_depends_on": "eval:doc.recipient_source=='Fixed Value'",
+   "options": "Phone\nProfile"
+  },
+  {
+   "depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Phone'",
+   "fieldname": "fixed_phone_number",
+   "fieldtype": "Data",
+   "label": "Phone Number",
+   "mandatory_depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Phone'"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_required",
+   "fieldtype": "Check",
+   "label": "Is Required"
+  },
+  {
+   "depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Profile'",
+   "fieldname": "fixed_chat_profile",
+   "fieldtype": "Link",
+   "label": "Chat Profile ",
+   "mandatory_depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Profile'",
+   "options": "ClefinCode Chat Profile"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-11-06 15:03:16.139004",
+ "modified": "2026-03-16 09:40:15.037116",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification Recipient list",

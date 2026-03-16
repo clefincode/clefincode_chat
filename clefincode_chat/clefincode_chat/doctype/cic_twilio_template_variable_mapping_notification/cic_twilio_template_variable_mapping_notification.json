@@ -8,7 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "variable_key",
-  "source_doctype",
+  "source_type",
   "source_field",
   "default"
  ],
@@ -20,11 +20,11 @@
    "label": "Variable Key"
   },
   {
-   "fieldname": "source_doctype",
-   "fieldtype": "Link",
+   "fieldname": "source_type",
+   "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Source DocType",
-   "options": "DocType"
+   "label": "Source Type",
+   "options": "\nDocument Field\nChild Row Field"
   },
   {
    "fieldname": "source_field",
