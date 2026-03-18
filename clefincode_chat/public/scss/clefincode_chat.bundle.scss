@@ -2576,7 +2576,7 @@ body.cc-chat-webview .chat-space-actions {
 body.cc-chat-webview .chat-space .ql-editor {
   position: relative !important;
   bottom: auto !important;
-  max-height: 120px !important;
+  max-height: 90px !important;
   min-height: 44px !important;
 }
 
@@ -2818,4 +2818,164 @@ body.cc-chat-desk #chat-bubble{
   right: auto ;
   bottom: 24px ;
   top: auto ;
+}
+
+/* =========================
+   WebView: Quill toolbar نفس عرض الكتابة
+   ========================= */
+body.cc-chat-webview {
+  .chat-space-actions {
+    height: auto !important;
+    align-items: stretch !important;
+  }
+
+  .chat-space-actions .message-section {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      ". toolbar . ."
+      "attach editor send voice";
+    align-items: end;
+    column-gap: 8px;
+    row-gap: 8px;
+    width: 100%;
+  }
+
+  .chat-space-actions .message-section > .ql-toolbar.ql-snow {
+    grid-area: toolbar;
+    width: 100%;
+    margin: 0 10px; /* نفس إحساس .type-message */
+    box-sizing: border-box;
+  }
+
+  .chat-space-actions .message-section > .open-attach-items {
+    grid-area: attach;
+  }
+
+  .chat-space-actions .message-section > .type-message.ql-container.ql-snow {
+    grid-area: editor;
+    width: 100%;
+    min-width: 0;
+    margin: 0 10px;
+    box-sizing: border-box;
+  }
+
+  .chat-space-actions .message-section > .message-send-button {
+    grid-area: send;
+  }
+
+  .chat-space-actions .message-section > .voice-clip {
+    grid-area: voice;
+  }
+
+  .chat-space-actions
+    .message-section
+    > .ql-toolbar.ql-snow
+    + .ql-container.ql-snow {
+    border-top: 0;
+  }
+
+  .chat-space .ql-editor {
+    position: relative !important;
+    bottom: auto !important;
+    width: 100% !important;
+    max-height: 90px !important;
+    min-height: 44px !important;
+  }
+}
+/* =========================
+   Non-WebView: Bubble أعرض
+   ========================= */
+body:not(.cc-chat-webview) {
+  .chat-space .ql-container.ql-bubble {
+    width: 100%;
+  }
+
+  .chat-space .ql-bubble .ql-tooltip {
+    min-width: 320px;
+    max-width: 420px;
+    width: max-content;
+  }
+
+  .chat-space .ql-bubble .ql-tooltip .ql-toolbar {
+    white-space: nowrap;
+  }
+}
+/* =========================
+   Non-WebView: Bubble
+   ========================= */
+body:not(.cc-chat-webview) {
+  .chat-space .ql-container.ql-bubble,
+  .chat-space .type-message.ql-container.ql-bubble {
+    overflow: visible !important;
+    position: relative;
+  }
+
+  .chat-space .ql-bubble .ql-tooltip {
+    z-index: 999999 !important;
+    min-width: 320px;
+    max-width: 600px;
+    width: max-content;
+  }
+}
+.chat-list-icons {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+html[data-theme="dark"] {
+  .chat-search {
+    border-bottom-color: rgba(255,255,255,0.08);
+  }
+
+  .chat-search__bar {
+    background: rgba(255,255,255,0.06) !important;
+    border-color: rgba(255,255,255,0.10) !important;
+  }
+
+  .chat-search__bar:focus-within {
+    background: var(--card-bg) !important;
+    border-color: rgba(13,110,253,0.45) !important;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.28);
+  }
+
+  .chat-search__input {
+    color: var(--text-color) !important;
+  }
+
+  .chat-search__input::placeholder {
+    color: var(--text-muted) !important;
+    opacity: 0.8;
+  }
+
+  .chat-search__icon,
+  .chat-search__clear {
+    color: var(--text-muted) !important;
+    opacity: 0.9;
+  }
+
+  .chat-search__clear:hover {
+    background: rgba(255,255,255,0.08) !important;
+  }
+
+  .chat-search__btn {
+    background: var(--control-bg) !important;
+    color: var(--text-color) !important;
+    border-color: rgba(255,255,255,0.10) !important;
+  }
+
+  .chat-search__btn:disabled {
+    background: rgba(255,255,255,0.04) !important;
+    color: var(--text-muted) !important;
+  }
+
+  .chat-search__count {
+    background: rgba(13,110,253,0.18) !important;
+    color: #8ec5ff !important;
+  }
+
+  .chat-search__spinner {
+    border-color: rgba(255,255,255,0.14) !important;
+    border-top-color: #4da3ff !important;
+  }
 }

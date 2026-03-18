@@ -603,7 +603,7 @@ highlightAndScroll($msg) {
 }
 async saveReaction(messageName, emoji) {
   return frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.add_or_update_reaction",
+    method: "clefincode_chat.api.api_1_3_4.api.add_or_update_reaction",
     args: { message_name: messageName, emoji }
   });
 }
@@ -1758,36 +1758,26 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
 
   const $wrapper = $(this).closest("[data-message-name]");
   const messageName = $wrapper.data("message-name");
-
   const cached = me.messageCache.get(messageName) || {};
-  
   const isEditedBefore = Number(cached.is_edited || 0) === 1;
 
-  const currentText = (cached.content || "")
-  .replace(/<\/p>\s*<p>/g, "\n")
-  .replace(/<\/?p>/g, "")
-  .trim();
-
   if (isEditedBefore) {
-   
-    const originalText = me.stripHtml(cached.original_content || "") || "—";
-
     const d = new frappe.ui.Dialog({
       title: "Edit Message",
       fields: [
         {
           label: "Original Message",
           fieldname: "original_message",
-          fieldtype: "Small Text",
+          fieldtype: "Text Editor",
           read_only: 1,
-          default: originalText
+          default: cached.original_content || "—"
         },
         {
           label: "Current Message",
           fieldname: "current_message",
-          fieldtype: "Small Text",
+          fieldtype: "Text Editor",
           read_only: 1,
-          default: currentText || "—"
+          default: cached.content || "—"
         }
       ],
       primary_action_label: "OK",
@@ -1798,13 +1788,12 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
 
     d.$body.prepend(`
       <div class="alert alert-warning" style="margin-bottom:10px;">
-       Editing is not allowed because it was edited before.
+        Editing is not allowed because it was edited before.
       </div>
     `);
 
     return;
   }
-
 
   const d = new frappe.ui.Dialog({
     title: "Edit Message",
@@ -1812,58 +1801,48 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
       {
         label: "Message",
         fieldname: "content",
-        fieldtype: "Small Text",
+        fieldtype: "Text Editor",
         reqd: 1,
-        default: currentText || ""
+        default: cached.content || ""
       }
     ],
     primary_action_label: "Save",
     primary_action: async (values) => {
-      const formattedContent = values.content
-      .split("\n")
-      .map(line => `<p>${line.trim()}</p>`)
-      .join("");
+
+      let formattedContent = values.content || "";
+
+      const $tmp = $("<div>").html(formattedContent);
+      const $ql = $tmp.find(".ql-editor").first();
+
+      formattedContent = $ql.length ? $ql.html() : $tmp.html();
+
       await frappe.call({
         method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
         args: {
           message_name: messageName,
-          new_content: formattedContent,
+          new_content: formattedContent
         }
       });
-      const $bubble = $wrapper.find(".message-bubble");
 
-      
+      const $bubble = $wrapper.find(".message-bubble");
       const $actions = $bubble.find(".message-actions").detach();
 
-      
-      $bubble.find("p").remove();
-      $bubble.find(".edited-label").remove();
-
-      
-      // $bubble.contents().filter((_, n) => n.nodeType === 3).remove(); // text nodes
-
-    
+      $bubble.empty();
       $bubble.append(formattedContent);
 
-      
       $bubble.append(`
-        <div class="edited-label" style="
-          font-size:11px;
-          opacity:0.6;
-          margin-top:4px;
-        ">Edited</div>
+        <div class="edited-label" style="font-size:11px;opacity:.6;margin-top:4px;">
+          Edited
+        </div>
       `);
 
-     
-      if ($actions.length) $bubble.append($actions);
+      if ($actions.length) {
+        $bubble.append($actions);
+      }
 
- 
-      
-
-        cached.content = formattedContent;
-        cached.is_edited = 1;
-
-        me.messageCache.set(messageName, cached);
+      cached.content = formattedContent;
+      cached.is_edited = 1;
+      me.messageCache.set(messageName, cached);
 
       d.hide();
     },
@@ -1872,8 +1851,10 @@ this.$chat_space.on("click", ".edit-btn", function (e) {
   });
 
   d.show();
-});
 
+  const editor = d.fields_dict.content.$wrapper;
+  editor.attr("dir", "auto");
+});
     // Reply button click
 this.$chat_space.on("click", ".reply-btn", async function (e) {
   e.stopPropagation();
@@ -2953,21 +2934,21 @@ if (!is_deleted) {
     }
 
     if (
-      this.$chat_space.find(".ql-editor").find("p").text().trim().length == 0 &&
+      this.$chat_space.find(".type-message .ql-editor").find("p").text().trim().length == 0 &&
       !attachment &&
-      this.$chat_space.find(".ql-editor").find("img").length == 0
+      this.$chat_space.find(".type-message .ql-editor").find("img").length == 0
     ) {
       return;
     }
 
-    let content = this.$chat_space.find(".ql-editor").html();
+    let content = this.$chat_space.find(".type-message .ql-editor").html();
     (this.is_link = null),
       (this.is_media = null),
       (this.is_document = null),
       (this.is_voice_clip = null);
     let chat_room;
     let is_screenshot = 0;
-    if (this.$chat_space.find(".ql-editor").find("p").find("img").length > 0) {
+    if (this.$chat_space.find(".type-message .ql-editor").find("p").find("img").length > 0) {
       is_screenshot = 1;
     }
 
