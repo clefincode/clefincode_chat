@@ -1,24 +1,25 @@
 [
  {
+  "_doctype": null,
+  "_report": null,
   "app": null,
-  "bg_color": "blue",
+  "blocked": 0,
+  "category": null,
+  "color": null,
+  "custom": 0,
+  "description": null,
   "docstatus": 0,
   "doctype": "Desktop Icon",
+  "force_show": 0,
   "hidden": 0,
   "icon": null,
-  "icon_image": null,
-  "icon_type": "Link",
   "label": "ClefinChat",
   "link": "/desk/clefinchat?webview=1",
-  "link_to": null,
-  "link_type": "External",
-  "logo_url": "/assets/clefincode_chat/icons/clefincode_chat.svg",
   "modified": "2026-03-07 15:25:25.953878",
+  "module_name": null,
   "name": "ClefinChat",
-  "parent_icon": null,
-  "restrict_removal": 0,
-  "roles": [],
-  "sidebar": null,
-  "standard": 0
+  "reverse": 0,
+  "standard": 0,
+  "type": null
  }
 ]

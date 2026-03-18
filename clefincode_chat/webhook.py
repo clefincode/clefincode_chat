@@ -308,7 +308,7 @@ def manage_personal_channel(sender_number, receiver_number, chat_profile, whatsa
 
 
 def create_direct_channel(chat_profile, receiver_user_email, whatsapp_profile_doc, messages, sender_number):
-    frappe.log_error("create_direct_channel",messages)
+   
     #channel_name = get_profile_full_name(receiver_user_email)  
     channel_name = frappe.db.get_value("ClefinCode Chat Profile", {"name": chat_profile}, "full_name") 
     message_type = messages[0]["type"] if "type" in messages[0] else "text"
@@ -1308,7 +1308,7 @@ def telegram_webhook():
                 sender_id = update["message"]["from"]["id"]
                 sender_first_name = update["message"]["from"]["first_name"]
                 # sender_last_name = update["message"]["from"]["last_name"]
-                sender_profile_name = update["message"]["from"].get("username", "") or f"{sender_first_name} {sender_last_name}"
+                sender_profile_name = update["message"]["from"].get("username", "") or f"{sender_first_name}"
                 receiver_id = get_telegram_receiver_id()
                 telegram_profile_doc = frappe.get_doc("ClefinCode Telegram Profile", receiver_id)
                 chat_profile = get_or_create_telegram_chat_profile(sender_id, sender_profile_name)
@@ -1384,12 +1384,10 @@ def set_telegram_webhook():
     base_url = frappe.utils.get_url()
     webhook_url = f"{base_url}/api/method/clefincode_chat.webhook.telegram_webhook"
 
-    frappe.log_error("telegram", f"https://api.telegram.org/bot{access_token}/setWebhook")
     response = requests.post(
         f"https://api.telegram.org/bot{access_token}/setWebhook",
         json={"url": webhook_url}
     )
-    frappe.log_error("telegram", f"https://api.telegram.org/bot{access_token}/setWebhook")
     if response.ok:
         frappe.log_error("Telegram webhook set successfully!")
     else:
