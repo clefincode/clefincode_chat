@@ -12,6 +12,7 @@
   "receiver_value_type",
   "fixed_chat_profile",
   "fixed_phone_number",
+  "fixed_profile_number",
   "is_required"
  ],
  "fields": [
@@ -65,7 +66,14 @@
    "label": "Chat Profile ",
    "mandatory_depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Profile'",
    "options": "ClefinCode Chat Profile"
-  }
+  },
+  {
+  "depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Profile'",
+  "fieldname": "fixed_profile_number",
+  "fieldtype": "Select",
+  "label": "Profile Number",
+  "mandatory_depends_on": "eval:doc.recipient_source=='Fixed Value' && doc.receiver_value_type=='Profile'"
+}
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,

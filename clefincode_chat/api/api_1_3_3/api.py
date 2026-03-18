@@ -238,6 +238,7 @@ def get_settings(token):
             config['is_limited_user'] = True
         else:
             config['whatsapp_numbers'] = get_whatsapp_numbers_for_sender(config['user_email'])
+            
             config['default_whatsapp_number'] , config['default_whatsapp_type']= get_default_whatsapp_number(config['whatsapp_numbers'])
             config['default_instagram_profile'] = get_default_instagram_profile()
             config['default_messenger_profile'] = get_default_messenger_profile()
@@ -4310,6 +4311,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                     for t in templates_clefin:
                             t["doctype"] = "ClefinCode WhatsApp Template"
                 elif provider =="Twilio":
+               
                     templates_twilio = frappe.get_all(
                         "CiC Twilio Template",
                         filters={
@@ -4327,6 +4329,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 templates_clefin = []
             
             templates=templates_clefin + templates_twilio
+            
             results["profile_whatsapp"] = profile_whatsapp
             results["realtime_type"]= "show_template"
             results["template"]= templates
@@ -5585,7 +5588,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
     media_url = None
     link=None
     from bs4 import BeautifulSoup
-    frappe.log_error("attachment",[attachment,override_variables])
+   
     content = new_message.content
     soup = BeautifulSoup(content, 'html.parser')
 

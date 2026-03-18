@@ -2,6 +2,70 @@
 // For license information, please see license.txt
 
 frappe.notification = {
+		get_profile_contact_type_by_channel: function(channel) {
+		const map = {
+			WhatsApp: "WhatsApp",
+			Telegram: "Telegram",
+			Instagram: "Instagram",
+			Messenger: "Messenger",
+			Chat: "Chat",
+			Email: "Email"
+		};
+
+		return map[channel] || null;
+	},
+
+	setup_fixed_profile_number: function(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (!row) return;
+
+		
+		frappe.notification.set_child_df_options(cdt, cdn, "fixed_profile_number", []);
+
+		if (
+			row.recipient_source !== "Fixed Value" ||
+			row.receiver_value_type !== "Profile" ||
+			!row.fixed_chat_profile
+		) {
+			row.fixed_profile_number = "";
+			frm.refresh_field("clefincode_notification_recipient_list");
+			return;
+		}
+
+		frappe.call({
+			method: "frappe.client.get",
+			args: {
+				doctype: "ClefinCode Chat Profile",
+				name: row.fixed_chat_profile
+			},
+			callback: function(r) {
+				if (!r.message) {
+					row.fixed_profile_number = "";
+					frm.refresh_field("clefincode_notification_recipient_list");
+					return;
+				}
+
+				const profile = r.message;
+				const expected_type = frappe.notification.get_profile_contact_type_by_channel(frm.doc.channel);
+
+				let options = (profile.contact_details || [])
+					.filter(d => d.contact_info)
+					.filter(d => !expected_type || d.type === expected_type)
+					.map(d => d.contact_info);
+
+				options = [...new Set(options)];
+
+				frappe.notification.set_child_df_options(cdt, cdn, "fixed_profile_number", options);
+
+			
+				if (!options.includes(row.fixed_profile_number)) {
+					row.fixed_profile_number = "";
+				}
+
+				frm.refresh_field("clefincode_notification_recipient_list");
+			}
+		});
+	},
 	setup_fieldname_select: function (frm) {
 		if (!frm.doc.reference_doctype) return;
 
@@ -457,17 +521,33 @@ frappe.ui.form.on("CiC Twilio Template Variable Mapping Notification", {
 frappe.ui.form.on("Clefincode Notification Recipient list", {
 	clefincode_notification_recipient_list_add: function(frm, cdt, cdn) {
 		frappe.notification.setup_recipient_row(frm, cdt, cdn);
+		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
 	},
 
 	form_render: function(frm, cdt, cdn) {
 		frappe.notification.setup_recipient_row(frm, cdt, cdn);
+		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
 	},
 
 	recipient_source: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		row.receiver_field = "";
 		row.linked_phone_field = "";
+		row.fixed_profile_contact = "";
 		frappe.notification.setup_recipient_row(frm, cdt, cdn);
+		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
+	},
+
+	receiver_value_type: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		row.fixed_profile_contact = "";
+		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
+	},
+
+	fixed_chat_profile: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		row.fixed_profile_contact = "";
+		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
 	},
 
 	linked_phone_field: function(frm, cdt, cdn) {
