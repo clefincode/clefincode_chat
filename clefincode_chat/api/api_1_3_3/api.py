@@ -45,6 +45,8 @@ import time
 from frappe.utils import now_datetime
 
 
+from frappe import _
+from frappe.desk.search import validate_and_sanitize_search_inputs
 
 
 
@@ -209,7 +211,6 @@ def get_platform_for_chat(user_profile):
 # ==========================================================================================
 @frappe.whitelist(allow_guest=True)
 def get_settings(token):
-    
     config = {
         'socketio_port': frappe.conf.socketio_port,
         'user_email': frappe.session.user,
@@ -237,6 +238,7 @@ def get_settings(token):
             config['is_limited_user'] = True
         else:
             config['whatsapp_numbers'] = get_whatsapp_numbers_for_sender(config['user_email'])
+            
             config['default_whatsapp_number'] , config['default_whatsapp_type']= get_default_whatsapp_number(config['whatsapp_numbers'])
             config['default_instagram_profile'] = get_default_instagram_profile()
             config['default_messenger_profile'] = get_default_messenger_profile()
@@ -1015,7 +1017,7 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 ######################################## Messages ###########################################
 #############################################################################################
 @frappe.whitelist()
-def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None):
+def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None,override_variables=None ):
     
     try:
         
@@ -1289,7 +1291,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
-                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded)
+                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded,override_variables )
                     if member.pending_messages >= 1:
                         frappe.db.set_value('ClefinCode Chat Channel User', member.name, 'pending_messages', member.pending_messages +1)
                 elif member.platform == "Instagram" and str(email) != str(member.user) and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
@@ -3435,7 +3437,7 @@ def search_in_message_contents(channel, query, sub_channel=None):
 #############################################################################################
 ######################################## WhatsApp Functions #################################
 #############################################################################################
-def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0):    
+def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0,override_variables=None ):    
     responder_user_profile = get_profile_id(email)
     message = None
     reply_preview_message=None
@@ -3505,7 +3507,7 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
             send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
-            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment)
+            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment,override_variables )
         else:
             if reply_preview_message:
                 send_whatsapp_message_twilio(new_message, platform_gateway,whatsapp_customer_number,reply_preview_message, None, 0)
@@ -4311,6 +4313,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                     for t in templates_clefin:
                             t["doctype"] = "ClefinCode WhatsApp Template"
                 elif provider =="Twilio":
+               
                     templates_twilio = frappe.get_all(
                         "CiC Twilio Template",
                         filters={
@@ -4328,6 +4331,7 @@ def set_typing(user, room, is_typing, last_active_sub_channel = None, mobile_app
                 templates_clefin = []
             
             templates=templates_clefin + templates_twilio
+            
             results["profile_whatsapp"] = profile_whatsapp
             results["realtime_type"]= "show_template"
             results["template"]= templates
@@ -5575,7 +5579,7 @@ def delete_temp_public_file(file_url,time_delay=None):
 
 # ==========================================================================================
 @frappe.whitelist()
-def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile,results,attachment=None):
+def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile,results,attachment=None ,override_variables=None ):
  
     template = None
     doctype = None
@@ -5586,7 +5590,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
     media_url = None
     link=None
     from bs4 import BeautifulSoup
-
+   
     content = new_message.content
     soup = BeautifulSoup(content, 'html.parser')
 
@@ -5624,6 +5628,15 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
 
     variables = {}
     body_preview = ""
+    override_variables = {}
+
+    if isinstance(override_variables , str):
+        try:
+            override_variables = json.loads(override_variables )
+        except Exception:
+            override_variables = {}
+    elif isinstance(override_variables , dict):
+        override_variables = override_variables  or {}
 
     if doctype == "ClefinCode WhatsApp Template":
         for idx, btn in enumerate(template.buttons, start=1):
@@ -5682,8 +5695,10 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
 
                 if key and value is not None:
                     variables[key] = value
-                
-       
+        for k, v in (override_variables or {}).items():
+            if v is not None:
+                        variables[str(k)] = v    
+                    
        
     #     body_preview = json.dumps(variables, indent=2)
   
@@ -5777,7 +5792,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                         "content": content,
                         "is_private": 0,  # Public
                         "attached_to_doctype": template.reference_doctype,
-                        "attached_to_name": doc.name
+                        "attached_to_name": docname
                     })
 
                     new_public_file.insert(ignore_permissions=True)
@@ -8156,3 +8171,42 @@ def get_frappe_major_version():
         return major
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Get Frappe Version Error")
+
+
+
+
+@frappe.whitelist()
+@validate_and_sanitize_search_inputs
+def get_chat_profiles_by_channel(doctype, txt, searchfield, start, page_len, filters):
+    channel = (filters or {}).get("channel")
+
+    contact_type_map = {
+        "Whatsapp": "WhatsApp",
+        "Telegram": "Telegram",
+    }
+
+    contact_type = contact_type_map.get(channel)
+
+    if not contact_type:
+        return []
+
+    return frappe.db.sql(f"""
+        SELECT cp.name
+        FROM `tabClefinCode Chat Profile` cp
+        WHERE EXISTS (
+            SELECT 1
+            FROM `tabClefinCode Chat Profile Contact Details` cd
+            WHERE cd.parent = cp.name
+              AND cd.parenttype = 'ClefinCode Chat Profile'
+              AND cd.parentfield = 'contact_details'
+              AND cd.type = %(contact_type)s
+        )
+        AND cp.`{searchfield}` LIKE %(txt)s
+        ORDER BY cp.name
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "contact_type": contact_type,
+        "txt": f"%{txt}%",
+        "start": start,
+        "page_len": page_len,
+    })

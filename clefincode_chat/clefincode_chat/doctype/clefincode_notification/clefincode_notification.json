@@ -12,10 +12,12 @@
   "event_frequency",
   "doctype_event",
   "condition",
+  "whatsapp_profile",
   "column_break_3",
   "channel",
   "message_type",
   "notification_type",
+  "child_table_field",
   "value_changed",
   "disabled",
   "template",
@@ -72,7 +74,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "DocType Event",
-   "options": "\nNew\nSave\nSubmit\nCancel\nDays After\nDays Before\nValue Change",
+   "options": "\nNew\nSave\nSubmit\nCancel\nDays After\nDays Before\nValue Change\nChild Table Row Added\nChild Table Row Updated\nChild Table Row Removed\nChild Table Changed\nChild Table Change Value",
    "reqd": 1,
    "search_index": 1
   },
@@ -91,6 +93,12 @@
    "fieldtype": "Section Break",
    "hidden": 1,
    "label": "Help"
+  },
+  {
+   "depends_on": "eval:['Child Table Row Added','Child Table Row Updated','Child Table Row Removed','Child Table Changed','Child Table Change Value'].includes(doc.doctype_event)",
+   "fieldname": "child_table_field",
+   "fieldtype": "Select",
+   "label": "Child Table Field"
   },
   {
    "fieldname": "help_html",
@@ -121,7 +129,7 @@
    "fieldname": "condition",
    "fieldtype": "Code",
    "label": "Condition",
-   "options": "Python Expression"
+   "options": "PythonExpression"
   },
   {
    "description": "Mobile number field",
@@ -254,7 +262,6 @@
    "options": "Clefincode Notification Recipient list"
   },
   {
-   "depends_on": "eval:doc.message_type!='Template';",
    "fieldname": "variables",
    "fieldtype": "Table",
    "label": "Variables",
@@ -294,7 +301,7 @@
    "read_only_depends_on": "eval:doc.message_type=='Template'"
   },
   {
-   "depends_on": "eval:doc.doctype_event==\"Value Change\";",
+   "depends_on": "eval:['Value Change','Child Table Change Value'].includes(doc.doctype_event)",
    "fieldname": "value_changed",
    "fieldtype": "Select",
    "label": "Value Changed"
@@ -311,11 +318,19 @@
    "fieldname": "is_private",
    "fieldtype": "Check",
    "label": "Is Private"
-  }
+  },
+  {
+  "fieldname": "whatsapp_profile",
+  "fieldtype": "Link",
+  "label": "WhatsApp Profile",
+  "options": "ClefinCode WhatsApp Profile",
+  "depends_on": "eval:frappe.session.user == 'Administrator'",
+  "mandatory_depends_on": "eval:frappe.session.user == 'Administrator'"
+}
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-18 18:35:56.245901",
+ "modified": "2026-03-16 07:05:58.279589",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "Clefincode Notification",

@@ -82,7 +82,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Language",
-   "options": "\nen\nes\nfr\nde\nit\npt\nar\nhi\nja\nko\nzh\nru",
+   "options": "\nen\nes\nfr\nde\nit\npt_BR\nar\nhi\nja\nko\nzh\nru",
    "reqd": 1
   },
   {
@@ -358,7 +358,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-18 16:36:55.048860",
+ "modified": "2026-03-10 09:12:46.746453",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "CiC Twilio Template",
