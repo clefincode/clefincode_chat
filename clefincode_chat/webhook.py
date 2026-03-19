@@ -1244,6 +1244,12 @@ def get_mime_type_from_url(url):
 @frappe.whitelist(allow_guest=True)
 def telegram_webhook():        
     try:
+        frappe.log_error( " frappe.form_dict",frappe.request.args.get("integration"))
+        integration_name = frappe.request.args.get("integration")
+        if not integration_name:
+            frappe.throw("Telegram integration is missing.")
+
+        integration_doc = frappe.get_doc("ClefinCode Telegram Integration Bot", integration_name)
         if frappe.request.method == "POST":
             data = frappe.request.get_data(as_text=True)
             update = json.loads(data)
@@ -1309,7 +1315,7 @@ def telegram_webhook():
                 sender_first_name = update["message"]["from"]["first_name"]
                 # sender_last_name = update["message"]["from"]["last_name"]
                 sender_profile_name = update["message"]["from"].get("username", "") or f"{sender_first_name}"
-                receiver_id = get_telegram_receiver_id()
+                receiver_id = get_telegram_receiver_id(integration_doc.name)
                 telegram_profile_doc = frappe.get_doc("ClefinCode Telegram Profile", receiver_id)
                 chat_profile = get_or_create_telegram_chat_profile(sender_id, sender_profile_name)
                 chat_channel_info = handle_telegram_chat_channel(sender_id, receiver_id, chat_profile, telegram_profile_doc, update)
@@ -1327,7 +1333,7 @@ def telegram_webhook():
                 )     
                 
                 elif message_type in ["audio", "image", "video", "document"]:
-                    file_url = download_telegram_media(file_id , mime_type , message_type, file_name)
+                    file_url = download_telegram_media(integration_doc.name,file_id , mime_type , message_type, file_name)
                     content = handle_attachment(file_url[0], file_name, message_type)
                     
                     send(
@@ -1363,35 +1369,50 @@ def telegram_log_webhook(data):
     except Exception as e:
         frappe.log_error("Failed to log webhook data:", str(e))
 # ==========================================================================================
-def get_telegram_receiver_id():
+def get_telegram_receiver_id(integration_name):
     try:
-        profiles = frappe.get_all("ClefinCode Telegram Profile", fields=["telegram_profile_id"])
-        receiver_id = profiles[0].get("telegram_profile_id")
-        return receiver_id
+    
+       
+
+
+        profile_name = frappe.db.get_value(
+            "ClefinCode Telegram Profile",
+            {
+                "telegram_profile_id": integration_name
+            },
+            "name"
+        )
+
+        return profile_name
+
     except Exception as e:
-        frappe.log_error("Failed to fetch Telegram Receiver ID:", str(e))
+        frappe.log_error("Failed to fetch Telegram Receiver ID", str(e))
         return None
 # ==========================================================================================
-@frappe.whitelist(allow_guest=True)
-def set_telegram_webhook():
-    #access_token = frappe.db.get_value("ClefinCode Telegram Integration", None, "access_token")
-    doc = frappe.get_doc("ClefinCode Telegram Integration")
+@frappe.whitelist()
+def set_telegram_webhook(integration_name):
+    doc = frappe.get_doc("ClefinCode Telegram Integration Bot", integration_name)
     access_token = doc.get_password("access_token")
+
     if not access_token:
         frappe.throw("Access token for Telegram Integration is missing.")
-   
-    
+
     base_url = frappe.utils.get_url()
-    webhook_url = f"{base_url}/api/method/clefincode_chat.webhook.telegram_webhook"
+    webhook_url = f"{base_url}/api/method/clefincode_chat.webhook.telegram_webhook?integration={doc.name}"
 
     response = requests.post(
         f"https://api.telegram.org/bot{access_token}/setWebhook",
         json={"url": webhook_url}
     )
+
     if response.ok:
-        frappe.log_error("Telegram webhook set successfully!")
+        doc.db_set("webhook_registered", 1, update_modified=False)
+        doc.db_set("last_webhook_status", "Webhook registered successfully.", update_modified=False)
+        return {"status": "success"}
     else:
         error_description = response.json().get("description", "Unknown error")
+        doc.db_set("webhook_registered", 0, update_modified=False)
+        doc.db_set("last_webhook_status", error_description, update_modified=False)
         frappe.throw(f"Failed to set webhook: {error_description}")
 # ==========================================================================================
 def get_or_create_telegram_chat_profile(sender_id, sender_profile_name):
@@ -1538,7 +1559,7 @@ def create_telegram_direct_channel(chat_profile, receiver_user_email, telegram_p
         file_name = document["file_name"]  
         message_type = "document"
     
-    file_url = download_telegram_media(file_id , mime_type , message_type, file_name) 
+    file_url = download_telegram_media(integration_doc.name,file_id , mime_type , message_type, file_name) 
     content = handle_attachment(file_url[0], file_name, message_type)
     
     return create_channel(
@@ -1550,14 +1571,13 @@ def create_telegram_direct_channel(chat_profile, receiver_user_email, telegram_p
             channel_name
         )["results"][0]["room"]
 # ==========================================================================================
-def download_telegram_media(file_id, mime_type, message_type, file_name = None):
+def download_telegram_media(integration_name, file_id, mime_type, message_type, file_name=None):
     try:
         access_token = get_decrypted_password(
-            "ClefinCode Telegram Integration",  
-            "ClefinCode Telegram Integration",                               
-            "access_token"                      
+            "ClefinCode Telegram Integration Bot",
+            integration_name,
+            "access_token"
         )
-        
         url = f"https://api.telegram.org/bot{access_token}/getFile?file_id={file_id}"
         file_response = requests.get(url)
         

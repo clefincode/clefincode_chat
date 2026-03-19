@@ -31,7 +31,7 @@
   {
    "fieldname": "telegram_profile",
    "fieldtype": "Data",
-   "label": "Telegram Profile",
+   "label": "Telegram Profile Name",
    "unique": 1
   },
   {
@@ -56,8 +56,9 @@
   },
   {
    "fieldname": "telegram_profile_id",
-   "fieldtype": "Data",
-   "label": "Telegram Profile ID"
+   "fieldtype": "Link",
+   "label": "Telegram Profile ID",
+   "options": "ClefinCode Telegram Integration Bot"
   },
   {
    "fieldname": "column_break_3",
@@ -66,6 +67,7 @@
   {
    "fieldname": "messenger_app_id",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Telegram App ID"
   },
   {
@@ -144,7 +146,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-05-22 13:48:08.754542",
+ "modified": "2026-03-19 15:12:25.143701",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Telegram Profile",

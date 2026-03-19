@@ -5156,38 +5156,35 @@ def get_telegram_channel(telegram_system_id, telegram_user_id):
         return results[0].name               
 
 @frappe.whitelist()
-def send_telegram_message(chat_id, message, message_type="text", attachment_url=None):
-    """
-    Send a response from the bot to a user via Telegram.
-    """
+def send_telegram_message(chat_id, message, message_type="text", attachment_url=None, integration_name=None):
+  
     try:
-        # Get the bot access token
+        if not integration_name:
+            frappe.throw("Telegram integration is missing.")
+
         access_token = get_decrypted_password(
             "ClefinCode Telegram Integration",
-            "ClefinCode Telegram Integration",
+            integration_name,
             "access_token"
         )
-        
+
         if not access_token:
             frappe.throw("Telegram bot access token is missing.")
 
-        # Telegram API endpoint
         api_base = f"https://api.telegram.org/bot{access_token}"
         was_private = False
         public_attachment_url = None
-        
-        # Handle file visibility for media messages
+        payload_url = None
+
         if attachment_url:
             if message_type == "audio":
                 local_file_path = frappe.utils.get_site_path(message.lstrip('/'))
                 public_attachment_url = standardize_audio_to_mp3(local_file_path)
-            else:    
+            else:
                 public_attachment_url, was_private = make_file_public(message)
-            
 
             payload_url = frappe.utils.get_url() + public_attachment_url
 
-        # Prepare the payload
         if message_type == "text":
             payload = {
                 "chat_id": chat_id,
@@ -5195,7 +5192,6 @@ def send_telegram_message(chat_id, message, message_type="text", attachment_url=
                 "parse_mode": "Markdown"
             }
             endpoint = f"{api_base}/sendMessage"
-
 
         elif message_type in ["image", "photo"]:
             payload = {
@@ -5217,23 +5213,27 @@ def send_telegram_message(chat_id, message, message_type="text", attachment_url=
                 "audio": payload_url,
             }
             endpoint = f"{api_base}/sendAudio"
-           
+
         elif message_type == "document":
             payload = {
                 "chat_id": chat_id,
                 "document": payload_url,
             }
-            endpoint = f"{api_base}/sendDocument"    
-            
+            endpoint = f"{api_base}/sendDocument"
 
         else:
             frappe.throw(f"Unsupported message type: {message_type}")
 
-
         response = requests.post(endpoint, json=payload)
-        
+
         if was_private:
             reset_file_to_private(public_attachment_url)
+
+        if not response.ok:
+            frappe.log_error(
+                title="Telegram API Error",
+                message=response.text
+            )
 
     except Exception as e:
         frappe.log_error(title="Telegram Response Sending Error", message=str(e))
@@ -5242,6 +5242,7 @@ def process_telegram_message(platform_gateway, telegram_customer_id, email, chan
     try:
         responder_user_profile = get_profile_id(email)
         message = None
+        integration_name=frappe.db.get_value("ClefinCode Telegram Profile", {"name": platform_gateway}, "telegram_profile_id")
         is_group_message = (channel_doc.type == "Group" and 
                             last_responder_user and 
                             last_responder_user != responder_user_profile and 
@@ -5269,7 +5270,8 @@ def process_telegram_message(platform_gateway, telegram_customer_id, email, chan
             chat_id=telegram_customer_id,
             message=message,
             message_type=file_type if file_type in ["image", "video", "audio", "document"] else "text",
-            attachment_url=attachment if file_type in ["image", "video", "audio", "document"] else None
+            attachment_url=attachment if file_type in ["image", "video", "audio", "document"] else None,
+            integration_name=integration_name
         )
 
     except Exception as e:
