@@ -129,7 +129,7 @@
    "fieldname": "condition",
    "fieldtype": "Code",
    "label": "Condition",
-   "options": "Python Expression"
+   "options": "PythonExpression"
   },
   {
    "description": "Mobile number field",

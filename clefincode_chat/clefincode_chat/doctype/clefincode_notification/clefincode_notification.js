@@ -1,26 +1,61 @@
 // Copyright (c) 2025
 // For license information, please see license.txt
 
-frappe.notification = {
-		get_profile_contact_type_by_channel: function(channel) {
-		const map = {
-			WhatsApp: "WhatsApp",
-			Telegram: "Telegram",
-			Instagram: "Instagram",
-			Messenger: "Messenger",
-			Chat: "Chat",
-			Email: "Email"
-		};
+const IS_V16_PLUS =
+	(parseInt((frappe.boot?.versions?.frappe || frappe.boot?.frappe_version || "0").split(".")[0], 10) || 0) >= 16;
 
-		return map[channel] || null;
+frappe.notification = {
+	get_profile_contact_type_by_channel: function(channel) {
+		const map = {
+        whatsapp: "WhatsApp",
+        telegram: "Telegram",
+        instagram: "Instagram",
+        messenger: "Messenger",
+        chat: "Chat",
+        email: "Email"
+    };
+
+    const cleanChannel = String(channel).trim().toLowerCase();
+    return map[cleanChannel] || null;
+	},
+
+	set_child_df_options: function(a, b, c, d) {
+		if (IS_V16_PLUS) {
+			const frm = a, tablefield = b, fieldname = c, options = d;
+			const grid = frm.fields_dict?.[tablefield]?.grid;
+			if (!grid) return;
+			grid.update_docfield_property(
+				fieldname,
+				"options",
+				[""].concat(options || []).join("\n")
+			);
+			grid.refresh();
+		} else {
+			const cdt = a, cdn = b, fieldname = c, options = d;
+			let df = frappe.meta.get_docfield(cdt, fieldname, cdn);
+			if (df) {
+				df.options = [""].concat(options || []).join("\n");
+			}
+		}
 	},
 
 	setup_fixed_profile_number: function(frm, cdt, cdn) {
-		const row = locals[cdt][cdn];
-		if (!row) return;
-
 		
-		frappe.notification.set_child_df_options(cdt, cdn, "fixed_profile_number", []);
+		
+		const row = locals[cdt][cdn];
+		
+		if (!row) return;
+		
+		if (IS_V16_PLUS) {
+			frappe.notification.set_child_df_options(
+				frm,
+				"clefincode_notification_recipient_list",
+				"fixed_profile_number",
+				[]
+			);
+		} else {
+			frappe.notification.set_child_df_options(cdt, cdn, "fixed_profile_number", []);
+		}
 
 		if (
 			row.recipient_source !== "Fixed Value" ||
@@ -39,25 +74,56 @@ frappe.notification = {
 				name: row.fixed_chat_profile
 			},
 			callback: function(r) {
+			
+			
 				if (!r.message) {
+						
 					row.fixed_profile_number = "";
 					frm.refresh_field("clefincode_notification_recipient_list");
 					return;
 				}
-
+				
 				const profile = r.message;
+
 				const expected_type = frappe.notification.get_profile_contact_type_by_channel(frm.doc.channel);
-
-				let options = (profile.contact_details || [])
-					.filter(d => d.contact_info)
-					.filter(d => !expected_type || d.type === expected_type)
-					.map(d => d.contact_info);
-
-				options = [...new Set(options)];
-
-				frappe.notification.set_child_df_options(cdt, cdn, "fixed_profile_number", options);
-
 			
+
+					const normalize = value => (value || "").toString().trim().toLowerCase();
+
+			let options = (profile.contact_details || [])
+				.filter(d => d && d.contact_info)
+				.filter(d => {
+					if (!expected_type) return true;
+					return normalize(d.type) === normalize(expected_type);
+				})
+				.map(d => d.contact_info);
+
+			options = [...new Set(options)];
+	
+
+				if (IS_V16_PLUS) {
+
+					const normalize = value => (value || "").toString().trim().toLowerCase();
+					let options = (profile.contact_details || [])
+						.filter(d => d && d.contact_info)
+						.filter(d => {
+							if (!expected_type) return true;
+							return normalize(d.type) === normalize(expected_type);
+						})
+						.map(d => d.contact_info);
+
+					options = [...new Set(options)];
+					frappe.notification.set_child_df_options(
+						frm,
+						"clefincode_notification_recipient_list",
+						"fixed_profile_number",
+						options
+					);
+				} else {
+				
+					frappe.notification.set_child_df_options(cdt, cdn, "fixed_profile_number", options);
+				}
+
 				if (!options.includes(row.fixed_profile_number)) {
 					row.fixed_profile_number = "";
 				}
@@ -66,13 +132,14 @@ frappe.notification = {
 			}
 		});
 	},
-	setup_fieldname_select: function (frm) {
+
+	setup_fieldname_select: function(frm) {
 		if (!frm.doc.reference_doctype) return;
 
-		frappe.model.with_doctype(frm.doc.reference_doctype, function () {
+		frappe.model.with_doctype(frm.doc.reference_doctype, function() {
 			let fields = frappe.get_doc("DocType", frm.doc.reference_doctype).fields || [];
 
-			let get_select_options = function (df, parent_field) {
+			let get_select_options = function(df, parent_field) {
 				let select_value = parent_field ? `${df.fieldname},${parent_field}` : df.fieldname;
 				let path = parent_field ? `${parent_field} > ${df.fieldname}` : df.fieldname;
 				return {
@@ -81,8 +148,8 @@ frappe.notification = {
 				};
 			};
 
-			let get_date_change_options = function () {
-				let date_options = $.map(fields, function (d) {
+			let get_date_change_options = function() {
+				let date_options = $.map(fields, function(d) {
 					return ["Date", "Datetime"].includes(d.fieldtype)
 						? get_select_options(d)
 						: null;
@@ -94,7 +161,7 @@ frappe.notification = {
 				]);
 			};
 
-			let options = $.map(fields, function (d) {
+			let options = $.map(fields, function(d) {
 				return frappe.model.no_value_type.includes(d.fieldtype)
 					? null
 					: get_select_options(d);
@@ -103,12 +170,11 @@ frappe.notification = {
 			frm.set_df_property("date_changed", "options", get_date_change_options());
 			frm.set_df_property("set_property_after_alert", "options", [""].concat(options));
 
-			// value_changed يتحدد حسب نوع الحدث
 			frappe.notification.setup_value_changed_select(frm);
 		});
 	},
 
-	setup_value_changed_select: function (frm) {
+	setup_value_changed_select: function(frm) {
 		if (!frm.doc.reference_doctype) return;
 
 		const no_value_fields = frappe.model.no_value_type || frappe.model.no_value_fields || [
@@ -121,9 +187,8 @@ frappe.notification = {
 			"Fold"
 		];
 
-		// Value Change على الـ parent doctype
 		if (frm.doc.doctype_event === "Value Change") {
-			frappe.model.with_doctype(frm.doc.reference_doctype, function () {
+			frappe.model.with_doctype(frm.doc.reference_doctype, function() {
 				const fields = frappe.meta.get_docfields(frm.doc.reference_doctype) || [];
 
 				const options = fields
@@ -139,7 +204,6 @@ frappe.notification = {
 			return;
 		}
 
-		// Child Table Change Value على الـ child table
 		if (frm.doc.doctype_event === "Child Table Change Value") {
 			if (!frm.doc.child_table_field) {
 				frm.set_df_property("value_changed", "options", [""]);
@@ -147,7 +211,7 @@ frappe.notification = {
 				return;
 			}
 
-			frappe.model.with_doctype(frm.doc.reference_doctype, function () {
+			frappe.model.with_doctype(frm.doc.reference_doctype, function() {
 				const parent_fields = frappe.meta.get_docfields(frm.doc.reference_doctype) || [];
 				const table_df = parent_fields.find(df => df.fieldname === frm.doc.child_table_field);
 
@@ -157,7 +221,7 @@ frappe.notification = {
 					return;
 				}
 
-				frappe.model.with_doctype(table_df.options, function () {
+				frappe.model.with_doctype(table_df.options, function() {
 					const child_fields = frappe.meta.get_docfields(table_df.options) || [];
 
 					const options = child_fields
@@ -260,19 +324,21 @@ frappe.notification = {
 			.map(df => df.fieldname);
 	},
 
-	set_child_df_options: function(cdt, cdn, fieldname, options) {
-		let df = frappe.meta.get_docfield(cdt, fieldname, cdn);
-		if (df) {
-			df.options = [""].concat(options || []).join("\n");
-		}
-	},
-
 	toggle_linked_phone_field: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		let grid_row = frm.fields_dict.clefincode_notification_recipient_list.grid.grid_rows_by_docname[cdn];
 
-		if (grid_row && grid_row.doc) {
-			grid_row.toggle_editable("linked_phone_field", row.recipient_source === "From Linked Field");
+		if (IS_V16_PLUS) {
+			const grid = frm.fields_dict?.clefincode_notification_recipient_list?.grid;
+			if (!grid || !row) return;
+			const grid_row = grid.grid_rows_by_docname?.[cdn] || grid.get_row?.(cdn);
+			if (grid_row) {
+				grid_row.toggle_editable("linked_phone_field", row.recipient_source === "From Linked Field");
+			}
+		} else {
+			let grid_row = frm.fields_dict.clefincode_notification_recipient_list.grid.grid_rows_by_docname[cdn];
+			if (grid_row && grid_row.doc) {
+				grid_row.toggle_editable("linked_phone_field", row.recipient_source === "From Linked Field");
+			}
 		}
 	},
 
@@ -281,36 +347,78 @@ frappe.notification = {
 		if (!row || !frm.doc.reference_doctype || !row.recipient_source) return;
 
 		frappe.model.with_doctype(frm.doc.reference_doctype, function() {
-			frappe.notification.set_child_df_options(cdt, cdn, "receiver_field", []);
-			frappe.notification.set_child_df_options(cdt, cdn, "linked_phone_field", []);
+			if (IS_V16_PLUS) {
+				frappe.notification.set_child_df_options(
+					frm,
+					"clefincode_notification_recipient_list",
+					"receiver_field",
+					[]
+				);
+				frappe.notification.set_child_df_options(
+					frm,
+					"clefincode_notification_recipient_list",
+					"linked_phone_field",
+					[]
+				);
+			} else {
+				frappe.notification.set_child_df_options(cdt, cdn, "receiver_field", []);
+				frappe.notification.set_child_df_options(cdt, cdn, "linked_phone_field", []);
+			}
 
 			if (row.recipient_source === "From Profile Field") {
-				frappe.notification.set_child_df_options(
-					cdt,
-					cdn,
-					"receiver_field",
-					frappe.notification.get_profile_link_fields(frm)
-				);
+				if (IS_V16_PLUS) {
+					frappe.notification.set_child_df_options(
+						frm,
+						"clefincode_notification_recipient_list",
+						"receiver_field",
+						frappe.notification.get_profile_link_fields(frm)
+					);
+				} else {
+					frappe.notification.set_child_df_options(
+						cdt,
+						cdn,
+						"receiver_field",
+						frappe.notification.get_profile_link_fields(frm)
+					);
+				}
 				row.linked_phone_field = "";
 			}
 
 			else if (row.recipient_source === "From Field") {
-				frappe.notification.set_child_df_options(
-					cdt,
-					cdn,
-					"receiver_field",
-					frappe.notification.get_phone_or_data_fields(frm)
-				);
+				if (IS_V16_PLUS) {
+					frappe.notification.set_child_df_options(
+						frm,
+						"clefincode_notification_recipient_list",
+						"receiver_field",
+						frappe.notification.get_phone_or_data_fields(frm)
+					);
+				} else {
+					frappe.notification.set_child_df_options(
+						cdt,
+						cdn,
+						"receiver_field",
+						frappe.notification.get_phone_or_data_fields(frm)
+					);
+				}
 				row.linked_phone_field = "";
 			}
 
 			else if (row.recipient_source === "From Linked Field") {
-				frappe.notification.set_child_df_options(
-					cdt,
-					cdn,
-					"linked_phone_field",
-					frappe.notification.get_link_fields(frm)
-				);
+				if (IS_V16_PLUS) {
+					frappe.notification.set_child_df_options(
+						frm,
+						"clefincode_notification_recipient_list",
+						"linked_phone_field",
+						frappe.notification.get_link_fields(frm)
+					);
+				} else {
+					frappe.notification.set_child_df_options(
+						cdt,
+						cdn,
+						"linked_phone_field",
+						frappe.notification.get_link_fields(frm)
+					);
+				}
 
 				if (row.linked_phone_field) {
 					const meta_fields = frappe.meta.get_docfields(frm.doc.reference_doctype) || [];
@@ -322,12 +430,21 @@ frappe.notification = {
 								.filter(df => ["Phone", "Data"].includes(df.fieldtype))
 								.map(df => df.fieldname);
 
-							frappe.notification.set_child_df_options(
-								cdt,
-								cdn,
-								"receiver_field",
-								linked_fields
-							);
+							if (IS_V16_PLUS) {
+								frappe.notification.set_child_df_options(
+									frm,
+									"clefincode_notification_recipient_list",
+									"receiver_field",
+									linked_fields
+								);
+							} else {
+								frappe.notification.set_child_df_options(
+									cdt,
+									cdn,
+									"receiver_field",
+									linked_fields
+								);
+							}
 
 							frm.refresh_field("clefincode_notification_recipient_list");
 							frappe.notification.toggle_linked_phone_field(frm, cdt, cdn);
@@ -350,18 +467,19 @@ frappe.notification = {
 };
 
 frappe.ui.form.on("Clefincode Notification", {
-	 setup(frm) {
-        frm.fields_dict.clefincode_notification_recipient_list.grid.get_field('fixed_chat_profile').get_query = function(doc, cdt, cdn) {
-            return {
-                query: 'clefincode_chat.api.api_1_3_3.api.get_chat_profiles_by_channel',
-                filters: {
-                    channel: doc.channel
-                }
-            };
-        };
-    },
-	onload: function (frm) {
-		frm.set_query("reference_doctype", function () {
+	setup(frm) {
+		frm.fields_dict.clefincode_notification_recipient_list.grid.get_field('fixed_chat_profile').get_query = function(doc, cdt, cdn) {
+			return {
+				query: 'clefincode_chat.api.api_1_3_3.api.get_chat_profiles_by_channel',
+				filters: {
+					channel: doc.channel
+				}
+			};
+		};
+	},
+
+	onload: function(frm) {
+		frm.set_query("reference_doctype", function() {
 			return {
 				filters: {
 					istable: 0,
@@ -369,7 +487,7 @@ frappe.ui.form.on("Clefincode Notification", {
 			};
 		});
 
-		frm.set_query("print_format", function () {
+		frm.set_query("print_format", function() {
 			return {
 				filters: {
 					doc_type: frm.doc.reference_doctype,
@@ -377,7 +495,7 @@ frappe.ui.form.on("Clefincode Notification", {
 			};
 		});
 
-		frm.set_query("template", function () {
+		frm.set_query("template", function() {
 			return {
 				filters: {
 					reference_doctype: frm.doc.reference_doctype,
@@ -407,7 +525,7 @@ frappe.ui.form.on("Clefincode Notification", {
 		});
 	},
 
-	template: function (frm) {
+	template: function(frm) {
 		frm.trigger("load_template");
 
 		if (frm.doc.template) {
@@ -468,7 +586,7 @@ frappe.ui.form.on("Clefincode Notification", {
 		}
 	},
 
-	custom_attachment: function (frm) {
+	custom_attachment: function(frm) {
 		if (frm.doc.custom_attachment == 1 && ["DOCUMENT", "IMAGE"].includes(frm.doc.header_type)) {
 			frm.set_df_property("file_name", "reqd", 1);
 		} else {
@@ -499,7 +617,7 @@ frappe.ui.form.on("Clefincode Notification", {
 		}
 	},
 
-	load_template: function (frm) {
+	load_template: function(frm) {
 
 	}
 });
@@ -533,20 +651,20 @@ frappe.ui.form.on("Clefincode Notification Recipient list", {
 		let row = locals[cdt][cdn];
 		row.receiver_field = "";
 		row.linked_phone_field = "";
-		row.fixed_profile_contact = "";
+		row.fixed_profile_number = "";
 		frappe.notification.setup_recipient_row(frm, cdt, cdn);
 		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
 	},
 
 	receiver_value_type: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		row.fixed_profile_contact = "";
+		row.fixed_profile_number = "";
 		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
 	},
 
 	fixed_chat_profile: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
-		row.fixed_profile_contact = "";
+		row.fixed_profile_number = "";
 		frappe.notification.setup_fixed_profile_number(frm, cdt, cdn);
 	},
 
