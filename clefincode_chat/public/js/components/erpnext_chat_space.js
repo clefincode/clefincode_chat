@@ -62,6 +62,9 @@ export default class ChatSpace {
     this.online_timeout = null;
     this.is_disk = "desk" in frappe;  
 
+    this.unseenMessagesCount = 0;
+    this.autoScrollThresholdPx = 120;
+
     // open chat space for showing topic information
     this.chat_topic_space = opts.chat_topic;
     this.chat_topic_channel = opts.chat_topic_channel;
@@ -1584,14 +1587,16 @@ if (app && app.is_webview) {
       $(this).closest(".chat-window").css("display", "none");
     });
 
-    this.$chat_space.find(".arrow").on("click", function () {
+      this.$chat_space.find(".arrow").on("click", function () {
       $(this)
         .closest(".chat-space-container")
         .animate(
           { scrollTop: me.$chat_space_container.prop("scrollHeight") },
           "fast"
         );
+
       $(this).css("display", "none");
+      me.resetUnreadBadge();
     });
 
     me.$chat_space_container.on("scroll", function () {
@@ -2272,18 +2277,19 @@ this.$chat_space.on("click", ".message-reactions", async function (e) {
   }
 
   toggle_voice_clip_icon() {
-    const type_message_input = this.$chat_actions.find(".type-message");
-    if (
-      type_message_input.find(".ql-editor").find("p").text() != "" ||
-      type_message_input.find(".ql-editor").find("p").find("img").length > 0
-    ) {
-      this.voice_clip.$voice_clip.css("display", "none");
-      this.$chat_actions.find(".message-send-button").css("display", "flex");
-    } else {
-      this.voice_clip.$voice_clip.css("display", "block");
-      this.$chat_actions.find(".message-send-button").css("display", "none");
-    }
+  const $editor = this.$chat_actions.find(".type-message .ql-editor");
+
+  const text = ($editor.text() || "").trim();
+  const hasImages = $editor.find("img").length > 0;
+
+  if (text.length > 0 || hasImages) {
+    this.voice_clip.$voice_clip.css("display", "none");
+    this.$chat_actions.find(".message-send-button").css("display", "flex");
+  } else {
+    this.voice_clip.$voice_clip.css("display", "block");
+    this.$chat_actions.find(".message-send-button").css("display", "none");
   }
+}
 
 async setup_messages(messages_list) {
     if (this.$chat_space_container && this.$chat_space_container.length == 1) {
@@ -2933,11 +2939,11 @@ if (!is_deleted) {
       this.$chat_space_container.find(".mention-message:last").remove();
     }
 
-    if (
-      this.$chat_space.find(".type-message .ql-editor").find("p").text().trim().length == 0 &&
-      !attachment &&
-      this.$chat_space.find(".type-message .ql-editor").find("img").length == 0
-    ) {
+    const $editor = this.$chat_space.find(".type-message .ql-editor");
+    const editorText = ($editor.text() || "").trim();
+    const hasImages = $editor.find("img").length > 0;
+
+    if (editorText.length === 0 && !attachment && !hasImages) {
       return;
     }
 
@@ -3968,12 +3974,22 @@ async fetchTemplateSuggestions(textValue) {
           me.draw_clip_in_canvas("/private/files/" + file_name, element);
         }, 500);
       }
-      this.$chat_space_container.append(message_content);
-      this.resolvePendingReplies();
+      const shouldAutoScroll =
+  res.sender_email === this.profile.user_email || this.isNearBottom();
 
-      scroll_to_bottom(this.$chat_space_container);
-      this.fetchAndRenderReactions(res.message_name);
-    }
+        this.$chat_space_container.append(message_content);
+        this.resolvePendingReplies();
+
+        if (shouldAutoScroll) {
+          scroll_to_bottom(this.$chat_space_container);
+          this.resetUnreadBadge();
+        } else {
+          this.unseenMessagesCount += 1;
+          this.updateUnreadBadge();
+        }
+
+        this.fetchAndRenderReactions(res.message_name);
+       }
     this.prevMessage = res;
   }
   render() {
@@ -4600,6 +4616,9 @@ async rebuildMessage(messageName) {
       // Hide button if scrolled to the bottom (within threshold percentage)
       arrowButton.css("display", "none");
     }
+    if (this.isNearBottom()) {
+        this.resetUnreadBadge();
+      }
 
     me.lastScrollTop = st; // Update last scroll position
   }
@@ -5155,6 +5174,81 @@ insertTemplateText (text) {
       this.$chat_space.find(".chat-profile-status").text("");
     }
   }
+  isNearBottom(threshold = this.autoScrollThresholdPx) {
+  if (!this.$chat_space_container || !this.$chat_space_container.length) return true;
+
+  const el = this.$chat_space_container[0];
+  const distanceFromBottom = el.scrollHeight - (el.scrollTop + el.clientHeight);
+
+  return distanceFromBottom <= threshold;
+}
+
+ensureUnreadBadge() {
+  let $badge = this.$chat_space.find(".new-messages-badge");
+
+  if (!$badge.length) {
+    $badge = $(`
+      <div class="new-messages-badge" style="
+        display:none;
+        position:absolute;
+        right:16px;
+        bottom:84px;
+        z-index:20;
+      ">
+        <button type="button" class="new-messages-btn" style="
+          border:none;
+          border-radius:999px;
+          padding:8px 12px;
+          box-shadow:0 4px 12px rgba(0,0,0,.18);
+          cursor:pointer;
+          font-size:12px;
+          display:flex;
+          align-items:center;
+          gap:8px;
+        ">
+          <span class="new-messages-text">0 new messages</span>
+          <span class="new-messages-arrow">↓</span>
+        </button>
+      </div>
+    `);
+
+    this.$chat_space.css("position", "relative");
+    this.$chat_space.append($badge);
+
+    $badge.on("click", ".new-messages-btn", () => {
+      scroll_to_bottom(this.$chat_space_container);
+      this.resetUnreadBadge();
+    });
+  }
+
+  return $badge;
+}
+
+updateUnreadBadge() {
+  const $badge = this.ensureUnreadBadge();
+
+  if (this.unseenMessagesCount <= 0) {
+    $badge.hide();
+    return;
+  }
+
+  const label =
+    this.unseenMessagesCount === 1
+      ? "1 new message"
+      : `${this.unseenMessagesCount} new messages`;
+
+  $badge.find(".new-messages-text").text(label);
+  $badge.show();
+
+  this.$chat_space_container.find(".arrow-button").css("display", "inline-flex");
+}
+
+resetUnreadBadge() {
+  this.unseenMessagesCount = 0;
+  const $badge = this.$chat_space.find(".new-messages-badge");
+  if ($badge.length) $badge.hide();
+}
+
 } //End class ChatSpace
 
 async function get_messages(
