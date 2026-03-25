@@ -10,6 +10,8 @@
   "variable_key",
   "source_type",
   "source_field",
+  "field_datatype",
+  "is_attachment",
   "default"
  ],
  "fields": [
@@ -33,6 +35,20 @@
    "label": "Source Field"
   },
   {
+   "fieldname": "field_datatype",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Field Datatype",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:in_list(['Attach', 'Attach Image'], doc.field_datatype)",
+   "fieldname": "is_attachment",
+   "fieldtype": "Check",
+   "label": "Use as Attachment"
+  },
+  {
    "fieldname": "default",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -42,7 +58,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-12-16 15:58:35.497409",
+ "modified": "2026-03-24 16:53:53.731267",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "CiC Twilio Template Variable Mapping Notification",

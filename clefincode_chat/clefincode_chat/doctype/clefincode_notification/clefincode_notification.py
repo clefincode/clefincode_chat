@@ -21,6 +21,7 @@ from frappe.utils import get_site_path
 import os
 
 from frappe.utils.file_manager import save_file
+from frappe.email.doctype.email_template.email_template import get_email_template
 import base64
 
 
@@ -41,7 +42,7 @@ class ClefincodeNotification(Document):
         #     if not any(field.fieldname == self.field_name for field in fields): # noqa
         #         frappe.throw(_("Field name {0} does not exists").format(self.field_name))
                 # Check if the "Attach Print" option is enabled
-        if self.message_type=="Template": 
+        if self.channel != "Email" and self.message_type=="Template":
             if self.attach_document_print:
                 # Ensure a template is selected
                 if not self.template:
@@ -74,6 +75,8 @@ class ClefincodeNotification(Document):
                             "Please replace the template with one belonging to this site."                            
                         )
                     )
+        if self.channel == "Email" and not self.email_template:
+              frappe.throw(_("Please select an Email Template for Email channel."))
         if self.custom_attachment:
             if not self.attach and not self.attach_from_field:
                 frappe.throw(_("Either {0} a file or add a {1} to send attachemt").format(
@@ -94,6 +97,8 @@ class ClefincodeNotification(Document):
             self.send_via_whatsapp( doc, phone_no, default_template, ignore_condition)
        if self.channel=="Telegram":
           self.send_via_telegram( doc, phone_no, default_template, ignore_condition)
+       if self.channel=="Email":
+             self.send_via_email(doc, phone_no, default_template, ignore_condition)
        doc_data = doc.as_dict()
        if doc_data and self.set_property_after_alert and self.property_value:
                         if doc_data.doctype and doc_data.name:
@@ -106,7 +111,142 @@ class ClefincodeNotification(Document):
                                     value = frappe.utils.cint(value)
 
                                 frappe.db.set_value(doc_data.get("doctype"), doc_data.get("name"), fieldname, value)
+    def send_via_email(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
+        doc_data = doc.as_dict()
 
+        recipient_info = resolve_notification_recipient(self, doc, channel_type="Email")
+        if not recipient_info:
+            frappe.log_error(
+                message=f"Could not resolve Email recipient for notification: {self.name}, doc: {doc.doctype} {doc.name}",
+                title="Missing Email Recipient"
+            )
+            return
+
+        recipient_email = (recipient_info.get("contact") or "").strip()
+        if not recipient_email:
+            frappe.log_error(
+                message=f"Resolved recipient has no Email contact for notification: {self.name}",
+                title="Missing Email Contact"
+            )
+            return
+
+        cond = (self.condition or "").strip()
+        if cond and not ignore_condition:
+            try:
+                ctx_doc = _dict(doc.as_dict())
+                event_row = _dict(get_child_event_row(doc) or {})
+                env = get_safe_globals().copy()
+
+                passed = frappe.safe_eval(cond, env, {
+                    "doc": ctx_doc,
+                    "row": event_row
+                })
+
+                if not passed:
+                    frappe.log_error(
+                        "ClefincodeNotification: condition not met",
+                        f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())}"
+                    )
+                    return
+
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Notification Condition Error")
+                return
+
+        if not self.email_template:
+            frappe.log_error(
+                message=f"Email template is missing for notification: {self.name}",
+                title="Missing Email Template"
+            )
+            return
+
+        payload = self.get_notification_payload(doc)
+        variables = payload["variables"]
+        attachment_values = payload["attachment_values"]
+
+        email_context = {
+            "doc": doc.as_dict(),
+            "notification_variables": variables,
+            **variables
+        }
+
+        rendered_email = get_email_template(self.email_template, email_context)
+
+        subject = rendered_email.get("subject") or self.email_template
+        message = (
+            rendered_email.get("message")
+            or rendered_email.get("response")
+            or ""
+        )
+
+        attachments = []
+        added_urls = set()
+
+        if self.attach_document_print:
+            from packaging import version
+            frappe_version = frappe.__version__
+
+            if version.parse(frappe_version) < version.parse("15.0.0"):
+                key = doc.get_document_share_key()
+                frappe.db.commit()
+
+                res = pdf(
+                    doctype=doc_data["doctype"],
+                    name=doc.name,
+                    key=key,
+                    format=self.print_format,
+                    lang=self.language,
+                    letterhead=self.letter_head
+                )
+            else:
+                res = generate_pdf_with_getpdf(
+                    doctype=doc_data["doctype"],
+                    name=doc.name,
+                    print_format=self.print_format,
+                    lang=self.language,
+                    letterhead=self.letter_head,
+                    is_private=self.is_private
+                )
+
+            file_url = res.get("file_url")
+            attachment = build_attachment_from_file_url(file_url, res.get("file_name"))
+            if attachment and file_url:
+                attachments.append(attachment)
+                added_urls.add(file_url)
+
+        custom_attachment_url = self.get_latest_custom_attachment_file(doc)
+        if custom_attachment_url and custom_attachment_url not in added_urls:
+            custom_attachment = build_attachment_from_file_url(custom_attachment_url)
+            if custom_attachment:
+                attachments.append(custom_attachment)
+                added_urls.add(custom_attachment_url)
+
+        for raw_value in attachment_values:
+            info = self.get_attachment_url_info(doc, raw_value)
+            if not info:
+                continue
+
+            file_url = info.get("file_url")
+            file_name = info.get("file_name")
+
+            if not file_url or file_url in added_urls:
+                continue
+
+            attachment = build_attachment_from_file_url(file_url, file_name)
+            if attachment:
+                attachments.append(attachment)
+                added_urls.add(file_url)
+
+        frappe.sendmail(
+            recipients=[recipient_email],
+            subject=subject,
+            message=message,
+            reference_doctype=doc.doctype,
+            reference_name=doc.name,
+            attachments=attachments or None,
+            now=True
+        )
+    
     def get_latest_custom_attachment_file(self, doc):
         target_var = None
 
@@ -126,7 +266,7 @@ class ClefincodeNotification(Document):
         if not target_var:
             return None
 
-        added_row = getattr(doc, "_added_child_row", None)
+        added_row = get_child_event_row(doc)
 
         if not added_row:
             return None
@@ -212,7 +352,9 @@ class ClefincodeNotification(Document):
                     frappe.log_error(frappe.get_traceback(), "Notification Condition Error")
                     return
 
-            variables = self.get_notification_variables(doc)
+            payload = self.get_notification_payload(doc)
+            variables = payload["variables"]
+            attachment_values = payload["attachment_values"]
             attachment = None
 
             if self.message_type == "Template":
@@ -259,6 +401,27 @@ class ClefincodeNotification(Document):
                     attachment=attachment,
                     override_variables=variables
                 )
+                for raw_attachment in attachment_values:
+                    file_info = self.build_attachment_from_dynamic_value(doc, raw_attachment)
+                    if not file_info:
+                        continue
+
+                    file_url = raw_attachment if isinstance(raw_attachment, str) else None
+
+                    if not file_url and file_info.get("fname"):
+                    
+                        continue
+
+                    send(
+                           content,
+                            get_profile_id(self.owner),
+                            room,
+                            self.owner,
+                            message_type="information",
+                            message_template_type="Send Template",
+                            attachment=file_url,
+                            override_variables=variables
+                            )
 
             else:
                 message = self.message_content
@@ -365,7 +528,9 @@ class ClefincodeNotification(Document):
                 frappe.log_error(frappe.get_traceback(), "Notification Condition Error")
                 return
 
-        variables = self.get_notification_variables(doc)
+        payload = self.get_notification_payload(doc)
+        variables = payload["variables"]
+        attachment_values = payload["attachment_values"]
         message = self.message_content
         body_preview = message or ""
 
@@ -412,10 +577,30 @@ class ClefincodeNotification(Document):
                 is_media=None,
                 is_document=1,
                 file_id=res['file_id']
-            )    
+            )
+        custom_attachment_url = self.get_latest_custom_attachment_file(doc)
+        if custom_attachment_url:
+                info = self.get_attachment_url_info(doc, custom_attachment_url)
+                if info and info.get("file_url"):
+                    ext = os.path.splitext((info.get("file_name") or ""))[1].lower()
+                    is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+
+                    send(
+                        info.get("file_name") or os.path.basename(info["file_url"]),
+                        get_profile_id(self.owner),
+                        room,
+                        self.owner,
+                        attachment=info["file_url"],
+                        sub_channel=None,
+                        is_link=None,
+                        is_media=1 if is_image else None,
+                        is_document=None if is_image else 1
+                    )
+
+        self.send_telegram_variable_attachments(doc, room, attachment_values)
     def get_notification_variables(self, doc: Document):
                 variables = {}
-                added_row = getattr(doc, "_added_child_row", None)
+                added_row = get_child_event_row(doc)
                
 
                 for var in self.variables:
@@ -442,6 +627,209 @@ class ClefincodeNotification(Document):
                         variables[key] = str(value)
 
                 return variables
+    def get_variable_value(self, doc, variable_key):
+            added_row = get_child_event_row(doc)
+
+            for var in self.variables:
+                key = (var.variable_key or "").strip()
+                source_type = (var.source_type or "").strip()
+                source_field = (var.source_field or "").strip()
+                default_value = (var.default or "").strip()
+
+                if key != variable_key or not source_field:
+                    continue
+
+                value = None
+
+                if source_type == "Document Field":
+                    value = doc.get(source_field)
+
+                elif source_type == "Child Row Field" and added_row:
+                    value = added_row.get(source_field)
+
+                if value in (None, "") and default_value not in (None, ""):
+                    value = default_value
+
+                return value
+
+            return None
+    def get_variable_raw_value(self, doc, var):
+        added_row = get_child_event_row(doc)
+
+        source_type = (getattr(var, "source_type", "") or "").strip()
+        source_field = (getattr(var, "source_field", "") or "").strip()
+        default_value = (getattr(var, "default", "") or "").strip()
+
+        if not source_field:
+            return None
+
+        value = None
+
+        if source_type == "Document Field":
+            value = doc.get(source_field)
+
+        elif source_type == "Child Row Field" and added_row:
+            value = added_row.get(source_field)
+
+        if value in (None, "") and default_value not in (None, ""):
+            value = default_value
+
+        return value
+
+
+    def get_notification_payload(self, doc):
+        variables = {}
+        attachment_values = []
+
+        for var in self.variables:
+            key = (getattr(var, "variable_key", "") or "").strip()
+            is_attachment = frappe.utils.cint(getattr(var, "is_attachment", 0))
+
+            value = self.get_variable_raw_value(doc, var)
+            if value in (None, ""):
+                continue
+
+            if is_attachment:
+                attachment_values.append(value)
+            elif key:
+                variables[key] = str(value)
+
+        return {
+            "variables": variables,
+            "attachment_values": attachment_values
+        }
+
+
+    def get_attachment_url_info(self, doc, raw_value):
+        if not raw_value:
+            return None
+
+        raw_value = str(raw_value).strip()
+
+        if raw_value.startswith("/files/") or raw_value.startswith("/private/files/"):
+            return {
+                "file_url": raw_value,
+                "file_name": os.path.basename(raw_value)
+            }
+
+        file_by_name = frappe.db.get_value(
+            "File",
+            {
+                "attached_to_doctype": doc.doctype,
+                "attached_to_name": doc.name,
+                "file_name": raw_value
+            },
+            ["file_url", "file_name"],
+            as_dict=True
+        )
+        if file_by_name:
+            return {
+                "file_url": file_by_name.file_url,
+                "file_name": file_by_name.file_name
+            }
+
+        if frappe.db.exists("File", raw_value):
+            file_doc = frappe.get_doc("File", raw_value)
+            return {
+                "file_url": file_doc.file_url,
+                "file_name": file_doc.file_name
+            }
+
+        return None
+
+
+    def send_whatsapp_variable_attachments(self, doc, room, attachment_values):
+        sent_files = set()
+
+        for raw_value in attachment_values:
+            info = self.get_attachment_url_info(doc, raw_value)
+            if not info or not info.get("file_url"):
+                continue
+
+            file_url = info.get("file_url")
+            file_name = info.get("file_name") or os.path.basename(file_url)
+
+            if file_url in sent_files:
+                continue
+            sent_files.add(file_url)
+
+            ext = os.path.splitext(file_name or "")[1].lower()
+            is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+
+            send(
+                file_name,
+                get_profile_id(self.owner),
+                room,
+                self.owner,
+                attachment=file_url,
+                sub_channel=None,
+                is_link=None,
+                is_media=1 if is_image else None,
+                is_document=None if is_image else 1
+            )
+    def build_attachment_from_dynamic_value(self, doc, raw_value):
+            if not raw_value:
+                return None
+
+            raw_value = str(raw_value).strip()
+
+            if raw_value.startswith("/files/") or raw_value.startswith("/private/files/"):
+                return build_attachment_from_file_url(raw_value)
+
+            
+            file_by_name = frappe.db.get_value(
+                "File",
+                {
+                    "attached_to_doctype": doc.doctype,
+                    "attached_to_name": doc.name,
+                    "file_name": raw_value
+                },
+                ["file_url", "file_name"],
+                as_dict=True
+            )
+            if file_by_name:
+                return build_attachment_from_file_url(file_by_name.file_url, file_by_name.file_name)
+
+            if frappe.db.exists("File", raw_value):
+                file_doc = frappe.get_doc("File", raw_value)
+                return build_attachment_from_file_url(file_doc.file_url, file_doc.file_name)
+
+            return None
+    def get_email_variable_attachment(self, doc):
+            attachment_value = self.get_variable_value(doc, "email_attachment")
+            if not attachment_value:
+                return None
+
+            return self.build_attachment_from_dynamic_value(doc, attachment_value)
+    def send_telegram_variable_attachments(self, doc, room, attachment_values):
+            sent_files = set()
+
+            for raw_value in attachment_values:
+                info = self.get_attachment_url_info(doc, raw_value)
+                if not info or not info.get("file_url"):
+                    continue
+
+                file_url = info.get("file_url")
+                file_name = info.get("file_name") or os.path.basename(file_url)
+
+                if file_url in sent_files:
+                    continue
+                sent_files.add(file_url)
+
+                ext = os.path.splitext(file_name or "")[1].lower()
+                is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+
+                send(
+                    file_name,
+                    get_profile_id(self.owner),
+                    room,
+                    self.owner,
+                    attachment=file_url,
+                    sub_channel=None,
+                    is_link=None,
+                    is_media=1 if is_image else None,
+                    is_document=None if is_image else 1
+                )
 @frappe.whitelist()
 def call_trigger_notifications():
     """Trigger notifications."""
@@ -678,7 +1066,28 @@ def create_folder_if_not_exists(folder_name, parent_folder="Home"):
         return folder.name
 
     return exists
+    
+def build_attachment_from_file_url(file_url, file_name=None):
+    if not file_url:
+        return None
 
+    cleaned_path = file_url.split("?", 1)[0].lstrip("/")
+
+    if cleaned_path.startswith("private/files/"):
+        absolute_path = get_site_path(*cleaned_path.split("/"))
+    elif cleaned_path.startswith("files/"):
+        absolute_path = get_site_path("public", *cleaned_path.split("/"))
+    else:
+        return None
+
+    if not os.path.exists(absolute_path):
+        return None
+
+    with open(absolute_path, "rb") as attachment_file:
+        return {
+            "fname": file_name or os.path.basename(absolute_path),
+            "fcontent": attachment_file.read()
+        }
        
 def handle_pdf_attachment(file_url, file_name):
     """Return HTML content for a PDF file attachment, similar to the JS handle_attachment function."""
@@ -914,6 +1323,13 @@ def resolve_notification_recipient(self, doc, channel_type="WhatsApp"):
 
    
         if value_type == "Phone":
+            if channel_type == "Email":
+                return {
+                    "profile": None,
+                    "contact": raw_value,
+                    "source_row": row
+                }
+
             profile_name = get_or_create_chat_profile_from_phone(
                 raw_value,
                 sender_name=str(raw_value),

@@ -5690,6 +5690,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     else:
                         # 🔹 Normal case — get the field value from the current document
                         value = frappe.db.get_value(source_doctype, docname, source_field)
+                        value=str(value)
                         if value and value.startswith("/"):
                             value= urllib.parse.quote(value[1:], safe=':/')
                 # else:
