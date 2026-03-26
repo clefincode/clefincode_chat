@@ -1,7 +1,13 @@
 import { ChatBubble, ChatPortalSpace, ChatList } from "./components";
+import ChatContactList from "./components/erpnext_chat_contact_list";
+
+window.CCChatContactList = ChatContactList;
 
 frappe.provide("frappe.ErpnextChat");
 frappe.provide("frappe.ErpnextChat.settings");
+
+frappe.ErpnextChat.ContactList = ChatContactList;
+
 let FRAPPE_MAJOR_VERSION = null;
 async function initFrappeVersion() {
   if (FRAPPE_MAJOR_VERSION !== null) return;
@@ -548,6 +554,8 @@ this.$chat_left_section.append(this.$empty_state);
   }
 }; //End ErpnextChat Class
 
+frappe.ErpnextChat.ContactList = ChatContactList;
+window.CCChatContactList = ChatContactList;
 async function get_settings(token) {
   const res = await frappe.call({
     type: "GET",

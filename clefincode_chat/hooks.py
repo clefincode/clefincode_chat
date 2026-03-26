@@ -28,8 +28,15 @@ web_include_js = ['clefincode_chat.bundle.js'] if is_frappe_above_v13 else [
 app_include_css = ['clefincode_chat.bundle.css'] if is_frappe_above_v13 else [
     '/assets/css/clefincode_chat.css']
 
-app_include_js = ['clefincode_chat.bundle.js' , 'override.bundle.js'] if is_frappe_above_v13 else [
-    '/assets/js/clefincode_chat.js' ,  '/assets/js/override.js']
+app_include_js = [
+    "clefincode_chat.bundle.js",
+    "override.bundle.js",
+    "/assets/clefincode_chat/js/topic_button.js",
+] if is_frappe_above_v13 else [
+    "/assets/clefincode_chat/js/clefincode_chat.js",
+    "/assets/clefincode_chat/js/topic_button.js",
+    "/assets/clefincode_chat/js/override.js",
+]
 
 # web_include_css = "/assets/clefincode_chat/css/clefincode_chat.css"
 # web_include_js = "/assets/clefincode_chat/js/clefincode_chat.js"
@@ -128,6 +135,10 @@ after_migrate  = "clefincode_chat.setup.after_migrate.after_migrate"
 # }
 
 doc_events = {
+    "File": {
+        
+        "before_save": "clefincode_chat.utils.utils.save_original_filename"
+    },
     "Contact": {
         "after_insert": [
             "clefincode_chat.api.api_1_3_1.api.sync_with_chat_profile",
