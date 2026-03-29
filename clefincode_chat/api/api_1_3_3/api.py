@@ -1284,6 +1284,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
 
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)
+                 
                     process_ai_reply_job(member,get_profile_id(email),room,new_message)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
                     process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded)
@@ -5291,7 +5292,7 @@ def upload_media_to_server(file_path):
 
 def process_ai_reply_job(member, sender, channel,msg):
     """Process AI bot reply when a message is received"""
-
+   
     try:
         
         #
@@ -5299,20 +5300,23 @@ def process_ai_reply_job(member, sender, channel,msg):
             return
         try:
             sender_profile = frappe.get_doc("ClefinCode Chat Profile", sender)
+          
             if sender_profile.is_ai_bot:
+             
                 return
-            # إذا بدك تتحقق من mentions
+        
             # if msg.is_mention:
             #     return
         except Exception:
             frappe.log_error(frappe.get_traceback(), "Error getting sender profile")
             return
 
-        # لازم يكون للعضو profile_id
+       
         if not getattr(member, "profile_id", None):
             return
 
         profile = frappe.get_doc("ClefinCode Chat Profile", member.profile_id)
+       
 
         if profile.is_ai_bot:
             if not profile.ai_agent_profile:
@@ -5323,7 +5327,6 @@ def process_ai_reply_job(member, sender, channel,msg):
                 return
 
             ai_agent = frappe.get_doc("ClefinCode AI Agent Profile", profile.ai_agent_profile)
-
             system_prompt = getattr(profile, "instruction", None)
             model = getattr(ai_agent, "model", None)
             temperature = getattr(ai_agent, "temperature", None)
@@ -5404,6 +5407,7 @@ def process_ai_reply_job(member, sender, channel,msg):
                     return_json=False,
                     use_responses_endpoint=False
                 )
+             
             except Exception:
                 frappe.log_error(frappe.get_traceback(), "call_ai_service Error")
                 return
@@ -5420,9 +5424,9 @@ def process_ai_reply_job(member, sender, channel,msg):
                        
                     send(
                         content=f"<p>{reply}</p>",
-                        user=member.profile_id,   # كان memberprofile_id
-                        room=channel,        # استخدم channel.name
-                        email=getattr(member, "user", None),  # كان memberuser
+                        user=member.profile_id,   #  memberprofile_id
+                        room=channel,        #  channel.name
+                        email=getattr(member, "user", None),  #  memberuser
                         is_first_message=0,
                         is_screenshot=0,
                         is_link=has

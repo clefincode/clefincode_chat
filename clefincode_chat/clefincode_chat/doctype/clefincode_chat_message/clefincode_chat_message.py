@@ -15,7 +15,7 @@ def process_ai_reply_job(chat_message_name):
         msg = frappe.get_doc("ClefinCode Chat Message", chat_message_name)
         if msg.message_type=="information":
             return
-        # تجاهل إذا المرسل بوت
+
         try:
 
             sender_profile = frappe.get_doc("ClefinCode Chat Profile", msg.sender)
@@ -27,7 +27,7 @@ def process_ai_reply_job(chat_message_name):
             frappe.log_error(frappe.get_traceback(), "Error getting sender profile")
             return
 
-        # اجلب القناة و أعضائها/المساهمين
+  
         try:
             channel = frappe.get_doc("ClefinCode Chat Channel", msg.chat_channel)
         except Exception:
@@ -74,9 +74,7 @@ def process_ai_reply_job(chat_message_name):
                     max_tokens = getattr(ai_agent, "max_tokens", None)
                     summary_result =summarize_channel_if_needed(channel.name, ai_agent.name)
                     messages = []
-                    # print("summary_result")
-                    # print(summary_result)
-                    # print("summary_result")
+              
 
                     
                     
@@ -84,9 +82,7 @@ def process_ai_reply_job(chat_message_name):
                         summary_text = summary_result.get("summary_text", "") or ""
                         remaining_msgs = summary_result.get("messages", []) or []
                         
-                        # print("remaining_msgs")
-                        # print(remaining_msgs)
-                        # print("remaining_msgs")
+                 
                         if summary_text:
                             summary_message = (
                                     "You are an intelligent assistant. "
@@ -98,7 +94,6 @@ def process_ai_reply_job(chat_message_name):
                             messages.append({"role": "system", "content": summary_message})
 
                         for m in remaining_msgs:
-                            # بسيطة: إذا كان مرسل الرسالة لديه profile وهو بوت، نضع assistant، وإلا user
                             role = "user"
                             try:
                                 if m.get("sender"):
@@ -111,20 +106,7 @@ def process_ai_reply_job(chat_message_name):
                    # messages.append({"role": "user", "content": strip_html(msg.content) or ""})
                   
                     try:
-                        frappe.log_error(
-                                    message=json.dumps({
-                                        
-                                        "input": {
-                                            "profile_key": ai_agent.name,
-                                            "messages": [messages],
-                                            "system_prompt": system_prompt,
-                                            "model": model,
-                                            "temperature": temperature,
-                                            "max_tokens": max_tokens
-                                        }
-                                    }, default=str),
-                                    title="AI Service Call  Input"
-                                )
+                       
                         reply = call_ai_service(
                             profile_key=ai_agent.name,
                             profile_doctype="ClefinCode AI Agent Profile",
