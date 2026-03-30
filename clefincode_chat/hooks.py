@@ -31,10 +31,10 @@ app_include_css = ['clefincode_chat.bundle.css'] if is_frappe_above_v13 else [
 app_include_js = [
     "clefincode_chat.bundle.js",
     "override.bundle.js",
-    "/assets/clefincode_chat/js/topic_button.js",
+   
 ] if is_frappe_above_v13 else [
     "/assets/clefincode_chat/js/clefincode_chat.js",
-    "/assets/clefincode_chat/js/topic_button.js",
+
     "/assets/clefincode_chat/js/override.js",
 ]
 

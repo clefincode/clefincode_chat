@@ -1,3 +1,4 @@
+
 console.log("topic_button.js loaded");
 
 (function () {
@@ -348,16 +349,30 @@ async function link_doc_to_selected_target(frm, target) {
 	if (result.mode === "cancelled") {
 		return result;
 	}
-
+	ensure_chat_widget_open();
 	const messages = {
 			created: __("Document linked and new chat topic created"),
 			attached: __("Document added to existing chat topic"),
-			already_linked: __("This document is already linked. Opening chat only."),
+			already_linked: __("This document is already linked"),
 			replaced: __("Old topic closed and a new topic was created for this document")
 		};
 
-	frappe.msgprint({
-		title: __("Success"),
+	
+	open_chat_room({
+		is_admin: frappe.user.has_role("System Manager"),
+		user: frappe.session.user_fullname || frappe.session.user,
+		user_email: frappe.session.user,
+		time_zone: frappe.boot.time_zone?.system || frappe.boot.time_zone?.user || "UTC",
+		user_type: frappe.boot.user?.user_type,
+		is_limited_user: frappe.boot.user?.is_limited_user,
+		room: result.room,
+		room_name: target.name || result.room,
+		room_type: target.type === "contact" ? "Direct" : (target.room_type || "Group"),
+		contact: target.type === "contact" ? (target.name || target.email) : null,
+		is_first_message: 0,
+		platform: target.raw?.platform || "Chat"
+	});
+	frappe.show_alert({
 		message: messages[result.mode] || __("Done"),
 		indicator: "green"
 	});
@@ -534,4 +549,74 @@ function get_topic_references(topicRow) {
 
 function cint(value) {
 	return parseInt(value || 0, 10);
+}
+function ensure_chat_widget_open() {
+	const app = window.erpnext_chat_app;
+	if (!app) return false;
+
+
+	if (typeof app.show_chat_widget === "function") {
+		app.show_chat_widget();
+		return true;
+	}
+
+	if (app.$chat_element?.length) {
+		app.$chat_element.show();
+	}
+
+
+	if (app.$chat_bubble?.length) {
+		app.$chat_bubble.hide();
+	}
+
+	return true;
+}
+function ensure_chat_widget_open() {
+	const app = window.erpnext_chat_app;
+	if (!app) return false;
+
+	
+	if (typeof app.show_chat_widget === "function") {
+		app.show_chat_widget();
+		return true;
+	}
+
+	if (app.$chat_element?.length) {
+		app.$chat_element.show();
+	}
+
+	if (app.$chat_bubble?.length) {
+		app.$chat_bubble.hide();
+	}
+
+	return true;
+}
+function open_chat_room(profile, chat_status = null) {
+	const app = window.erpnext_chat_app;
+
+	if (!app || !window.CCChatWindow || !window.CCChatSpace || !window.CCCheckIfChatWindowOpen) {
+		console.warn("Chat open dependencies are missing");
+		return;
+	}
+
+
+	if (app.$chat_element?.length) {
+		app.$chat_element.show();
+	}
+
+
+	if (window.CCCheckIfChatWindowOpen(profile.room, "room")) {
+		$(".expand-chat-window[data-id|='" + profile.room + "']").click();
+		return;
+	}
+
+	const chat_window = new window.CCChatWindow({
+		profile: { room: profile.room }
+	});
+
+	new window.CCChatSpace({
+		$wrapper: chat_window.$chat_window,
+		profile: profile,
+		chat_status: chat_status
+	});
 }
