@@ -408,27 +408,95 @@ const isSystemManager = roles.includes("System Manager");
     return html_options
   }
 
-  setup_events() {
-    const me = this;
-  
-    this.$chat_contact.on("click", (e) => {
-          if (me.chat_contact_list.forward == 1) {
-    this.select_contact(e.target);
-    return;
-  }
-      if (me.chat_contact_list.new_group == 0) {
-        this.click_on_contact(e.target);
-      } else {
-        this.select_contact(e.target);
+ setup_events() {
+  const me = this;
+
+  this.$chat_contact.on("click", ".dropdown-menu .dropdown-item", async function (e) {
+    if (!me.chat_contact_list?.topic_picker) return;
+
+    const $item = $(this);
+
+    if ($item.hasClass("manage-contact")) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const selected_email = $item.data("contact") || me.profile.default_contact;
+
+    const selected_platform =
+      ["Chat", "Email", "WhatsApp", "Instagram", "Messenger", "Telegram"]
+        .find((p) => $item.hasClass(p)) || me.profile.default_platform || "Chat";
+
+    await me.chat_contact_list.on_select?.({
+      type: "contact",
+      name: me.profile.contact_name,
+      email: selected_email,
+      profile_id: me.profile.profile_id,
+      raw: {
+        email: selected_email,
+        platform: selected_platform
       }
     });
-     this.$chat_contact.on("click", "#manageContactBtn", () => {
-        const user_contact = me.profile.contact_details.find(cd => cd.contact_info === frappe.session.user);
-        
-        
-        me.open_manage_popup(user_contact);
-    });
-  }
+  });
+
+  this.$chat_contact.on("click", async function (e) {
+    // ===== topic picker mode =====
+    if (me.chat_contact_list?.topic_picker) {
+      const $target = $(e.target);
+
+      
+      if ($target.closest("#dropdownMenuButton, .options-icon, .dropdown-toggle").length) {
+        return;
+      }
+
+     
+      if ($target.closest(".dropdown-menu").length) {
+        return;
+      }
+
+     
+      await me.chat_contact_list.on_select?.({
+        type: "contact",
+        name: me.profile.contact_name,
+        email: me.profile.default_contact,
+        profile_id: me.profile.profile_id,
+        raw: {
+          email: me.profile.default_contact,
+          platform: me.profile.default_platform || "Chat"
+        }
+      });
+
+      return;
+    }
+
+    // ===== forward mode =====
+    if (me.chat_contact_list.forward == 1) {
+      me.select_contact(e.target);
+      return;
+    }
+
+    // ===== normal existing behavior =====
+    if (me.chat_contact_list.new_group == 0) {
+      me.click_on_contact(e.target);
+    } else {
+      me.select_contact(e.target);
+    }
+  });
+
+  // 3) manage contact
+  this.$chat_contact.on("click", "#manageContactBtn", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const user_contact = me.profile.contact_details.find(
+      (cd) => cd.contact_info === frappe.session.user
+    );
+
+    me.open_manage_popup(user_contact);
+  });
+}
 
   click_on_contact(e) {
     const contact_element = $(e).closest(
