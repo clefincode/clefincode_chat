@@ -88,7 +88,10 @@ export default class ChatSpace {
       targetMessage: null,
     };
     this.$emojiMenu = null;
-
+    this.selectionMode = false;
+    this.selectedMessages = new Set();
+    this.selectionAction = null; // 'forward' | 'delete' | 'relink' | null
+    this.$messageActionMenu = null;
     
 
     if (this.chat_topic_space) {
@@ -109,6 +112,297 @@ export default class ChatSpace {
     this.messageCache = new Map();
     this.setup();
   }
+  getCurrentChatChannel() {
+  return this.profile.room_type === "Contributor"
+    ? this.profile.parent_channel
+    : this.profile.room;
+}
+async relinkMessagesToTopic(topicName, messageNames = []) {
+  const chatChannel = this.getCurrentChatChannel();
+
+  if (!chatChannel) {
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("No chat channel found."),
+      indicator: "red"
+    });
+    return;
+  }
+
+  if (!topicName || !messageNames.length) {
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("Missing topic or messages."),
+      indicator: "red"
+    });
+    return;
+  }
+
+  await frappe.call({
+    method: "clefincode_chat.api.api_1_3_3.api.relink_messages_to_topic",
+    args: {
+      chat_channel: chatChannel,
+      topic_name: topicName,
+      message_names: JSON.stringify(messageNames)
+    }
+  });
+
+  frappe.show_alert({
+    message: __("Messages relinked successfully"),
+    indicator: "green"
+  });
+
+  this.exitSelectionMode();
+}
+
+async openRelinkTopicsDialog(messageNames = []) {
+  const chatChannel = this.getCurrentChatChannel();
+
+  if (!chatChannel) {
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("No chat channel found."),
+      indicator: "red"
+    });
+    return;
+  }
+
+  const d = new frappe.ui.Dialog({
+    title: __("ReLink Topic"),
+    size: "large",
+    fields: [
+      {
+        fieldtype: "HTML",
+        fieldname: "topics_html"
+      }
+    ],
+    primary_action_label: __("Close"),
+    primary_action() {
+      d.hide();
+    }
+  });
+  this.exitSelectionMode();
+  this.closeMessageActionMenu();
+  this.closeEmojiMenu();
+  this.hideAllReactButtons();
+  d.show();
+
+  const renderTopics = async () => {
+    d.fields_dict.topics_html.$wrapper.html(`
+      <div style="padding:16px; text-align:center; opacity:.7;">
+        ${__("Loading topics...")}
+      </div>
+    `);
+
+    try {
+      const r = await frappe.call({
+        method: "clefincode_chat.api.api_1_3_3.api.get_channel_topics",
+        args: {
+          chat_channel: chatChannel,
+          topic_status: "All"
+        }
+      });
+
+      const topics = r.message?.topics || [];
+
+      const rows = topics.length
+        ? topics.map((topic, idx) => {
+            const refs = topic.references || [];
+            const refsHtml = refs.length
+              ? refs.map(ref => `
+                  <div style="font-size:12px; opacity:.75; margin-top:2px;">
+                    ${frappe.utils.escape_html(ref.doctype)} / ${frappe.utils.escape_html(ref.docname)}
+                  </div>
+                `).join("")
+              : `<div style="font-size:12px; opacity:.6; margin-top:2px;">${__("No references")}</div>`;
+
+            return `
+              <div class="relink-topic-row" style="
+                display:flex;
+                align-items:flex-start;
+                justify-content:space-between;
+                gap:12px;
+                padding:12px 0;
+                border-bottom:1px solid #eee;
+              ">
+                <div style="min-width:0; flex:1;">
+                  <div style="font-weight:600;">
+                    ${frappe.utils.escape_html(topic.subject || topic.name)}
+                  </div>
+                  <div style="font-size:12px; opacity:.7; margin-top:2px;">
+                    ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
+                    ${topic.is_private ? " • " + __("Private") : ""}
+                  </div>
+                  <div style="margin-top:6px;">
+                    ${refsHtml}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary pick-relink-topic"
+                  data-topic-name="${frappe.utils.escape_html(topic.name)}"
+                  data-topic-subject="${frappe.utils.escape_html(topic.subject || topic.name)}">
+                  ${__("Select")}
+                </button>
+              </div>
+            `;
+          }).join("")
+        : `
+          <div style="padding:16px; text-align:center; opacity:.7;">
+            ${__("No topics found for this channel.")}
+          </div>
+        `;
+
+      d.fields_dict.topics_html.$wrapper.html(`
+        <div class="relink-topic-dialog">
+          <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+            <button type="button" class="btn btn-sm btn-secondary add-new-topic-btn">
+              ${__("Add New Topic")}
+            </button>
+          </div>
+          <div class="relink-topic-list">
+            ${rows}
+          </div>
+        </div>
+      `);
+
+    } catch (e) {
+      console.error("Failed to load channel topics", e);
+      d.fields_dict.topics_html.$wrapper.html(`
+        <div style="padding:16px; text-align:center; color:#d9534f;">
+          ${__("Failed to load topics.")}
+        </div>
+      `);
+    }
+  };
+
+  await renderTopics();
+
+  d.$wrapper.off("click", ".add-new-topic-btn").on("click", ".add-new-topic-btn", async (e) => {
+    e.stopPropagation();
+    await this.promptCreateNewTopic({
+      chatChannel,
+      messageNames,
+      parentDialog: d,
+      afterCreate: async () => {
+        await renderTopics();
+      }
+    });
+  });
+
+  d.$wrapper.off("click", ".pick-relink-topic").on("click", ".pick-relink-topic", async (e) => {
+    e.stopPropagation();
+
+    const topicName = $(e.currentTarget).data("topic-name");
+    const topicSubject = $(e.currentTarget).data("topic-subject");
+
+    if (!topicName) return;
+
+    console.log("Selected topic:", topicName);
+    console.log("Selected messages:", messageNames);
+
+   
+    await frappe.call({
+      method: "clefincode_chat.api.api_1_3_3.api.relink_messages_to_topic",
+      args: {    
+        topic_name: topicName,
+        message_names: messageNames
+      }
+    });
+   
+
+    frappe.show_alert({
+      message: __("Selected topic: {0}", [topicSubject || topicName]),
+      indicator: "green"
+    });
+
+    d.hide();
+  });
+}
+async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parentDialog = null }) {
+  const createDialog = new frappe.ui.Dialog({
+    title: __("Add New Topic"),
+    fields: [
+      {
+        label: __("DocType"),
+        fieldname: "reference_doctype",
+        fieldtype: "Link",
+        options: "DocType",
+        reqd: 1
+      },
+      {
+        label: __("Document"),
+        fieldname: "reference_docname",
+        fieldtype: "Dynamic Link",
+        options: "reference_doctype",
+        reqd: 1
+      }
+    ],
+    primary_action_label: __("Create"),
+    primary_action: async (values) => {
+      try {
+        if (!values.reference_doctype || !values.reference_docname) {
+          frappe.msgprint({
+            title: __("Missing values"),
+            message: __("Please select DocType and Document."),
+            indicator: "orange"
+          });
+          return;
+        }
+
+        const mention_doctypes = JSON.stringify([
+          {
+            doctype: values.reference_doctype,
+            docname: values.reference_docname
+          }
+        ]);
+
+        const r = await frappe.call({
+          method: "clefincode_chat.api.api_1_3_3.api.create_chat_topic",
+          args: {
+            mention_doctypes,
+            chat_channel: chatChannel,
+            last_active_sub_channel:
+              this.profile.room_type === "Contributor"
+                ? this.profile.room
+                : null
+          }
+        });
+
+        const topicName = r.message?.results?.[0]?.chat_topic;
+
+        if (!topicName) {
+          throw new Error("Topic name missing after creation");
+        }
+
+        await this.relinkMessagesToTopic(topicName, messageNames);
+
+        this.closeMessageActionMenu();
+        this.closeEmojiMenu();
+        this.hideAllReactButtons();
+
+        createDialog.hide();
+        if (parentDialog) {
+          parentDialog.hide();
+        }
+
+        if (typeof afterCreate === "function") {
+          await afterCreate();
+        }
+      } catch (e) {
+        console.error("Failed to create topic", e);
+        frappe.msgprint({
+          title: __("Error"),
+          message: __("Failed to create topic"),
+          indicator: "red"
+        });
+      }
+    }
+  });
+
+  createDialog.show();
+}
  parseReactionsFromReactionsJson(reactions_json) {
   try {
     if (!reactions_json) return { reactions: [], emoji_counts: {} };
@@ -868,7 +1162,9 @@ async fetch_single_message(messageName) {
                 <div class='chat-profile-name' title="${header_full_name}">${header_title}</div>
                 <div class='chat-profile-status'>${last_active !== user_datetime ? last_active : ""}</div>
             </div>
+            
             ${icon_html}
+    
 
             ${
                 this.profile.is_admin === true && this.profile.room_type !== "Topic"
@@ -1392,39 +1688,635 @@ async fetch_single_message(messageName) {
     this.add_tag_section(this.contributors);
   }
 
+enterSelectionMode(initialMessageName = null) {
+  this.selectionMode = true;
+  this.$chat_space.addClass("selection-mode");
+
+  this.closeMessageActionMenu();
+  this.closeEmojiMenu();
+  this.hideAllReactButtons();
+
+  if (initialMessageName) {
+    const $msg = this.$chat_space.find(`[data-message-name="${initialMessageName}"]`);
+    const cached = this.messageCache.get(initialMessageName) || {};
+    const isRightMessage = $msg.hasClass("recipient-message");
+
+    const blocked =
+      Number(cached.is_deleted) === 1 ||
+      cached.message_type === "information" ||
+      (this.selectionAction === "delete" && !isRightMessage);
+
+    if (!blocked) {
+      this.selectedMessages.add(initialMessageName);
+      $msg.addClass("is-selected");
+      $msg.find('.message-select-checkbox input').prop("checked", true);
+    }
+  }
+
+  this.$chat_space.find("[data-message-name]").each((_, el) => {
+    const $msg = $(el);
+    const name = $msg.data("message-name");
+    const cached = this.messageCache.get(name) || {};
+    const isRightMessage = $msg.hasClass("recipient-message");
+
+    const shouldDisable =
+      Number(cached.is_deleted) === 1 ||
+      cached.message_type === "information" ||
+      (this.selectionAction === "delete" && !isRightMessage);
+
+    $msg.toggleClass("selection-disabled", shouldDisable);
+    $msg.find(".message-select-checkbox input").prop("disabled", shouldDisable);
+  });
+
+  this.renderSelectionBar();
+}
+
+toggleMessageSelection(messageName) {
+  if (!messageName) return;
+
+  const cached = this.messageCache.get(messageName) || {};
+  const $msg = this.$chat_space.find(`[data-message-name="${messageName}"]`);
+
+  if (cached.message_type === "information" || Number(cached.is_deleted) === 1) {
+    $msg.find('.message-select-checkbox input').prop("checked", false);
+    return;
+  }
+
+  const isRightMessage = $msg.hasClass("recipient-message");
+
+  if (this.selectionAction === "delete" && !isRightMessage) {
+    $msg.find('.message-select-checkbox input').prop("checked", false);
+    return;
+  }
+
+  if (this.selectedMessages.has(messageName)) {
+    this.selectedMessages.delete(messageName);
+    $msg.removeClass("is-selected");
+    $msg.find('.message-select-checkbox input').prop("checked", false);
+  } else {
+    this.selectedMessages.add(messageName);
+    $msg.addClass("is-selected");
+    $msg.find('.message-select-checkbox input').prop("checked", true);
+  }
+
+  this.renderSelectionBar();
+}
+renderSelectionBar() {
+  let $bar = this.$chat_space.find(".bulk-selection-bar");
+
+  if (!this.selectionMode) {
+    $bar.remove();
+    return;
+  }
+
+  let actionButton = "";
+
+  if (this.selectionAction === "forward") {
+    actionButton = `
+      <button type="button" class="btn btn-sm btn-primary confirm-forward-btn">
+        Forward
+      </button>
+    `;
+  } else if (this.selectionAction === "delete") {
+    actionButton = `
+      <button type="button" class="btn btn-sm btn-danger confirm-delete-btn">
+        Delete
+      </button>
+    `;
+  } else if (this.selectionAction === "relink" || this.selectionAction === null) {
+    actionButton = `
+      <button type="button" class="btn btn-sm btn-primary relink-topic-btn">
+        ReLink Topic
+      </button>
+    `;
+  }
+
+  if (!$bar.length) {
+    $bar = $(`
+      <div class="bulk-selection-bar">
+        <span class="selection-count">0 selected</span>
+        <div class="bulk-selection-actions">
+          ${actionButton}
+          <button type="button" class="btn btn-sm btn-default cancel-selection-btn">
+            Cancel
+          </button>
+        </div>
+      </div>
+    `);
+
+    if (this.$chat_actions && this.$chat_actions.length) {
+      this.$chat_actions.before($bar);
+    } else {
+      this.$chat_space.append($bar);
+    }
+  } else {
+    $bar.find(".bulk-selection-actions").html(`
+      ${actionButton}
+      <button type="button" class="btn btn-sm btn-default cancel-selection-btn">
+        Cancel
+      </button>
+    `);
+  }
+
+  $bar.find(".selection-count").text(`${this.selectedMessages.size} selected`);
+}
+
+exitSelectionMode() {
+  this.selectionMode = false;
+  this.selectionAction = null;
+  this.selectedMessages.clear();
+  this.$chat_space.removeClass("selection-mode");
+  this.$chat_space.find("[data-message-name]").removeClass("is-selected selection-disabled");
+  this.$chat_space.find('.message-select-checkbox input')
+    .prop("checked", false)
+    .prop("disabled", false);
+  this.renderSelectionBar();
+}
+showReactButtonForMessage(messageName) {
+  this.$chat_space.find("[data-message-name]").removeClass("show-react-btn");
+
+  if (!messageName) return;
+
+  this.$chat_space
+    .find(`[data-message-name="${messageName}"]`)
+    .addClass("show-react-btn");
+}
+
+hideAllReactButtons() {
+  this.$chat_space.find("[data-message-name]").removeClass("show-react-btn");
+}
+
+
+
+closeMessageActionMenu() {
+  if (this.$messageActionMenu?.length) {
+    this.$messageActionMenu.remove();
+  }
+
+  this.$messageActionMenu = null;
+  $(document).off("mousedown.messageActionMenu");
+}
+
+startBulkSelection(action, initialMessageName) {
+  this.selectionAction = action; // 'forward' | 'delete' | 'relink'
+  this.enterSelectionMode(initialMessageName);
+}
+
+async handleBulkForward() {
+  const selected = [...this.selectedMessages];
+  if (!selected.length) {
+    frappe.show_alert({
+      message: __("No messages selected"),
+      indicator: "orange"
+    });
+    return;
+  }
+
+  const forward_payload = selected.map((messageName) => {
+    const cached = this.messageCache.get(messageName) || {};
+    const $wrapper = this.$chat_space.find(`[data-message-name="${messageName}"]`);
+
+    return {
+      message_name: messageName,
+      sender: cached.sender || "",
+      content:
+        cached.content ||
+        $wrapper.find(".message-bubble").clone()
+          .find(".message-menu-trigger, .react-hover-btn, .message-actions, .edited-label, .forwarded-label")
+          .remove()
+          .end()
+          .html(),
+      is_link: cached.is_link || 0,
+      is_media: cached.is_media || 0,
+      is_document: cached.is_document || 0,
+      is_voice_clip: cached.is_voice_clip || 0,
+      is_screenshot: cached.is_screenshot || 0,
+      file_id: cached.file_id || null,
+      attachment: cached.attachment || null,
+      message_type: cached.message_type || null,
+      is_forwarded: 1
+    };
+  });
+
+  this.exitSelectionMode();
+
+  erpnext_chat_app.chat_contact_list = new ChatContactList({
+    $wrapper: this.$wrapper,
+    profile: this.profile,
+    forward: 1,
+    forward_payload,
+    chat_space: this
+  });
+
+  erpnext_chat_app.chat_contact_list.render();
+}
+
+async handleBulkDelete() {
+  const selected = [...this.selectedMessages];
+  if (!selected.length) {
+    frappe.show_alert({
+      message: __("No messages selected"),
+      indicator: "orange"
+    });
+    return;
+  }
+
+  frappe.confirm(
+    `Delete ${selected.length} message(s)?`,
+    async () => {
+      for (const messageName of selected) {
+        await frappe.call({
+          method: "clefincode_chat.api.api_1_3_3.api.delete_chat_message",
+          args: {
+            message_name: messageName,
+            user_email: this.profile.user_email
+          }
+        });
+
+        const $wrapper = this.$chat_space.find(`[data-message-name="${messageName}"]`);
+        const $bubble = $wrapper.find(".message-bubble");
+
+        $bubble.html(`
+          <div style="font-style:italic; opacity:0.6;">
+            This message was deleted
+          </div>
+        `);
+      }
+
+      this.exitSelectionMode();
+    }
+  );
+}
   setup_events() {
     const me = this;
-    
+
     const LONG_PRESS_MS = 450;
     const MOVE_CANCEL_PX = 12;
 
+// ===== Message action menu =====
+
+this.$chat_space.on("click", ".message-select-checkbox", function (e) {
+  e.stopPropagation();
+});
+
+this.$chat_space.on("change", ".message-select-checkbox input", function (e) {
+  e.stopPropagation();
+
+  if (!me.selectionMode) return;
+
+  const messageName = $(this).closest("[data-message-name]").data("message-name");
+  me.toggleMessageSelection(messageName);
+});
+this.$chat_space.on("click", ".message-bubble", function (e) {
+  e.stopPropagation();
+
+  const $wrapper = $(this).closest("[data-message-name]");
+  const messageName = $wrapper.data("message-name");
+
+  if (me.selectionMode) {
+   // me.toggleMessageSelection(messageName);
+    return;
+  }
+
+  if (me.longPress && me.longPress.fired) {
+    me.longPress.fired = false;
+    return;
+  }
+
+  me.closeMessageActionMenu();
+  me.hideAllReactButtons();
+  me.showReactButtonForMessage(messageName);
+});
+$(document)
+  .off("click.chatMenuActions", ".relink-action")
+  .on("click.chatMenuActions", ".relink-action", function (e) {
+    e.stopPropagation();
+    me.closeMessageActionMenu();
+
+    const messageName = $(this).data("message-name");
+    me.startBulkSelection("relink", messageName);
+  });
+
+$(document).off("click.chatBubbleActions").on("click.chatBubbleActions", function () {
+  me.closeMessageActionMenu();
+  me.hideAllReactButtons();
+});
+this.$chat_space.on("click", ".cancel-selection-btn", function (e) {
+  e.stopPropagation();
+  me.exitSelectionMode();
+});
+
+this.$chat_space.on("click", ".relink-topic-btn", async function (e) {
+  e.stopPropagation();
+
+  const selected = [...me.selectedMessages];
+  if (!selected.length) {
+    frappe.show_alert({
+      message: __("No messages selected"),
+      indicator: "orange"
+    });
+    return;
+  }
+
+  await me.openRelinkTopicsDialog(selected);
+});
+this.$chat_space.on("click", ".message-menu-trigger", function (e) {
+  e.stopPropagation();
+
+  const $trigger = $(this);
+  const $wrapper = $trigger.closest("[data-message-name]");
+  const messageName = $wrapper.data("message-name");
+  const cached = me.messageCache.get(messageName) || {};
+
+  const isMyMessage = $trigger.attr("data-is-my-message") === "1";
+  const isTextOnly =
+    $trigger.attr("data-is-text-only") === "1" &&
+    !cached.is_media &&
+    !cached.is_document &&
+    !cached.is_voice_clip &&
+    !cached.attachment;
+
+  me.openMessageActionMenu({
+    $trigger,
+    messageName,
+    isMyMessage,
+    isTextOnly
+  });
+});
+
+$(document).off("click.chatMenuActions", ".edit-action").on("click.chatMenuActions", ".edit-action", function (e) {
+  e.stopPropagation();
+  me.closeMessageActionMenu();
+
+  const messageName = $(this).data("message-name");
+  const cached = me.messageCache.get(messageName) || {};
+  const isEditedBefore = Number(cached.is_edited || 0) === 1;
+  const $wrapper = me.$chat_space.find(`[data-message-name="${messageName}"]`);
+
+  if (isEditedBefore) {
+    const d = new frappe.ui.Dialog({
+      title: "Edit Message",
+      fields: [
+        {
+          label: "Original Message",
+          fieldname: "original_message",
+          fieldtype: "Text Editor",
+          read_only: 1,
+          default: cached.original_content || "—"
+        },
+        {
+          label: "Current Message",
+          fieldname: "current_message",
+          fieldtype: "Text Editor",
+          read_only: 1,
+          default: cached.content || "—"
+        }
+      ],
+      primary_action_label: "OK",
+      primary_action: () => d.hide()
+    });
+
+    d.show();
+    d.$body.prepend(`
+      <div class="alert alert-warning" style="margin-bottom:10px;">
+        Editing is not allowed because it was edited before.
+      </div>
+    `);
+    return;
+  }
+
+  const d = new frappe.ui.Dialog({
+    title: "Edit Message",
+    fields: [
+      {
+        label: "Message",
+        fieldname: "content",
+        fieldtype: "Text Editor",
+        reqd: 1,
+        default: cached.content || ""
+      }
+    ],
+    primary_action_label: "Save",
+    primary_action: async (values) => {
+      let formattedContent = values.content || "";
+
+      const $tmp = $("<div>").html(formattedContent);
+      const $ql = $tmp.find(".ql-editor").first();
+      formattedContent = $ql.length ? $ql.html() : $tmp.html();
+
+      await frappe.call({
+        method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
+        args: {
+          message_name: messageName,
+          new_content: formattedContent
+        }
+      });
+
+      const $bubble = $wrapper.find(".message-bubble");
+      const $menuTrigger = $bubble.find(".message-menu-trigger").detach();
+      const $reactHoverBtn = $bubble.find(".react-hover-btn").detach();
+      const $replyLink = $bubble.find(".reply-link").detach();
+      const $forwardedLabel = $bubble.find(".forwarded-label").detach();
+
+      $bubble.empty();
+
+      if ($replyLink.length) $bubble.append($replyLink);
+      if ($forwardedLabel.length) $bubble.append($forwardedLabel);
+
+      $bubble.append(formattedContent);
+      $bubble.append(`
+        <div class="edited-label" style="font-size:11px;opacity:.6;margin-top:4px;">
+          Edited
+        </div>
+      `);
+
+      $bubble.append($menuTrigger);
+      $bubble.append($reactHoverBtn);
+
+      cached.content = formattedContent;
+      cached.is_edited = 1;
+      me.messageCache.set(messageName, cached);
+
+      d.hide();
+    },
+    secondary_action_label: "Cancel",
+    secondary_action: () => d.hide()
+  });
+
+  d.show();
+  d.fields_dict.content.$wrapper.attr("dir", "auto");
+});
+
+$(document).off("click.chatMenuActions", ".reply-action").on("click.chatMenuActions", ".reply-action", async function (e) {
+  e.stopPropagation();
+  me.closeMessageActionMenu();
+
+  const messageName = $(this).data("message-name");
+  me.reply_to_message_name = messageName;
+
+  const snippet = await me.makeReplySnippet(messageName, 120);
+  const text = snippet?.text || "[Attachment]";
+
+  let $host = me.$chat_space.children(".reply-preview-host");
+  if (!$host.length) {
+    $host = $('<div class="reply-preview-host"></div>');
+    me.$chat_actions.before($host);
+  }
+
+  $host.html(`
+    <div class="reply-preview">
+      <span class="reply-preview__icon">↩</span>
+      <span class="reply-preview__text"></span>
+      <button type="button" class="reply-preview__close cancel-reply" aria-label="Cancel">×</button>
+    </div>
+  `);
+
+  $host.find(".reply-preview__text").text(text);
+
+  setTimeout(() => {
+    if (me.type_message_input?.quill) {
+      me.type_message_input.quill.focus();
+      me.type_message_input.quill.setSelection(
+        me.type_message_input.quill.getLength(),
+        0
+      );
+      return;
+    }
+
+    const $editor = me.$chat_actions?.find(".type-message .ql-editor");
+    if ($editor?.length) $editor.trigger("focus");
+  }, 0);
+});
+ $(document)
+  .off("click.chatMenuActions", ".react-action")
+  .on("click.chatMenuActions", ".react-action", function (e) {
+    e.stopPropagation();
+    me.closeMessageActionMenu();
+
+    const messageName = $(this).data("message-name");
+    const $wrapper = me.$chat_space.find(`[data-message-name="${messageName}"]`);
+    const $bubble = $wrapper.find(".message-bubble").first();
+
+    if (!$bubble.length) return;
+
+    me.openEmojiMenu({
+      $bubble,
+      messageName
+    });
+  });
+
+$(document).off("click.chatMenuActions", ".forward-action").on("click.chatMenuActions", ".forward-action", function (e) {
+  e.stopPropagation();
+  me.closeMessageActionMenu();
+
+  const messageName = $(this).data("message-name");
+  me.startBulkSelection("forward", messageName);
+});
+
+$(document).off("click.chatMenuActions", ".delete-action").on("click.chatMenuActions", ".delete-action", function (e) {
+  e.stopPropagation();
+  me.closeMessageActionMenu();
+
+  const messageName = $(this).data("message-name");
+  me.startBulkSelection("delete", messageName);
+});
+
+this.$chat_space.on("click", ".confirm-forward-btn", async function (e) {
+  e.stopPropagation();
+  await me.handleBulkForward();
+});
+
+this.$chat_space.on("click", ".confirm-delete-btn", async function (e) {
+  e.stopPropagation();
+  await me.handleBulkDelete();
+});
+
+this.$chat_space.on("click", ".cancel-reply", function () {
+  me.reply_to_message_name = null;
+  $(".reply-preview").remove();
+});
+
+this.$chat_space.on("click", ".reply-link", async function () {
+  const target = $(this).data("jump");
+
+  const $msg = me.$chat_space.find(`#msg-${target}`);
+  if ($msg.length) {
+    me.highlightAndScroll($msg);
+    return;
+  }
+
+  await me.jumpToMessage(target);
+});
+
+
+
+
+
     // pointerdown
-    this.$chat_space.on("pointerdown", ".message-bubble", (e) => {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
+    // this.$chat_space.on("pointerdown", ".message-bubble", (e) => {
+    //   if (e.pointerType === "mouse" && e.button !== 0) return;
 
-      this.longPress.fired = false;
-      this.longPress.targetMessage = $(e.currentTarget)
-        .closest("[data-message-name]")
-        .data("message-name");
+    //   this.longPress.fired = false;
+    //   this.longPress.targetMessage = $(e.currentTarget)
+    //     .closest("[data-message-name]")
+    //     .data("message-name");
 
-      this.longPress.startX = e.clientX;
-      this.longPress.startY = e.clientY;
+    //   this.longPress.startX = e.clientX;
+    //   this.longPress.startY = e.clientY;
 
-      clearTimeout(this.longPress.timer);
+    //   clearTimeout(this.longPress.timer);
 
-      this.longPress.timer = setTimeout(() => {
-        this.longPress.fired = true;
+    //   this.longPress.timer = setTimeout(() => {
+    //     this.longPress.fired = true;
 
         
-        $(".message-actions").hide();
+    //     $(".message-actions").hide();
 
-        const $bubble = $(e.currentTarget);
-        this.openEmojiMenu({
-          $bubble,
-          messageName: this.longPress.targetMessage,
+    //     const $bubble = $(e.currentTarget);
+    //     this.openEmojiMenu({
+    //       $bubble,
+    //       messageName: this.longPress.targetMessage,
+    //     });
+    //   }, LONG_PRESS_MS);
+    // });
+    this.$chat_space.on("click", ".react-hover-btn", function (e) {
+          e.stopPropagation();
+
+          const $wrapper = $(this).closest("[data-message-name]");
+          const messageName = $wrapper.data("message-name");
+          const $bubble = $wrapper.find(".message-bubble");
+
+          me.openEmojiMenu({
+            $bubble,
+            messageName
+          });
         });
-      }, LONG_PRESS_MS);
-    });
+    this.$chat_space.on("pointerdown", ".message-bubble", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+
+  this.longPress.fired = false;
+  this.longPress.targetMessage = $(e.currentTarget)
+    .closest("[data-message-name]")
+    .data("message-name");
+
+  this.longPress.startX = e.clientX;
+  this.longPress.startY = e.clientY;
+
+  clearTimeout(this.longPress.timer);
+
+  this.longPress.timer = setTimeout(() => {
+    this.longPress.fired = true;
+    this.closeMessageActionMenu();
+    this.closeEmojiMenu();
+    
+
+    if (!this.selectionMode) {
+      this.enterSelectionMode(this.longPress.targetMessage);
+    } else {
+      this.toggleMessageSelection(this.longPress.targetMessage);
+    }
+  }, LONG_PRESS_MS);
+});
 
     
     this.$chat_space.on("pointermove", ".message-bubble", (e) => {
@@ -1741,253 +2633,8 @@ if (app && app.is_webview) {
     me.setup_voice_clip_event();
 
     // Show reply/forward when clicking message
-this.$chat_space.on("click", ".message-bubble", function (e) {
-  e.stopPropagation();
-  if (me.longPress && me.longPress.fired) {
-    me.longPress.fired = false;
-    return;
-  }
-  // hide all actions first
-  $(".message-actions").hide();
-
-  // show only for this message
-  $(this).find(".message-actions").show();
-});
-
-// Hide when clicking outside
-$(document).on("click", function () {
-  $(".message-actions").hide();
-});
-this.$chat_space.on("click", ".edit-btn", function (e) {
-  e.stopPropagation();
-
-  const $wrapper = $(this).closest("[data-message-name]");
-  const messageName = $wrapper.data("message-name");
-  const cached = me.messageCache.get(messageName) || {};
-  const isEditedBefore = Number(cached.is_edited || 0) === 1;
-
-  if (isEditedBefore) {
-    const d = new frappe.ui.Dialog({
-      title: "Edit Message",
-      fields: [
-        {
-          label: "Original Message",
-          fieldname: "original_message",
-          fieldtype: "Text Editor",
-          read_only: 1,
-          default: cached.original_content || "—"
-        },
-        {
-          label: "Current Message",
-          fieldname: "current_message",
-          fieldtype: "Text Editor",
-          read_only: 1,
-          default: cached.content || "—"
-        }
-      ],
-      primary_action_label: "OK",
-      primary_action: () => d.hide()
-    });
-
-    d.show();
-
-    d.$body.prepend(`
-      <div class="alert alert-warning" style="margin-bottom:10px;">
-        Editing is not allowed because it was edited before.
-      </div>
-    `);
-
-    return;
-  }
-
-  const d = new frappe.ui.Dialog({
-    title: "Edit Message",
-    fields: [
-      {
-        label: "Message",
-        fieldname: "content",
-        fieldtype: "Text Editor",
-        reqd: 1,
-        default: cached.content || ""
-      }
-    ],
-    primary_action_label: "Save",
-    primary_action: async (values) => {
-
-      let formattedContent = values.content || "";
-
-      const $tmp = $("<div>").html(formattedContent);
-      const $ql = $tmp.find(".ql-editor").first();
-
-      formattedContent = $ql.length ? $ql.html() : $tmp.html();
-
-      await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
-        args: {
-          message_name: messageName,
-          new_content: formattedContent
-        }
-      });
-
-      const $bubble = $wrapper.find(".message-bubble");
-      const $actions = $bubble.find(".message-actions").detach();
-
-      $bubble.empty();
-      $bubble.append(formattedContent);
-
-      $bubble.append(`
-        <div class="edited-label" style="font-size:11px;opacity:.6;margin-top:4px;">
-          Edited
-        </div>
-      `);
-
-      if ($actions.length) {
-        $bubble.append($actions);
-      }
-
-      cached.content = formattedContent;
-      cached.is_edited = 1;
-      me.messageCache.set(messageName, cached);
-
-      d.hide();
-    },
-    secondary_action_label: "Cancel",
-    secondary_action: () => d.hide()
-  });
-
-  d.show();
-
-  const editor = d.fields_dict.content.$wrapper;
-  editor.attr("dir", "auto");
-});
-    // Reply button click
-this.$chat_space.on("click", ".reply-btn", async function (e) {
-  e.stopPropagation();
-
-  const $wrapper = $(this).closest("[data-message-name]");
-  const messageName = $wrapper.data("message-name");
-  me.reply_to_message_name = messageName;
-
-  const snippet = await me.makeReplySnippet(messageName, 120);
-  const text = snippet?.text || "[Attachment]";
-
-  let $host = me.$chat_space.children(".reply-preview-host");
-  if (!$host.length) {
-    $host = $('<div class="reply-preview-host"></div>');
-    me.$chat_actions.before($host);
-  }
-
-  $host.html(`
-    <div class="reply-preview">
-      <span class="reply-preview__icon">↩</span>
-      <span class="reply-preview__text"></span>
-      <button type="button" class="reply-preview__close cancel-reply" aria-label="Cancel">×</button>
-    </div>
-  `);
-
-  $host.find(".reply-preview__text").text(text);
-   setTimeout(() => {
-  
-    if (me.type_message_input?.quill) {
-      me.type_message_input.quill.focus();
-   
-      me.type_message_input.quill.setSelection(
-        me.type_message_input.quill.getLength(),
-        0
-      );
-      return;
-    }
 
 
-    const $editor = me.$chat_actions?.find(".type-message .ql-editor");
-    if ($editor?.length) $editor.trigger("focus");
-  }, 0);
-});
-
-
-  this.$chat_space.on("click", ".forward-btn", async function (e) {
-  e.stopPropagation();
-
-  const $wrapper = $(this).closest("[data-message-name]");
-  const messageName = $wrapper.data("message-name");
-
-
-  const cached = me.messageCache.get(messageName);
-
-  const forward_payload = {
-    message_name: messageName,
-    sender: cached?.sender || "",
-    content: cached?.content || $wrapper.find(".message-bubble").clone()
-      .find(".message-actions").remove().end().html(),
-                
-            
-            is_link: cached.is_link || 0,
-            is_media: cached.is_media || 0,
-            is_document: cached.is_document || 0,
-            is_voice_clip: cached.is_voice_clip || 0,
-            is_screenshot: cached.is_screenshot || 0,
-            file_id: cached.file_id || null,
-            attachment: cached.attachment || null,
-            message_type: cached.message_type || null,
-
-            
-            is_forwarded: 1,
-  };
-
-
-  erpnext_chat_app.chat_contact_list = new ChatContactList({
-    $wrapper: me.$wrapper,         
-    profile: me.profile,
-    forward: 1,
-    forward_payload,
-    chat_space: me,               
-  });
-
-  erpnext_chat_app.chat_contact_list.render();
-});
-
-this.$chat_space.on("click", ".cancel-reply", function () {
-  me.reply_to_message_name = null;
-  $(".reply-preview").remove();
-});
-this.$chat_space.on("click", ".reply-link", async function () {
-  const target = $(this).data("jump");
-
-  const $msg = me.$chat_space.find(`#msg-${target}`);
-  if ($msg.length) {
-   me.highlightAndScroll($msg);
-    return;
-  }
-
-  await me.jumpToMessage(target);
-});
-this.$chat_space.on("click", ".delete-btn", function (e) {
-  e.stopPropagation();
-
-  const $wrapper = $(this).closest("[data-message-name]");
-  const messageName = $wrapper.data("message-name");
-
-  frappe.confirm(
-    "Are you sure you want to delete this message?",
-    async function () {
-
-      await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.api.delete_chat_message",
-        args: {
-          message_name: messageName,
-          user_email: me.profile.user_email
-        }
-      });
-
-      const $bubble = $wrapper.find(".message-bubble");
-      $bubble.html(`
-        <div style="font-style:italic; opacity:0.6;">
-          This message was deleted
-        </div>
-      `);
-    }
-  );
-});
 this.$chat_space.on("click", ".message-reactions .reaction-chip", async function (e) {
   e.stopPropagation();
 
@@ -2011,6 +2658,23 @@ this.$chat_space.on("click", ".message-reactions", async function (e) {
 });
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // this.$chat_space.on("click", ".message-reactions .reaction-chip", async function (e) {
 //   e.stopPropagation();
 
@@ -2018,8 +2682,9 @@ this.$chat_space.on("click", ".message-reactions", async function (e) {
 //   const emoji = $(this).data("emoji");
 //   await me.openReactionsDialog(messageName, emoji); // preselect emoji
 // });
-  } //End setup_events
 
+  } //End setup_events
+  
   async handle_upload_file(file) {
     const dataurl = await frappe.dom.file_to_base64(file.file_obj);
     file.dataurl = dataurl;
@@ -2502,8 +3167,19 @@ async setup_messages(messages_list) {
       .attr("id", `msg-${message_name}`);
 
     const $message_element = $(document.createElement("div"))
-  .addClass("message-bubble")
-  .css("position", "relative");
+        .addClass("message-bubble")
+        .css("position", "relative");
+              const $selectionCheckbox = $(`
+        <label class="message-select-checkbox" aria-label="Select message">
+          <input type="checkbox" tabindex="-1" />
+          <span class="message-select-checkbox-ui"></span>
+        </label>
+      `);
+    const $reactHoverBtn = $(`
+      <button type="button" class="react-hover-btn" aria-label="React">
+        😊
+      </button>
+    `);
 
     const $name_element = $(document.createElement("div"))
       .addClass("message-name")
@@ -2646,61 +3322,36 @@ const deleteIcon = isDark
   ? "/assets/clefincode_chat/icons/delete.png"
   : "/assets/clefincode_chat/icons/delete.svg";
     // Forward button (hidden by default)
-  const $messageActions = $(`
-  <div class="message-actions" style="
-    display:none;
-    margin-top:6px;
-    
-    gap:12px;
-    font-size:12px;
-    color:#6c757d;
-    cursor:pointer;
-  ">
-  <span class="edit-btn">
-        ${frappe.utils.icon("edit", "sm")} Edit
-      </span>
-    <span class="reply-btn" style="margin-left:8px;">
-      ${frappe.utils.icon("reply", "sm")} Reply
-    </span>
-    <span class="forward-btn">
-      <img src="${forwardIcon}"
-       width="14" height="14"
-       style="margin-left:8px;"> Forward
-    </span>
-    
-    <span class="delete-btn">
-      <img src="${deleteIcon}"
-       width="14" height="14"
-       style="margin-left:8px;"> Delete
-    </span>
-
-  </div>
-`);
-
 const isMyMessage = sender_email === this.profile.user_email;
 
-if (!is_deleted) {
-  const isTextOnly =
+const isTextOnly =
   !is_deleted &&
   !this.messageCache.get(message_name)?.is_media &&
   !this.messageCache.get(message_name)?.is_document &&
   !this.messageCache.get(message_name)?.is_voice_clip &&
   !this.messageCache.get(message_name)?.attachment;
 
+const $menuTrigger = $(`
+  <button type="button" class="message-menu-trigger" aria-label="Message actions">
+    <svg viewBox="0 0 19 20" width="16" height="16" preserveAspectRatio="xMidYMid meet">
+      <path fill="currentColor" d="M3.8,6.7l5.7,5.7l5.7-5.7l1.6,1.6l-7.3,7.2L2.2,8.3L3.8,6.7z"></path>
+    </svg>
+  </button>
+`);
 
-  if (!isMyMessage ) {
-    $messageActions.find(".delete-btn").remove();
-    $messageActions.find(".edit-btn").remove();
-  }
-   if ( !isTextOnly) {
-   
-    $messageActions.find(".edit-btn").remove();
-  }
+$menuTrigger.attr("data-message-name", message_name);
+$menuTrigger.attr("data-is-my-message", isMyMessage ? "1" : "0");
+$menuTrigger.attr("data-is-text-only", isTextOnly ? "1" : "0");
 
-  $message_element.append($messageActions);
+if (!is_deleted && type !== "info-message") {
+  $message_element.append($menuTrigger);
 }
-
-
+  if (!is_deleted && type !== "info-message") {
+    $message_element.append($reactHoverBtn);
+  }
+      if (type !== "info-message") {
+    $message_element.append($selectionCheckbox);
+}
     $recipient_element.append($message_element);
     if (type == "info-message") {
       if (message_template_type == "Create Group") {
@@ -3992,6 +4643,87 @@ async fetchTemplateSuggestions(textValue) {
        }
     this.prevMessage = res;
   }
+  openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
+  this.closeMessageActionMenu();
+
+  const items = [];
+
+  if (isTextOnly && isMyMessage) {
+    items.push(`
+      <button type="button" class="menu-item edit-action" data-message-name="${messageName}">
+        Edit
+      </button>
+    `);
+  }
+
+  items.push(`
+    <button type="button" class="menu-item reply-action" data-message-name="${messageName}">
+      Reply
+    </button>
+  `);
+    items.push(`
+    <button type="button" class="menu-item react-action" data-message-name="${messageName}">
+      React
+    </button>
+  `);
+
+  items.push(`
+    <button type="button" class="menu-item forward-action" data-message-name="${messageName}">
+      Forward
+    </button>
+  `);
+
+  items.push(`
+    <button type="button" class="menu-item relink-action" data-message-name="${messageName}">
+      ReLink Topic
+    </button>
+  `);
+
+  if (isMyMessage) {
+    items.push(`
+      <button type="button" class="menu-item delete-action danger" data-message-name="${messageName}">
+        Delete
+      </button>
+    `);
+  }
+
+  const $menu = $(`
+    <div class="message-action-menu">
+      ${items.join("")}
+    </div>
+  `);
+
+  $("body").append($menu);
+
+  const rect = $trigger[0].getBoundingClientRect();
+  requestAnimationFrame(() => {
+    const w = $menu.outerWidth();
+    const h = $menu.outerHeight();
+
+    let left = rect.right - w;
+    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+
+    let top = rect.bottom + 6;
+    if (top + h > window.innerHeight - 8) {
+      top = rect.top - h - 6;
+    }
+    top = Math.max(8, top);
+
+    $menu.css({ left: `${left}px`, top: `${top}px` });
+  });
+
+  $(document)
+    .off("mousedown.messageActionMenu")
+    .on("mousedown.messageActionMenu", (e) => {
+      if (!$(e.target).closest(".message-action-menu, .message-menu-trigger").length) {
+        this.closeMessageActionMenu();
+      }
+    });
+
+  this.$messageActionMenu = $menu;
+}
+
+
   render() {
     const me = this;
     this.$wrapper.css("display", "");
@@ -4285,20 +5017,25 @@ async fetchTemplateSuggestions(textValue) {
 
     });
   }
-  async handleMessageEdit(res) {
-  
-  const { message_name, content,original_content } = res;
+async handleMessageEdit(res) {
+  const { message_name, content, original_content } = res;
 
   const $msg = this.$chat_space.find(`#msg-${message_name}`);
   if (!$msg.length) return;
 
   const $bubble = $msg.find(".message-bubble");
 
+  const $menuTrigger = $bubble.find(".message-menu-trigger").detach();
+  const $reactHoverBtn = $bubble.find(".react-hover-btn").detach();
+  const $replyLink = $bubble.find(".reply-link").detach();
+  const $forwardedLabel = $bubble.find(".forwarded-label").detach();
 
-  const $actions = $bubble.find(".message-actions").detach();
+  $bubble.empty();
 
-  $bubble.html(content);
+  if ($replyLink.length) $bubble.append($replyLink);
+  if ($forwardedLabel.length) $bubble.append($forwardedLabel);
 
+  $bubble.append(content);
 
   $bubble.append(`
     <div class="edited-label" style="
@@ -4310,16 +5047,14 @@ async fetchTemplateSuggestions(textValue) {
     </div>
   `);
 
-  if ($actions.length) {
-    $bubble.append($actions);
-  }
+  $bubble.append($menuTrigger);
+  $bubble.append($reactHoverBtn);
 
- 
   const cached = this.messageCache.get(message_name);
   if (cached) {
     cached.content = content;
     cached.is_edited = 1;
-    cached.original_content=original_content;
+    cached.original_content = original_content;
     this.messageCache.set(message_name, cached);
   }
 }
@@ -4358,8 +5093,23 @@ async handleMessageUpdate(messageName, changes = {}, forceRebuild = false) {
 
   // content
   if (changes.content !== undefined) {
-    $bubble.children().not(".message-actions").remove();
-    $bubble.prepend(changes.content);
+    const $menuTrigger = $bubble.find(".message-menu-trigger").detach();
+const $reactHoverBtn = $bubble.find(".react-hover-btn").detach();
+const $replyLink = $bubble.find(".reply-link").detach();
+const $forwardedLabel = $bubble.find(".forwarded-label").detach();
+const $editedLabel = $bubble.find(".edited-label").detach();
+
+$bubble.empty();
+
+if ($replyLink.length) $bubble.append($replyLink);
+if ($forwardedLabel.length) $bubble.append($forwardedLabel);
+
+$bubble.append(changes.content);
+
+if ($editedLabel.length) $bubble.append($editedLabel);
+$bubble.append($menuTrigger);
+$bubble.append($reactHoverBtn);
+    
   }
 
   // forwarded

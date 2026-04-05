@@ -2714,6 +2714,7 @@ def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = 
             send_notification(contributor.user , results, "set_topic")  
 
     return {"results" : [{"chat_topic" : chat_topic.name}]}
+
 # ==========================================================================================
 @frappe.whitelist()
 def remove_chat_topic(chat_topic, chat_channel, last_active_sub_channel = None):
@@ -2872,6 +2873,120 @@ def set_topic_status(chat_topic, chat_topic_status, chat_channel, last_active_su
                 share_doctype("ClefinCode Chat Message", m.name, user = None, everyone = 1)
     
     return {"results" : [{"status" : "Done"}]}
+# ==========================================================================================
+
+@frappe.whitelist()
+def replace_topic_references(
+    chat_topic,
+    mention_doctypes,
+    chat_channel=None,
+    user_email=None,
+    user_name=None,
+    last_active_sub_channel=None
+):
+    import json
+
+    if not chat_topic:
+        frappe.throw(_("chat_topic is required"))
+
+    if isinstance(mention_doctypes, str):
+        mention_doctypes_list = json.loads(mention_doctypes or "[]")
+    else:
+        mention_doctypes_list = mention_doctypes or []
+
+    if not isinstance(mention_doctypes_list, list) or not mention_doctypes_list:
+        frappe.throw(_("mention_doctypes must be a non-empty list"))
+
+    if not chat_channel:
+        chat_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+ 
+    old_topic_label = chat_topic
+
+    old_refs = frappe.get_all(
+        "ClefinCode Chat Topic Reference",
+        filters={
+            "parent": chat_topic,
+            "parenttype": "ClefinCode Chat Topic",
+            "parentfield": "references",
+            "active": 1
+        },
+        fields=["doctype_link", "docname"],
+        order_by="idx asc",
+        limit=1
+    )
+
+    if old_refs:
+        old_topic_label = old_refs[0].docname
+
+  
+    remove_chat_topic(chat_topic, chat_channel, last_active_sub_channel)
+
+    remove_content = f"""
+    <div class="remove-topic" data-template="remove_topic_template">
+        <span class="sender-user" data-user="{user_email}"></span><span> removed topic: "{old_topic_label}" </span>
+    </div>
+    """
+
+    send(
+        content=remove_content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Remove Topic",
+        chat_topic=None
+    )
+
+  
+    created = create_chat_topic(
+        json.dumps(mention_doctypes_list),
+        chat_channel,
+        last_active_sub_channel
+    )
+
+    new_chat_topic = None
+    if isinstance(created, dict):
+        results = created.get("results") or []
+        if results:
+            new_chat_topic = results[0].get("chat_topic")
+
+    if not new_chat_topic:
+        frappe.throw(_("Failed to create replacement topic"))
+
+    first_ref = mention_doctypes_list[0]
+    ref_docname = first_ref.get("docname", "")
+
+    set_content = f"""
+    <div class="set-topic" data-template="set_topic_template">
+        <span class="sender-user" data-user="{user_email}"></span><span> set topic: "{ref_docname}" </span>
+    </div>
+    """
+
+    send(
+        content=set_content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Set Topic",
+        chat_topic=new_chat_topic
+    )
+
+    return {
+        "results": [{
+            "old_chat_topic": chat_topic,
+            "chat_topic": new_chat_topic,
+            "chat_channel": chat_channel
+        }]
+    }
 # ==========================================================================================
 @frappe.whitelist()
 def check_if_user_has_permission(user_email, chat_topic, chat_channel):
@@ -4839,6 +4954,7 @@ def make_file_public(file_path):
             filters={"file_url": public_file_url},
             fields=["name", "is_private", "file_url"],
         )
+        frappe.log_error("existing_files",public_file_url)
 
         if existing_files:
             for existing_file in existing_files:
@@ -5691,6 +5807,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                         # 🔹 Normal case — get the field value from the current document
                         value = frappe.db.get_value(source_doctype, docname, source_field)
                         value=str(value)
+                        frappe.log_error("value",[source_doctype, docname, source_field,value])
                         if value and value.startswith("/"):
                             value= urllib.parse.quote(value[1:], safe=':/')
                 # else:
@@ -8213,3 +8330,310 @@ def get_chat_profiles_by_channel(doctype, txt, searchfield, start, page_len, fil
         "start": start,
         "page_len": page_len,
     })
+
+#=====================
+@frappe.whitelist()
+def create_chat_topic_with_message(
+    mention_doctypes,
+    chat_channel,
+    user_email,
+    user_name=None,
+    last_active_sub_channel=None
+):
+    import json
+    from frappe import _
+
+    if isinstance(mention_doctypes, str):
+        mention_doctypes_list = json.loads(mention_doctypes or "[]")
+    else:
+        mention_doctypes_list = mention_doctypes or []
+
+    if not mention_doctypes_list:
+        frappe.throw(_("mention_doctypes is required"))
+
+    # 1) create topic
+    created = create_chat_topic(
+        json.dumps(mention_doctypes_list),
+        chat_channel,
+        last_active_sub_channel
+    )
+
+    chat_topic = None
+    if isinstance(created, dict):
+        results = created.get("results") or []
+        if results:
+            chat_topic = results[0].get("chat_topic")
+
+    if not chat_topic:
+        frappe.throw(_("Failed to create chat topic"))
+
+    # 2) build info message
+    first_ref = mention_doctypes_list[0]
+    ref_doctype = first_ref.get("doctype", "")
+    ref_docname = first_ref.get("docname", "")
+
+    content = f"""
+            <div class="set-topic" data-template="set_topic_template">
+                <span class="sender-user" data-user="{user_email}"></span><span> set topic: "{ref_docname}" </span>
+            </div>
+            """
+
+    # 3) send system/info message into same chat + topic
+    send(
+        content=content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Set Topic",
+        chat_topic=chat_topic
+    )
+
+    return {
+        "results": [{
+            "chat_topic": chat_topic,
+            "chat_channel": chat_channel
+        }]
+    }
+
+#========================
+@frappe.whitelist()
+def add_reference_doctype_with_message(
+    chat_topic,
+    mention_doctypes,
+    chat_channel=None,
+    user_email=None,
+    user_name=None,
+    last_active_sub_channel=None
+):
+    import json
+
+    if not chat_topic:
+        frappe.throw(_("chat_topic is required"))
+
+    if isinstance(mention_doctypes, str):
+        mention_doctypes_list = json.loads(mention_doctypes or "[]")
+    else:
+        mention_doctypes_list = mention_doctypes or []
+
+    if not isinstance(mention_doctypes_list, list) or not mention_doctypes_list:
+        frappe.throw(_("mention_doctypes must be a non-empty list"))
+
+    if not chat_channel:
+        chat_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+  
+    add_reference_doctype(json.dumps(mention_doctypes_list), chat_topic)
+
+
+    first_ref = mention_doctypes_list[0]
+    ref_docname = first_ref.get("docname", "")
+
+    content = f"""
+    <div class="add-doctype" data-template="add_doctype_template">
+        <span class="sender-user" data-user="{user_email}"></span><span> added {ref_docname} </span>
+    </div>
+    """
+
+    send(
+        content=content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Add Doctype",
+        chat_topic=chat_topic
+    )
+
+    return {
+        "results": [{
+            "chat_topic": chat_topic,
+            "chat_channel": chat_channel
+        }]
+    }
+    
+
+
+def _pick_existing_field(doc_or_row, candidates):
+    for fieldname in candidates:
+        if hasattr(doc_or_row, fieldname):
+            value = getattr(doc_or_row, fieldname, None)
+            if value is not None:
+                return fieldname, value
+        if isinstance(doc_or_row, dict) and fieldname in doc_or_row:
+            return fieldname, doc_or_row.get(fieldname)
+    return None, None
+
+
+def _normalize_reference_row(row):
+    _, doctype_value = _pick_existing_field(
+        row,
+        ["doctype_link", "reference_doctype", "doctype"]
+    )
+    _, docname_value = _pick_existing_field(
+        row,
+        ["docname", "reference_name"]
+    )
+    _, active_value = _pick_existing_field(
+        row,
+        ["active", "is_active", "enabled"]
+    )
+
+    if not doctype_value or not docname_value:
+        return None
+
+    return {
+        "doctype": doctype_value,
+        "docname": docname_value,
+        "active": cint(active_value or 0),
+        "label": f"{doctype_value} / {docname_value}",
+    }
+
+
+def _normalize_topic_doc(topic_doc):
+    refs = []
+    for row in (topic_doc.references or []):
+        parsed = _normalize_reference_row(row)
+        if parsed:
+            refs.append(parsed)
+
+    return {
+        "name": topic_doc.name,
+        "subject": topic_doc.subject,
+        "chat_channel": topic_doc.chat_channel,
+        "topic_status": topic_doc.topic_status,
+        "is_private": cint(topic_doc.is_private),
+        "modified": str(topic_doc.modified),
+        "references": refs,
+        "references_count": len(refs),
+        "label": topic_doc.subject or topic_doc.name,
+    }
+
+
+@frappe.whitelist()
+def get_channel_topics(chat_channel, topic_status=None):
+ 
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    filters = {"chat_channel": chat_channel}
+
+    if topic_status and topic_status != "All":
+        filters["topic_status"] = topic_status
+
+    topic_names = frappe.get_all(
+        "ClefinCode Chat Topic",
+        filters=filters,
+        fields=["name"],
+        order_by="modified desc",
+    )
+
+    topics = []
+    for row in topic_names:
+        doc = frappe.get_doc("ClefinCode Chat Topic", row.name)
+        topics.append(_normalize_topic_doc(doc))
+
+    return {
+        "chat_channel": chat_channel,
+        "count": len(topics),
+        "topics": topics,
+    }
+
+
+
+
+
+@frappe.whitelist()
+def add_reference_to_topic(topic_name, reference_doctype, reference_docname):
+    
+    if not topic_name:
+        frappe.throw(_("topic_name is required"))
+
+    if not reference_doctype or not reference_docname:
+        frappe.throw(_("reference_doctype and reference_docname are required"))
+
+    doc = frappe.get_doc("ClefinCode Chat Topic", topic_name)
+
+    already_exists = False
+    for row in (doc.references or []):
+        parsed = _normalize_reference_row(row)
+        if not parsed:
+            continue
+
+        if (
+            parsed["doctype"] == reference_doctype
+            and parsed["docname"] == reference_docname
+        ):
+            already_exists = True
+            break
+
+    if not already_exists:
+        doc.append("references", {
+            "doctype_link": reference_doctype,
+            "docname": reference_docname,
+            "active": 1,
+        })
+        doc.save()
+        frappe.db.commit()
+
+    return {
+        "message": _("Reference added successfully") if not already_exists else _("Reference already exists"),
+        "already_exists": already_exists,
+        "topic": _normalize_topic_doc(doc),
+    }
+
+
+
+
+@frappe.whitelist()
+def relink_messages_to_topic(topic_name, message_names):
+   
+
+    if not topic_name:
+        frappe.throw(_("topic_name is required"))
+
+    if not message_names:
+        frappe.throw(_("message_names is required"))
+
+    if isinstance(message_names, str):
+        try:
+            message_names = json.loads(message_names)
+        except Exception:
+            frappe.throw(_("message_names must be a valid JSON list"))
+
+    if not isinstance(message_names, list) or not message_names:
+        frappe.throw(_("message_names must be a non-empty list"))
+
+    if not frappe.db.exists("ClefinCode Chat Topic", topic_name):
+        frappe.throw(_("Selected topic does not exist"))
+
+    updated = []
+
+    for message_name in message_names:
+        if not frappe.db.exists("ClefinCode Chat Message", message_name):
+            continue
+
+        frappe.db.set_value(
+            "ClefinCode Chat Message",
+            message_name,
+            "chat_topic",
+            topic_name,
+            update_modified=False
+        )
+        updated.append(message_name)
+
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "topic_name": topic_name,
+        "updated_count": len(updated),
+        "updated_messages": updated,
+    }

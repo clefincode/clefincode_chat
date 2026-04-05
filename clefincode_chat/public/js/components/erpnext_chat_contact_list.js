@@ -54,7 +54,8 @@ export default class ChatContactList {
 
     this.show_all_rooms = false;
     this.show_all_contacts = false;
-    
+    this.topic_picker = !!opts.topic_picker;
+    this.on_select = opts.on_select || null;
    
     if (FRAPPE_MAJOR_VERSION == 16) {this.ready = this.initialize();} else{  
         this.setup();
@@ -132,11 +133,11 @@ this.search_text = value;
   this.$chat_contacts_container.find(".chat-contact").remove();
 
   
-  if (this.forward == 1) {
-    if (this.show_all_rooms) return await this.open_all_rooms_view();
-    if (this.show_all_contacts) return await this.open_all_contacts_view();
-    return await this.load_forward_preview();
-  }
+if (this.forward == 1 || this.topic_picker) {
+  if (this.show_all_rooms) return await this.open_all_rooms_view();
+  if (this.show_all_contacts) return await this.open_all_contacts_view();
+  return await this.load_forward_preview();
+}
 
   await this.load_next_page(true);
 }
@@ -175,7 +176,9 @@ this.search_text = value;
     this.$chat_contact_list = $(document.createElement("div"));
     this.$chat_contact_list.addClass("chat-contact-list");
     
-  if (this.forward == 1) this.$chat_contact_list.addClass("forward-mode");
+  if (this.forward == 1 || this.topic_picker) {
+  this.$chat_contact_list.addClass("forward-mode");
+}
 
   
   this.inject_forward_select_styles();
@@ -188,7 +191,7 @@ this.search_text = value;
   }
   
   async load_next_rooms_page(is_first = false) {
-  if (this.forward != 1) return;
+  if (this.forward != 1 && !this.topic_picker) return;
   if (!this.room_has_more || this.room_loading) return;
 
   this.room_loading = true;
@@ -229,7 +232,21 @@ this.search_text = value;
       `);
 
       // click select/unselect
-      $row.on("click", () => this.toggle_room_target(r, $row));
+      $row.on("click", async () => {
+  if (this.topic_picker) {
+    await this.on_select?.({
+      type: "room",
+      room: r.room,
+      name: r.room_name || r.contact || r.room,
+      platform: r.platform || null,
+      room_type: r.type || null,
+      raw: r
+    });
+    return;
+  }
+
+  this.toggle_room_target(r, $row);
+});
 
       this.$chat_contacts_container.append($row);
     });
@@ -275,7 +292,27 @@ toggle_room_target(roomObj, $row) {
 
   setup_header() {
     let chat_list_header_html = "";
-    if (this.forward == 1) {
+    if (this.topic_picker) {
+  chat_list_header_html = `
+    <div class='chat-list-header'>
+      <div class='d-flex'>
+        <div class='back-to-chat-list' title='Back'>
+          ${frappe.utils.icon("arrow-left", "lg")}
+        </div>
+        <h3 style="margin-left: 8px;">
+          ${__("Add To Chat")}
+          <br>
+          <span class="add-participants">${__("Select a chat or contact")}</span>
+        </h3>
+      </div>
+      <div class='chat-list-icons'>
+        <div class='close-chat-list' title='Close'>
+          ${frappe.utils.icon("close", "lg")}
+        </div>
+      </div>
+    </div>
+  `;
+} else if (this.forward == 1) {
   chat_list_header_html = `
     <div class='chat-list-header'>
       <div class='d-flex'>
@@ -396,14 +433,14 @@ toggle_room_target(roomObj, $row) {
       }
      
       this.setup_contacts_container_once();  
-         if (this.forward == 1) {
-        await this.load_forward_preview();      // ✅ 5 rooms + 5 contacts + see more
-      } else {
-        await this.load_next_page(true);
-      }
-        
-    this.setup_events();
-   if (this.forward != 1) this.setup_scroll_event();
+        if (this.forward == 1 || this.topic_picker) {
+          await this.load_forward_preview();
+        } else {
+          await this.load_next_page(true);
+        }
+
+        this.setup_events();
+        if (this.forward != 1 && !this.topic_picker) this.setup_scroll_event();
     } catch (error) {
       console.log(error);
     }
@@ -614,7 +651,7 @@ setup_contacts_container_once() {
     .addClass("chat-contacts-container");
 
   
-  if (!this.forward && can_create_dt("ClefinCode Chat Profile")) {
+  if (!this.forward && !this.topic_picker && can_create_dt("ClefinCode Chat Profile")) {
     this.$chat_contacts_container.append(`
       <div class="new-contact">
         ${frappe.get_avatar("avatar-medium", "C")}
@@ -623,7 +660,7 @@ setup_contacts_container_once() {
     `);
   }
 
-  if (!this.forward && this.new_group == 0) {
+  if (!this.forward && !this.topic_picker && this.new_group == 0) {
     this.$chat_contacts_container.append(`
       <div class="new-group">
         ${frappe.get_avatar("avatar-medium","G")}
@@ -676,6 +713,27 @@ async load_next_page(is_first = false) {
         chat_contact_list: this,
         profile,
       });
+// if (this.topic_picker && cc.$chat_contact) {
+//   cc.$chat_contact.off("click.topicPickerSelect");
+
+//   cc.$chat_contact.on("click.topicPickerSelect", async (e) => {
+//     if (
+//       $(e.target).closest(
+//         "#dropdownMenuButton, .dropdown, .dropdown-toggle, .dropdown-menu, .dropdown-item, .chat-icons"
+//       ).length
+//     ) {
+//       return;
+//     }
+
+//     await this.on_select?.({
+//       type: "contact",
+//       name: element.full_name || element.user_id || element.profile_id,
+//       email: element.email || element.user_email || element.user_id || element.profile_id,
+//       profile_id: element.profile_id,
+//       raw: element
+//     });
+//   });
+// }
 
       this.chat_contacts.push(cc);
     });
@@ -701,20 +759,19 @@ setup_scroll_event() {
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
     if (!nearBottom) return;
 
-    if (me.forward == 1 && !me.show_all_rooms && !me.show_all_contacts) return;
-
+if ((me.forward == 1 || me.topic_picker) && !me.show_all_rooms && !me.show_all_contacts) return;
   
-    if (me.forward == 1 && me.show_all_rooms) {
+    if ((me.forward == 1 || me.topic_picker) && me.show_all_rooms) {
       me.load_next_rooms_page();
       return;
     }
 
-    if (me.forward == 1 && me.show_all_contacts) {
+  if ((me.forward == 1 || me.topic_picker) && me.show_all_contacts) {
       me.load_next_page();
       return;
     }
 
-    if (me.forward != 1) me.load_next_page();
+    if (me.forward != 1 && !me.topic_picker) me.load_next_page();
   });
 }
 
@@ -944,8 +1001,12 @@ if (FRAPPE_MAJOR_VERSION == 16) {
       this.$chat_contact_list
       .find(".back-to-chat-list")
       .on("click", function (e) {
-         if (me.forward == 1) {
-            me.back_to_chat_space();
+        if (me.forward == 1 || me.topic_picker) {
+            if (typeof me.on_cancel === "function") {
+              me.on_cancel();
+            } else {
+              me.back_to_chat_space();
+            }
             return;
           }
         if (me.add_member == 1) {
@@ -1059,10 +1120,14 @@ if (FRAPPE_MAJOR_VERSION == 16) {
     this.$chat_contact_list.find(".close-chat-list").on("click", function () {
 
   
-      if (me.forward == 1) {
-      me.back_to_chat_space();
-      return;
-    }
+     if (me.forward == 1 || me.topic_picker) {
+          if (typeof me.on_cancel === "function") {
+            me.on_cancel();
+          } else {
+            me.back_to_chat_space();
+          }
+          return;
+        }
       erpnext_chat_app.hide_chat_widget();
     });
     $(document).on("click", ".new-contact", () => {
@@ -1081,7 +1146,7 @@ render() {
 
   $view.empty().append(this.$chat_contact_list);}
   else{
-      if (this.add_member == 1 || this.forward == 1) {
+      if (this.add_member == 1 || this.forward == 1 || this.topic_picker) {
       this.$wrapper.find(".chat-info").hide();
       this.$wrapper.find(".chat-space").hide();
       this.$wrapper.append(this.$chat_contact_list);
@@ -1148,6 +1213,17 @@ render() {
     .find(".selected-contacts-number")
     .text(n ? `(${n})` : "");
 }
+getForwardPayloads() {
+  if (Array.isArray(this.forward_payload)) {
+    return this.forward_payload.filter(Boolean);
+  }
+
+  if (this.forward_payload) {
+    return [this.forward_payload];
+  }
+
+  return [];
+}
 
 back_to_chat_space() {
   this.$wrapper.find(".chat-contact-list").remove();
@@ -1205,15 +1281,21 @@ async create_direct_channel_for_forward(contact, platform, last_message_preview 
 async ensure_room_for_forward(contact) {
   const platform = contact.platform || "Chat";
 
-  
-  const roomRes = await check_if_contact_has_chat(this.profile.user_email, contact.email, platform);
- 
-  if (roomRes?.results?.name) return roomRes.results.name;
- 
+  const roomRes = await check_if_contact_has_chat(
+    this.profile.user_email,
+    contact.email,
+    platform
+  );
 
- 
-  const preview = this.forward_payload?.content
-    ? $("<div>").html(this.forward_payload.content).text().trim().slice(0, 60)
+  if (roomRes?.results?.name) {
+    return roomRes.results.name;
+  }
+
+  const payloads = this.getForwardPayloads();
+  const firstPayload = payloads[0] || {};
+
+  const preview = firstPayload?.content
+    ? $("<div>").html(firstPayload.content).text().trim().slice(0, 60)
     : "";
 
   return await this.create_direct_channel_for_forward(contact, platform, preview);
@@ -1225,59 +1307,55 @@ async forward_message() {
     return;
   }
 
-  if (!this.forward_payload?.content) {
-    frappe.msgprint(__("No message content to forward."));
+  const payloads = this.getForwardPayloads();
+
+  if (!payloads.length) {
+    frappe.msgprint(__("No messages to forward."));
     return;
   }
 
   show_overlay(__("Forwarding..."));
 
   try {
-  
-    // const forwarded_header = `
-    //   <div class="forwarded-label" style="font-size:11px;opacity:.7;margin-bottom:4px;">
-    //     ↪ ${__("Forwarded")}
-    //   </div>
-    // `;
+    for (const target of this.selected_contacts) {
+      let room = null;
 
-    const p = this.forward_payload || {};
-const forwarded_content = p.content;
+      if (target.type === "room" && target.room) {
+        room = target.room;
+      } else {
+        room = await this.ensure_room_for_forward(target);
+      }
 
+      if (!room) continue;
 
-for (const t of this.selected_contacts) {
-  let room = null;
+      for (const p of payloads) {
+        const message_info = {
+          content: p.content || "",
+          user: this.profile.user,
+          room: room,
+          email: this.profile.user_email,
+          is_first_message: 0,
+          is_forwarded: 1,
+          forwarded_from: p.source_message_name || p.message_name || "",
+          is_link: p.is_link || 0,
+          is_media: p.is_media || 0,
+          is_document: p.is_document || 0,
+          is_voice_clip: p.is_voice_clip || 0,
+          is_screenshot: p.is_screenshot || 0,
+          attachment: p.attachment || null,
+          file_id: p.file_id || null,
+          message_type: p.message_type || "",
+        };
 
-  if (t.type === "room" && t.room) {
-    room = t.room;                // ✅ existing room
-  } else {
-    room = await this.ensure_room_for_forward(t); // ✅ contact flow
-  }
+        await send_message(message_info);
+      }
+    }
 
-  if (!room) continue;
+    frappe.show_alert({
+      message: __("Forwarded successfully"),
+      indicator: "green"
+    });
 
-  const message_info = {
-    content: forwarded_content,
-    user: this.profile.user,
-    room: room,
-    email: this.profile.user_email,
-    is_first_message: 0,
-    is_forwarded: 1,
-    forwarded_from: p.source_message_name || p.message_name || "",
-    is_link: p.is_link || 0,
-    is_media: p.is_media || 0,
-    is_document: p.is_document || 0,
-    is_voice_clip: p.is_voice_clip || 0,
-    is_screenshot: p.is_screenshot || 0,
-    attachment: p.attachment || null,
-    file_id: p.file_id || null,
-    message_type: "",
-  };
-
-  await send_message(message_info);
-}
-
-
-    frappe.show_alert({ message: __("Forwarded successfully"), indicator: "green" });
     this.back_to_chat_space();
   } catch (e) {
     console.log(e);
