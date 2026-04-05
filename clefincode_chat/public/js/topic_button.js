@@ -27,8 +27,7 @@ console.log("topic_button.js loaded");
 		return wrapper.find("button").filter(function () {
 			const txt = $(this).text().trim();
 			return (
-				txt.includes("New Email") ||
-				txt.includes("Email") 
+				txt.includes("New Email") 
 				
 			);
 		}).first();

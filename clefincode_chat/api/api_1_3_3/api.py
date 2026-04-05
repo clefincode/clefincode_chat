@@ -8458,3 +8458,182 @@ def add_reference_doctype_with_message(
             "chat_channel": chat_channel
         }]
     }
+    
+
+
+def _pick_existing_field(doc_or_row, candidates):
+    for fieldname in candidates:
+        if hasattr(doc_or_row, fieldname):
+            value = getattr(doc_or_row, fieldname, None)
+            if value is not None:
+                return fieldname, value
+        if isinstance(doc_or_row, dict) and fieldname in doc_or_row:
+            return fieldname, doc_or_row.get(fieldname)
+    return None, None
+
+
+def _normalize_reference_row(row):
+    _, doctype_value = _pick_existing_field(
+        row,
+        ["doctype_link", "reference_doctype", "doctype"]
+    )
+    _, docname_value = _pick_existing_field(
+        row,
+        ["docname", "reference_name"]
+    )
+    _, active_value = _pick_existing_field(
+        row,
+        ["active", "is_active", "enabled"]
+    )
+
+    if not doctype_value or not docname_value:
+        return None
+
+    return {
+        "doctype": doctype_value,
+        "docname": docname_value,
+        "active": cint(active_value or 0),
+        "label": f"{doctype_value} / {docname_value}",
+    }
+
+
+def _normalize_topic_doc(topic_doc):
+    refs = []
+    for row in (topic_doc.references or []):
+        parsed = _normalize_reference_row(row)
+        if parsed:
+            refs.append(parsed)
+
+    return {
+        "name": topic_doc.name,
+        "subject": topic_doc.subject,
+        "chat_channel": topic_doc.chat_channel,
+        "topic_status": topic_doc.topic_status,
+        "is_private": cint(topic_doc.is_private),
+        "modified": str(topic_doc.modified),
+        "references": refs,
+        "references_count": len(refs),
+        "label": topic_doc.subject or topic_doc.name,
+    }
+
+
+@frappe.whitelist()
+def get_channel_topics(chat_channel, topic_status=None):
+ 
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    filters = {"chat_channel": chat_channel}
+
+    if topic_status and topic_status != "All":
+        filters["topic_status"] = topic_status
+
+    topic_names = frappe.get_all(
+        "ClefinCode Chat Topic",
+        filters=filters,
+        fields=["name"],
+        order_by="modified desc",
+    )
+
+    topics = []
+    for row in topic_names:
+        doc = frappe.get_doc("ClefinCode Chat Topic", row.name)
+        topics.append(_normalize_topic_doc(doc))
+
+    return {
+        "chat_channel": chat_channel,
+        "count": len(topics),
+        "topics": topics,
+    }
+
+
+
+
+
+@frappe.whitelist()
+def add_reference_to_topic(topic_name, reference_doctype, reference_docname):
+    
+    if not topic_name:
+        frappe.throw(_("topic_name is required"))
+
+    if not reference_doctype or not reference_docname:
+        frappe.throw(_("reference_doctype and reference_docname are required"))
+
+    doc = frappe.get_doc("ClefinCode Chat Topic", topic_name)
+
+    already_exists = False
+    for row in (doc.references or []):
+        parsed = _normalize_reference_row(row)
+        if not parsed:
+            continue
+
+        if (
+            parsed["doctype"] == reference_doctype
+            and parsed["docname"] == reference_docname
+        ):
+            already_exists = True
+            break
+
+    if not already_exists:
+        doc.append("references", {
+            "doctype_link": reference_doctype,
+            "docname": reference_docname,
+            "active": 1,
+        })
+        doc.save()
+        frappe.db.commit()
+
+    return {
+        "message": _("Reference added successfully") if not already_exists else _("Reference already exists"),
+        "already_exists": already_exists,
+        "topic": _normalize_topic_doc(doc),
+    }
+
+
+
+
+@frappe.whitelist()
+def relink_messages_to_topic(topic_name, message_names):
+   
+
+    if not topic_name:
+        frappe.throw(_("topic_name is required"))
+
+    if not message_names:
+        frappe.throw(_("message_names is required"))
+
+    if isinstance(message_names, str):
+        try:
+            message_names = json.loads(message_names)
+        except Exception:
+            frappe.throw(_("message_names must be a valid JSON list"))
+
+    if not isinstance(message_names, list) or not message_names:
+        frappe.throw(_("message_names must be a non-empty list"))
+
+    if not frappe.db.exists("ClefinCode Chat Topic", topic_name):
+        frappe.throw(_("Selected topic does not exist"))
+
+    updated = []
+
+    for message_name in message_names:
+        if not frappe.db.exists("ClefinCode Chat Message", message_name):
+            continue
+
+        frappe.db.set_value(
+            "ClefinCode Chat Message",
+            message_name,
+            "chat_topic",
+            topic_name,
+            update_modified=False
+        )
+        updated.append(message_name)
+
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "topic_name": topic_name,
+        "updated_count": len(updated),
+        "updated_messages": updated,
+    }

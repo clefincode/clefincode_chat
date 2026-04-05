@@ -713,18 +713,27 @@ async load_next_page(is_first = false) {
         chat_contact_list: this,
         profile,
       });
-                if (this.topic_picker && cc.$chat_contact) {
-            cc.$chat_contact.off("click");
-            cc.$chat_contact.on("click", async () => {
-              await this.on_select?.({
-                type: "contact",
-                name: element.full_name || element.user_id || element.profile_id,
-                email: element.email || element.user_email || element.user_id || element.profile_id,
-                profile_id: element.profile_id,
-                raw: element
-              });
-            });
-          }
+// if (this.topic_picker && cc.$chat_contact) {
+//   cc.$chat_contact.off("click.topicPickerSelect");
+
+//   cc.$chat_contact.on("click.topicPickerSelect", async (e) => {
+//     if (
+//       $(e.target).closest(
+//         "#dropdownMenuButton, .dropdown, .dropdown-toggle, .dropdown-menu, .dropdown-item, .chat-icons"
+//       ).length
+//     ) {
+//       return;
+//     }
+
+//     await this.on_select?.({
+//       type: "contact",
+//       name: element.full_name || element.user_id || element.profile_id,
+//       email: element.email || element.user_email || element.user_id || element.profile_id,
+//       profile_id: element.profile_id,
+//       raw: element
+//     });
+//   });
+// }
 
       this.chat_contacts.push(cc);
     });
@@ -1204,6 +1213,17 @@ render() {
     .find(".selected-contacts-number")
     .text(n ? `(${n})` : "");
 }
+getForwardPayloads() {
+  if (Array.isArray(this.forward_payload)) {
+    return this.forward_payload.filter(Boolean);
+  }
+
+  if (this.forward_payload) {
+    return [this.forward_payload];
+  }
+
+  return [];
+}
 
 back_to_chat_space() {
   this.$wrapper.find(".chat-contact-list").remove();
@@ -1261,15 +1281,21 @@ async create_direct_channel_for_forward(contact, platform, last_message_preview 
 async ensure_room_for_forward(contact) {
   const platform = contact.platform || "Chat";
 
-  
-  const roomRes = await check_if_contact_has_chat(this.profile.user_email, contact.email, platform);
- 
-  if (roomRes?.results?.name) return roomRes.results.name;
- 
+  const roomRes = await check_if_contact_has_chat(
+    this.profile.user_email,
+    contact.email,
+    platform
+  );
 
- 
-  const preview = this.forward_payload?.content
-    ? $("<div>").html(this.forward_payload.content).text().trim().slice(0, 60)
+  if (roomRes?.results?.name) {
+    return roomRes.results.name;
+  }
+
+  const payloads = this.getForwardPayloads();
+  const firstPayload = payloads[0] || {};
+
+  const preview = firstPayload?.content
+    ? $("<div>").html(firstPayload.content).text().trim().slice(0, 60)
     : "";
 
   return await this.create_direct_channel_for_forward(contact, platform, preview);
@@ -1281,59 +1307,55 @@ async forward_message() {
     return;
   }
 
-  if (!this.forward_payload?.content) {
-    frappe.msgprint(__("No message content to forward."));
+  const payloads = this.getForwardPayloads();
+
+  if (!payloads.length) {
+    frappe.msgprint(__("No messages to forward."));
     return;
   }
 
   show_overlay(__("Forwarding..."));
 
   try {
-  
-    // const forwarded_header = `
-    //   <div class="forwarded-label" style="font-size:11px;opacity:.7;margin-bottom:4px;">
-    //     ↪ ${__("Forwarded")}
-    //   </div>
-    // `;
+    for (const target of this.selected_contacts) {
+      let room = null;
 
-    const p = this.forward_payload || {};
-const forwarded_content = p.content;
+      if (target.type === "room" && target.room) {
+        room = target.room;
+      } else {
+        room = await this.ensure_room_for_forward(target);
+      }
 
+      if (!room) continue;
 
-for (const t of this.selected_contacts) {
-  let room = null;
+      for (const p of payloads) {
+        const message_info = {
+          content: p.content || "",
+          user: this.profile.user,
+          room: room,
+          email: this.profile.user_email,
+          is_first_message: 0,
+          is_forwarded: 1,
+          forwarded_from: p.source_message_name || p.message_name || "",
+          is_link: p.is_link || 0,
+          is_media: p.is_media || 0,
+          is_document: p.is_document || 0,
+          is_voice_clip: p.is_voice_clip || 0,
+          is_screenshot: p.is_screenshot || 0,
+          attachment: p.attachment || null,
+          file_id: p.file_id || null,
+          message_type: p.message_type || "",
+        };
 
-  if (t.type === "room" && t.room) {
-    room = t.room;                // ✅ existing room
-  } else {
-    room = await this.ensure_room_for_forward(t); // ✅ contact flow
-  }
+        await send_message(message_info);
+      }
+    }
 
-  if (!room) continue;
+    frappe.show_alert({
+      message: __("Forwarded successfully"),
+      indicator: "green"
+    });
 
-  const message_info = {
-    content: forwarded_content,
-    user: this.profile.user,
-    room: room,
-    email: this.profile.user_email,
-    is_first_message: 0,
-    is_forwarded: 1,
-    forwarded_from: p.source_message_name || p.message_name || "",
-    is_link: p.is_link || 0,
-    is_media: p.is_media || 0,
-    is_document: p.is_document || 0,
-    is_voice_clip: p.is_voice_clip || 0,
-    is_screenshot: p.is_screenshot || 0,
-    attachment: p.attachment || null,
-    file_id: p.file_id || null,
-    message_type: "",
-  };
-
-  await send_message(message_info);
-}
-
-
-    frappe.show_alert({ message: __("Forwarded successfully"), indicator: "green" });
     this.back_to_chat_space();
   } catch (e) {
     console.log(e);
