@@ -241,3 +241,19 @@ def check_twilio_template_status():
 
     except Exception as e:
         frappe.log_error(f"check_twilio_template_status error: {str(e)}", "CiC Twilio Template Checker")
+
+# ============================================================================================================
+
+
+def save_original_filename(doc, method):
+ 
+    if not doc.file_name:
+        return
+
+    if not doc.get("custom_original_name_"):
+        doc.custom_original_name_ = doc.file_name
+
+    if hasattr(frappe.local, "uploaded_filename") and frappe.local.uploaded_filename:
+        doc.custom_original_name_ = frappe.local.uploaded_filename
+
+    

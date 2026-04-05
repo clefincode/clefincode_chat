@@ -216,10 +216,15 @@ class ClefincodeNotification(Document):
 
         custom_attachment_url = self.get_latest_custom_attachment_file(doc)
         if custom_attachment_url and custom_attachment_url not in added_urls:
-            custom_attachment = build_attachment_from_file_url(custom_attachment_url)
-            if custom_attachment:
-                attachments.append(custom_attachment)
-                added_urls.add(custom_attachment_url)
+            custom_info = self.get_attachment_url_info(doc, custom_attachment_url)
+            if custom_info and custom_info.get("file_url"):
+                custom_attachment = build_attachment_from_file_url(
+                    custom_info["file_url"],
+                    custom_info["file_name"]
+                )
+                if custom_attachment:
+                    attachments.append(custom_attachment)
+                    added_urls.add(custom_info["file_url"])
 
         for raw_value in attachment_values:
             info = self.get_attachment_url_info(doc, raw_value)
@@ -296,8 +301,12 @@ class ClefincodeNotification(Document):
         copied_file = frappe.copy_doc(original_file)
         copied_file.attached_to_doctype = self.reference_doctype
         copied_file.attached_to_name = doc.name
+
+        if hasattr(copied_file, "custom_original_name_"):
+            copied_file.custom_original_name_ = getattr(original_file, "custom_original_name_", None) or original_file.file_name
+
         copied_file.save(ignore_permissions=True)
-       
+            
 
         return copied_file.file_url
 
@@ -706,36 +715,71 @@ class ClefincodeNotification(Document):
 
         raw_value = str(raw_value).strip()
 
-        if raw_value.startswith("/files/") or raw_value.startswith("/private/files/"):
+        def _make_result(file_url, file_name=None, original_name=None):
             return {
-                "file_url": raw_value,
-                "file_name": os.path.basename(raw_value)
+                "file_url": file_url,
+                "file_name": original_name or file_name or os.path.basename(file_url)
             }
+
+        if raw_value.startswith("/files/") or raw_value.startswith("/private/files/"):
+            file_by_url = frappe.db.get_value(
+                "File",
+                {
+                    "file_url": raw_value
+                },
+                ["file_url", "file_name", "custom_original_name_"],
+                as_dict=True
+            )
+
+            if file_by_url:
+                return _make_result(
+                    file_by_url.file_url,
+                    file_by_url.file_name,
+                    file_by_url.custom_original_name_
+                )
+
+            return _make_result(raw_value)
+
+        file_by_original_name = frappe.db.get_value(
+            "File",
+            {
+                "custom_original_name_": raw_value
+            },
+            ["file_url", "file_name", "custom_original_name_"],
+            as_dict=True
+        )
+        if file_by_original_name:
+            return _make_result(
+                file_by_original_name.file_url,
+                file_by_original_name.file_name,
+                file_by_original_name.custom_original_name_
+            )
 
         file_by_name = frappe.db.get_value(
             "File",
             {
-                "attached_to_doctype": doc.doctype,
-                "attached_to_name": doc.name,
                 "file_name": raw_value
             },
-            ["file_url", "file_name"],
+            ["file_url", "file_name", "custom_original_name_"],
             as_dict=True
         )
         if file_by_name:
-            return {
-                "file_url": file_by_name.file_url,
-                "file_name": file_by_name.file_name
-            }
+            return _make_result(
+                file_by_name.file_url,
+                file_by_name.file_name,
+                file_by_name.custom_original_name_
+            )
 
         if frappe.db.exists("File", raw_value):
             file_doc = frappe.get_doc("File", raw_value)
-            return {
-                "file_url": file_doc.file_url,
-                "file_name": file_doc.file_name
-            }
+            return _make_result(
+                file_doc.file_url,
+                file_doc.file_name,
+                getattr(file_doc, "custom_original_name_", None)
+            )
 
         return None
+
 
 
     def send_whatsapp_variable_attachments(self, doc, room, attachment_values):
@@ -768,33 +812,15 @@ class ClefincodeNotification(Document):
                 is_document=None if is_image else 1
             )
     def build_attachment_from_dynamic_value(self, doc, raw_value):
-            if not raw_value:
+            info = self.get_attachment_url_info(doc, raw_value)
+            if not info:
                 return None
 
-            raw_value = str(raw_value).strip()
-
-            if raw_value.startswith("/files/") or raw_value.startswith("/private/files/"):
-                return build_attachment_from_file_url(raw_value)
-
-            
-            file_by_name = frappe.db.get_value(
-                "File",
-                {
-                    "attached_to_doctype": doc.doctype,
-                    "attached_to_name": doc.name,
-                    "file_name": raw_value
-                },
-                ["file_url", "file_name"],
-                as_dict=True
+            return build_attachment_from_file_url(
+                info.get("file_url"),
+                info.get("file_name")
             )
-            if file_by_name:
-                return build_attachment_from_file_url(file_by_name.file_url, file_by_name.file_name)
 
-            if frappe.db.exists("File", raw_value):
-                file_doc = frappe.get_doc("File", raw_value)
-                return build_attachment_from_file_url(file_doc.file_url, file_doc.file_name)
-
-            return None
     def get_email_variable_attachment(self, doc):
             attachment_value = self.get_variable_value(doc, "email_attachment")
             if not attachment_value:

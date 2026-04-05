@@ -1,7 +1,19 @@
 import { ChatBubble, ChatPortalSpace, ChatList } from "./components";
+import ChatContactList from "./components/erpnext_chat_contact_list";
+import ChatWindow from "./components/erpnext_chat_window";
+import ChatSpace from "./components/erpnext_chat_space";
+import { check_if_chat_window_open } from "./components/erpnext_chat_utils";
+
+window.CCChatContactList = ChatContactList;
+window.CCChatWindow = ChatWindow;
+window.CCChatSpace = ChatSpace;
+window.CCCheckIfChatWindowOpen = check_if_chat_window_open;
 
 frappe.provide("frappe.ErpnextChat");
 frappe.provide("frappe.ErpnextChat.settings");
+
+frappe.ErpnextChat.ContactList = ChatContactList;
+
 let FRAPPE_MAJOR_VERSION = null;
 async function initFrappeVersion() {
   if (FRAPPE_MAJOR_VERSION !== null) return;
@@ -548,6 +560,8 @@ this.$chat_left_section.append(this.$empty_state);
   }
 }; //End ErpnextChat Class
 
+frappe.ErpnextChat.ContactList = ChatContactList;
+window.CCChatContactList = ChatContactList;
 async function get_settings(token) {
   const res = await frappe.call({
     type: "GET",
