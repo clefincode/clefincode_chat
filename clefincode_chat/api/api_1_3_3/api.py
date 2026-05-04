@@ -1440,6 +1440,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_text,
             msg.reply_preview_sender_email,
             msg.reactions_json,
+            msg.chat_topic,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
@@ -1474,6 +1475,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_text,
             msg.reply_preview_sender_email,
             msg.reactions_json,
+            msg.chat_topic,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
@@ -8535,6 +8537,7 @@ def _normalize_topic_doc(topic_doc):
 
     return {
         "name": topic_doc.name,
+        "date":str(topic_doc.creation),
         "subject": topic_doc.subject,
         "chat_channel": topic_doc.chat_channel,
         "topic_status": topic_doc.topic_status,

@@ -154,7 +154,27 @@ async relinkMessagesToTopic(topicName, messageNames = []) {
 
   this.exitSelectionMode();
 }
+formatTopicCreatedAt(topic = {}) {
+  const rawDate =
+    topic.creation ||
+    topic.date ||
+    topic.created_on ||
+    topic.creation_date ||
+    topic.created_date ||
+    null;
 
+  if (!rawDate) return "—";
+
+  try {
+    return (
+      get_date_from_now(rawDate, "space", this.profile.time_zone) +
+      " " +
+      get_time(rawDate, this.profile.time_zone)
+    );
+  } catch (e) {
+    return String(rawDate);
+  }
+}
 async openRelinkTopicsDialog(messageNames = []) {
   const chatChannel = this.getCurrentChatChannel();
 
@@ -204,50 +224,69 @@ async openRelinkTopicsDialog(messageNames = []) {
       });
 
       const topics = r.message?.topics || [];
-
       const rows = topics.length
-        ? topics.map((topic, idx) => {
-            const refs = topic.references || [];
-            const refsHtml = refs.length
-              ? refs.map(ref => `
-                  <div style="font-size:12px; opacity:.75; margin-top:2px;">
-                    ${frappe.utils.escape_html(ref.doctype)} / ${frappe.utils.escape_html(ref.docname)}
-                  </div>
-                `).join("")
-              : `<div style="font-size:12px; opacity:.6; margin-top:2px;">${__("No references")}</div>`;
+  ? topics.map((topic) => {
+      const refs = topic.references || [];
 
-            return `
-              <div class="relink-topic-row" style="
-                display:flex;
-                align-items:flex-start;
-                justify-content:space-between;
-                gap:12px;
-                padding:12px 0;
-                border-bottom:1px solid #eee;
-              ">
-                <div style="min-width:0; flex:1;">
-                  <div style="font-weight:600;">
-                    ${frappe.utils.escape_html(topic.subject || topic.name)}
-                  </div>
-                  <div style="font-size:12px; opacity:.7; margin-top:2px;">
-                    ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
-                    ${topic.is_private ? " • " + __("Private") : ""}
-                  </div>
-                  <div style="margin-top:6px;">
-                    ${refsHtml}
-                  </div>
-                </div>
+      const subject =
+        (topic.subject || topic.chat_topic_subject || "").trim();
 
-                <button
-                  type="button"
-                  class="btn btn-sm btn-primary pick-relink-topic"
-                  data-topic-name="${frappe.utils.escape_html(topic.name)}"
-                  data-topic-subject="${frappe.utils.escape_html(topic.subject || topic.name)}">
-                  ${__("Select")}
-                </button>
+      const safeSubject = frappe.utils.escape_html(
+        subject || __("Untitled Topic")
+      );
+
+      const createdAt = this.formatTopicCreatedAt(topic);
+      console.log(topic);
+
+      const refsHtml = refs.length
+        ? refs.map(ref => `
+            <div style="font-size:12px; opacity:.75; margin-top:2px;">
+              ${frappe.utils.escape_html(ref.doctype || "")} / ${frappe.utils.escape_html(ref.docname || "")}
+            </div>
+          `).join("")
+        : `<div style="font-size:12px; opacity:.6; margin-top:2px;">${__("No references")}</div>`;
+
+      return `
+        <div class="relink-topic-row" style="
+          display:flex;
+          align-items:flex-start;
+          justify-content:space-between;
+          gap:12px;
+          padding:12px 0;
+          border-bottom:1px solid #eee;
+        ">
+          <div style="min-width:0; flex:1;">
+            <div style="font-weight:600;">
+              ${safeSubject}
+            </div>
+
+            <div style="font-size:12px; opacity:.7; margin-top:2px;">
+              ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
+              ${topic.is_private ? " • " + __("Private") : ""}
+            </div>
+
+            <div style="font-size:12px; opacity:.7; margin-top:2px;">
+              ${__("Created At")}: ${frappe.utils.escape_html(createdAt)}
+            </div>
+
+            <div style="margin-top:6px;">
+              <div style="font-size:12px; opacity:.65; margin-bottom:2px;">
+                ${__("References")}:
               </div>
-            `;
-          }).join("")
+              ${refsHtml}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="btn btn-sm btn-primary pick-relink-topic"
+            data-topic-name="${frappe.utils.escape_html(topic.name || "")}"
+            data-topic-subject="${safeSubject}">
+            ${__("Select")}
+          </button>
+        </div>
+      `;
+    }).join("") 
         : `
           <div style="padding:16px; text-align:center; opacity:.7;">
             ${__("No topics found for this channel.")}
@@ -293,14 +332,10 @@ async openRelinkTopicsDialog(messageNames = []) {
 
   d.$wrapper.off("click", ".pick-relink-topic").on("click", ".pick-relink-topic", async (e) => {
     e.stopPropagation();
-
     const topicName = $(e.currentTarget).data("topic-name");
     const topicSubject = $(e.currentTarget).data("topic-subject");
 
     if (!topicName) return;
-
-    console.log("Selected topic:", topicName);
-    console.log("Selected messages:", messageNames);
 
    
     await frappe.call({
@@ -648,7 +683,256 @@ async copyMessageContent(messageName) {
     });
   }
 }
+formatMessageInfoDate(sendDate, fallbackTime = "") {
+  if (!sendDate) return fallbackTime || "—";
 
+  try {
+    const day = get_date_from_now(sendDate, "space", this.profile.time_zone);
+    const time = get_time(sendDate, this.profile.time_zone);
+    return `${day} ${time}`;
+  } catch (e) {
+    return fallbackTime || sendDate || "—";
+  }
+}
+
+getMessageKindLabel(cached = {}) {
+  if (Number(cached.is_deleted) === 1) return __("Deleted message");
+  if (cached.message_type === "information") return __("Information message");
+  if (cached.is_voice_clip) return __("Voice message");
+  if (cached.is_document) return __("Document");
+  if (cached.is_media) return __("Media");
+  if (cached.is_screenshot) return __("Screenshot");
+  if (cached.is_link) return __("Link");
+  return __("Text message");
+}
+async getLinkedTopicInfo(cached = {}) {
+  if (this.profile.room_type === "Topic") {
+    return {
+      name: this.chat_topic_space || this.profile.chat_topic || cached.chat_topic || null,
+      subject:
+        this.chat_topic_space_subject ||
+        this.alternative_subject ||
+        cached.chat_topic_subject ||
+        null
+    };
+  }
+
+  const topicName =
+    cached.chat_topic ||
+    cached.topic ||
+    cached.topic_name ||
+    null;
+
+  const topicSubject =
+    cached.chat_topic_subject ||
+    cached.topic_subject ||
+    cached.chat_topic_title ||
+    null;
+
+  if (!topicName && !topicSubject) {
+    return null;
+  }
+
+  if (topicSubject) {
+    return {
+      name: topicName,
+      subject: topicSubject
+    };
+  }
+
+  try {
+    const chatChannel = this.getCurrentChatChannel();
+
+    if (!chatChannel || !topicName) {
+      return {
+        name: topicName,
+        subject: null
+      };
+    }
+
+    const r = await frappe.call({
+      method: "clefincode_chat.api.api_1_3_3.api.get_channel_topics",
+      args: {
+        chat_channel: chatChannel,
+        topic_status: "All"
+      }
+    });
+
+    const topics = r.message?.topics || [];
+    const found = topics.find(t => t.name === topicName);
+
+    return {
+      name: topicName,
+      subject: found?.subject || topicName,
+      status: found?.topic_status || null,
+      is_private: found?.is_private || 0
+    };
+  } catch (e) {
+    console.warn("Failed to load linked topic info", e);
+
+    return {
+      name: topicName,
+      subject: topicName
+    };
+  }
+}
+async openMessageInfoDialog(messageName) {
+  let cached = this.messageCache.get(messageName) || {};
+
+  if (!cached.send_date || !cached.sender_email) {
+    try {
+      const msg = await this.fetch_single_message(messageName);
+
+      if (msg) {
+        cached = {
+          ...cached,
+          ...msg,
+          sender: msg.sender || cached.sender,
+          sender_email: msg.sender_email || cached.sender_email,
+          send_date: msg.send_date || cached.send_date,
+          content: msg.content || cached.content,
+
+          chat_topic: msg.chat_topic || msg.topic || cached.chat_topic || null,
+          chat_topic_subject:
+            msg.chat_topic_subject ||
+            msg.topic_subject ||
+            msg.chat_topic_title ||
+            cached.chat_topic_subject ||
+            null,
+
+          is_deleted: msg.is_deleted || cached.is_deleted,
+          message_type: msg.message_type || cached.message_type,
+          is_forwarded: msg.is_forwarded || cached.is_forwarded,
+          is_edited: msg.is_edited || cached.is_edited,
+        };
+
+        this.messageCache.set(messageName, cached);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch message info", e);
+    }
+  }
+
+  const senderName = cached.sender || "—";
+  const senderEmail = cached.sender_email || "—";
+  const sentAt = this.formatMessageInfoDate(cached.send_date, cached.display_time);
+  const messageType = this.getMessageKindLabel(cached);
+  const linkedTopic = await this.getLinkedTopicInfo(cached);
+
+const linkedTopicHtml = linkedTopic
+  ? `
+    <div>
+      <div style="opacity:.65;">${__("Linked Topic")}</div>
+      <div style="font-weight:600;">
+        ${frappe.utils.escape_html(linkedTopic.subject || linkedTopic.name || "—")}
+      </div>
+      ${
+        linkedTopic.name && linkedTopic.subject && linkedTopic.name !== linkedTopic.subject
+          ? `<div style="font-size:12px; opacity:.7; word-break:break-all;">
+              ${frappe.utils.escape_html(linkedTopic.name)}
+            </div>`
+          : ``
+      }
+      ${
+        linkedTopic.status
+          ? `<div style="font-size:12px; opacity:.7;">
+              ${__("Status")}: ${frappe.utils.escape_html(linkedTopic.status)}
+              ${linkedTopic.is_private ? " • " + __("Private") : ""}
+            </div>`
+          : ``
+      }
+    </div>
+  `
+  : `
+    <div>
+      <div style="opacity:.65;">${__("Linked Topic")}</div>
+      <div style="font-weight:600; opacity:.75;">
+        ${__("No linked topic")}
+      </div>
+    </div>
+  `;
+
+  const statusRows = [];
+
+  if (Number(cached.is_forwarded) === 1) {
+    statusRows.push(`<div><b>${__("Forwarded")}:</b> ${__("Yes")}</div>`);
+  }
+
+  if (Number(cached.is_edited) === 1) {
+    statusRows.push(`<div><b>${__("Edited")}:</b> ${__("Yes")}</div>`);
+  }
+
+  if (Number(cached.is_deleted) === 1) {
+    statusRows.push(`<div><b>${__("Deleted")}:</b> ${__("Yes")}</div>`);
+  }
+
+  if (cached.reply_preview_text || cached.reply_preview_type) {
+    statusRows.push(`<div><b>${__("Reply")}:</b> ${__("This message is a reply")}</div>`);
+  }
+
+  if (cached.attachment || cached.file_id) {
+    statusRows.push(`<div><b>${__("Attachment")}:</b> ${frappe.utils.escape_html(cached.attachment || cached.file_id || "")}</div>`);
+  }
+
+  const d = new frappe.ui.Dialog({
+    title: __("Message Info"),
+    size: "small",
+    fields: [
+      {
+        fieldtype: "HTML",
+        fieldname: "message_info_html",
+        options: `
+          <div class="message-info-dialog" style="font-size:13px; line-height:1.7;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <div style="opacity:.65;">${__("Sender")}</div>
+                <div style="font-weight:600;">
+                  ${frappe.utils.escape_html(senderName)}
+                </div>
+              </div>
+              ${linkedTopicHtml}
+              <div>
+                <div style="opacity:.65;">${__("Sent At")}</div>
+                <div style="font-weight:600;">
+                  ${frappe.utils.escape_html(sentAt)}
+                </div>
+              </div>
+
+              <div>
+                <div style="opacity:.65;">${__("Message Type")}</div>
+                <div style="font-weight:600;">
+                  ${frappe.utils.escape_html(messageType)}
+                </div>
+              </div>
+
+              <div>
+                <div style="opacity:.65;">${__("Message ID")}</div>
+                <div style="font-family:monospace; font-size:12px; word-break:break-all;">
+                  ${frappe.utils.escape_html(messageName || "—")}
+                </div>
+              </div>
+
+              ${
+                statusRows.length
+                  ? `<hr style="margin:8px 0;" />
+                     <div style="display:flex; flex-direction:column; gap:4px;">
+                       ${statusRows.join("")}
+                     </div>`
+                  : ``
+              }
+            </div>
+          </div>
+        `
+      }
+    ],
+    primary_action_label: __("Close"),
+    primary_action() {
+      d.hide();
+    }
+  });
+
+  d.show();
+}
 openEmojiMenu({ $bubble, messageName }) {
   this.closeEmojiMenu();
 
@@ -2092,7 +2376,14 @@ this.$wrapper.off("click.chatMenuActions", ".relink-action")
     const messageName = $(this).data("message-name");
     me.startBulkSelection("relink", messageName);
   });
+this.$wrapper.off("click.chatMenuActions", ".message-info-action")
+  .on("click.chatMenuActions", ".message-info-action", async function (e) {
+    e.stopPropagation();
+    me.closeMessageActionMenu();
 
+    const messageName = $(this).data("message-name");
+    await me.openMessageInfoDialog(messageName);
+  });
 this.$wrapper.off("click.chatMenuActions", ".edit-action")
   .on("click.chatMenuActions", ".edit-action", function (e) {
     e.stopPropagation();
@@ -3150,7 +3441,12 @@ async setup_messages(messages_list) {
         ),
         original_content: element.original_content || null,
         reactions_json: element.reactions_json || null,
-
+        chat_topic: element.chat_topic || element.topic || null,
+        chat_topic_subject:
+          element.chat_topic_subject ||
+          element.topic_subject ||
+          element.chat_topic_title ||
+          null,
         
         is_link: element.is_link || 0,
         is_edited: element.is_edited ||0,
@@ -4701,6 +4997,12 @@ async fetchTemplateSuggestions(textValue) {
       this.messageCache.set(res.message_name, {
         sender: res.sender,
         content: res.content,
+        chat_topic: res.chat_topic || res.topic || null,
+    chat_topic_subject:
+      res.chat_topic_subject ||
+      res.topic_subject ||
+      res.chat_topic_title ||
+      null,
         original_content: res.original_content || null,
         is_link: res.is_link || 0,
         is_media: res.is_media || 0,
@@ -4834,6 +5136,11 @@ async fetchTemplateSuggestions(textValue) {
       </button>
     `);
   }
+  items.push(`
+  <button type="button" class="menu-item message-info-action" data-message-name="${messageName}">
+    Message Info
+  </button>
+`);
 
   const $menu = $(`
     <div class="message-action-menu">
