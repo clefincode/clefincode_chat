@@ -1412,10 +1412,22 @@ save_all_contacts(dialog) {
       me.open_chat_space(channel, channel_name);
     });
 
-    this.$chat_info.find(".add_members").on("click", function () {
-            me.$chat_info.addClass("add-members-open");
-            me.$chat_info.find(".filter-members").show().val("").focus();
-            me.$chat_info.find(".list_members").html("");
+   this.$chat_info.find(".add_members").on("click", async function () {
+            const isWebView = $("body").hasClass("cc-chat-webview");
+
+            if (isWebView) {
+              me.$chat_info.addClass("add-members-open");
+              me.$chat_info.find(".add-members-overlay").show();
+              me.$chat_info.find(".filter-members").show().val("").focus();
+              me.$chat_info.find(".list_members").html("");
+              me.$chat_info.find(".close_members_lis").css("visibility", "visible");
+            } else {
+              me.$chat_info.removeClass("add-members-open");
+              me.$chat_info.find(".add-members-overlay").hide();
+              me.$chat_info.find(".filter-members").hide().val("");
+              me.$chat_info.find(".list_members").html("");
+              me.$chat_info.find(".close_members_lis").css("visibility", "hidden");
+            }
 
             me.add_member_list = new ChatContactList({
               $wrapper: me.chat_space.$wrapper,
@@ -1424,8 +1436,12 @@ save_all_contacts(dialog) {
               add_member: 1,
             });
 
+            if (me.add_member_list.ready) {
+              await me.add_member_list.ready;
+            }
+
             me.add_member_list.render();
-          });
+});
 
     this.$chat_info.find(".close_members_lis").on("click", function () {
   const list_of_members = me.$chat_info.find(".list_members");

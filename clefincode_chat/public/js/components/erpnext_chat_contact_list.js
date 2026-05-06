@@ -986,16 +986,31 @@ if (FRAPPE_MAJOR_VERSION == 16) {
 
     const isWebView = $("body").hasClass("cc-chat-webview");
 
-    if (isWebView && me.add_member == 1 && me.chat_info) {
+    if (me.add_member == 1 && me.chat_info) {
       me.chat_info.$chat_info.removeClass("add-members-open");
+      me.chat_info.$chat_info.find(".add-members-overlay").hide();
       me.chat_info.$chat_info.find(".list_members").empty();
       me.chat_info.$chat_info.find(".filter-members").hide().val("");
       me.chat_info.$chat_info.find(".close_members_lis").css("visibility", "hidden");
+
+      me.$wrapper.find(".chat-contact-list").remove();
       me.chat_info.add_member_list = null;
+
+      if (isWebView) {
+
+        me.chat_space.$wrapper.find(".chat-info").remove();
+        me.chat_space.$wrapper.find(".chat-space").show();
+        me.chat_space.$wrapper.find(".chat-topic-space").show();
+      } else {
+      
+        me.$wrapper.find(".chat-info").show();
+      }
+
       return;
     }
 
     me.$wrapper.find(".chat-contact-list").remove();
+
     erpnext_chat_app.chat_contact_list = null;
     erpnext_chat_app.chat_list = new ChatList({
       $wrapper: me.$wrapper,
@@ -1177,13 +1192,6 @@ render() {
     const $target = $overlay.find(".list_members");
 
     this.chat_info.$chat_info.addClass("add-members-open");
-    this.chat_info.$chat_info.css({
-      position: "absolute",
-      inset: "0",
-      "z-index": 99999,
-      display: "flex",
-      "flex-direction": "column"
-    });
 
     $overlay.css({
       display: "flex",
@@ -1199,22 +1207,17 @@ render() {
 
     $target.empty().append(this.$chat_contact_list);
 
-    this.$chat_contact_list.css({
-      height: "100%",
-      display: "flex",
-      "flex-direction": "column"
-    });
-
-    this.$chat_contact_list.find(".chat-contacts-container").css({
-      flex: "1 1 auto",
-      height: "auto",
-      "min-height": "0",
-      "overflow-y": "auto"
-    });
-
     return;
   }
 
+  if (!isWebView && this.add_member == 1 && this.chat_info) {
+    this.$wrapper.find(".chat-contact-list").remove();
+    this.$wrapper.find(".chat-info").hide();
+    this.$wrapper.find(".chat-space").hide();
+
+    this.$wrapper.append(this.$chat_contact_list);
+    return;
+  }
 
   if (FRAPPE_MAJOR_VERSION == 16) {
     this.ready.then(() => {
@@ -1228,7 +1231,7 @@ render() {
       $view.empty().append(this.$chat_contact_list);
     });
   } else {
-    if (this.add_member == 1 || this.forward == 1 || this.topic_picker) {
+    if (this.forward == 1 || this.topic_picker) {
       this.$wrapper.find(".chat-info").hide();
       this.$wrapper.find(".chat-space").hide();
       this.$wrapper.append(this.$chat_contact_list);
@@ -1237,7 +1240,6 @@ render() {
     }
   }
 }
-
   async create_group() {
     show_overlay("");
 
