@@ -399,18 +399,22 @@ save_all_contacts(dialog) {
         if (this.is_admin == 1) {
           group_sections += `
         <div class="add_members-button d-flex flex-row justify-content-between">
-          <div class="add_members">${frappe.utils.icon(
-            "assign",
-            "md"
-          )} Add members</div>
-          <div class="close_members_lis">${frappe.utils.icon(
-            "close",
-            "md"
-          )}</div>
-       </div>
-       <input type="text" placeholder="Search.." class="myInput filter-members" >
-        <div class="list_members">
-        </div>
+              <div class="add_members">${frappe.utils.icon(
+                "assign",
+                "md"
+              )} Add members</div>
+            </div>
+
+            <div class="add-members-overlay">
+              <div class="add-members-overlay-header">
+                <span class="close_members_lis">${frappe.utils.icon("arrow-left", "lg")}</span>
+                <span>Add members</span>
+              </div>
+
+              <input type="text" placeholder="Search.." class="myInput filter-members">
+
+              <div class="list_members"></div>
+            </div>
         `;
         }
       }
@@ -1409,22 +1413,32 @@ save_all_contacts(dialog) {
     });
 
     this.$chat_info.find(".add_members").on("click", function () {
-      me.add_member_list = new ChatContactList({
-        $wrapper: me.chat_space.$wrapper,
-        profile: me.chat_space.profile,
-        chat_info: me,
-        add_member: 1,
-      });
-      me.add_member_list.render();
-    });
+            me.$chat_info.addClass("add-members-open");
+            me.$chat_info.find(".filter-members").show().val("").focus();
+            me.$chat_info.find(".list_members").html("");
+
+            me.add_member_list = new ChatContactList({
+              $wrapper: me.chat_space.$wrapper,
+              profile: me.chat_space.profile,
+              chat_info: me,
+              add_member: 1,
+            });
+
+            me.add_member_list.render();
+          });
 
     this.$chat_info.find(".close_members_lis").on("click", function () {
-      const list_of_members = me.$chat_info.find(".list_members");
-      list_of_members.html("");
-      $(this).css("visibility", "hidden");
-      me.$chat_info.find(".filter-members").css("display", "none");
-      me.$chat_info.find(".filter-members").val("");
-    });
+  const list_of_members = me.$chat_info.find(".list_members");
+
+  me.$chat_info.removeClass("add-members-open");
+  me.$chat_info.find(".add-members-overlay").hide();
+
+  list_of_members.html("");
+  $(this).css("visibility", "hidden");
+  me.$chat_info.find(".filter-members").css("display", "none").val("");
+
+  me.add_member_list = null;
+});
 
     this.$chat_info.find(".filter-members").on("keyup", function () {
       var input, filter, members_to_add, i, txtValue;

@@ -980,23 +980,36 @@ if ((me.forward == 1 || me.topic_picker) && !me.show_all_rooms && !me.show_all_c
       });
 
 if (FRAPPE_MAJOR_VERSION == 16) {
-    $(document).off("click.backtolist");
-    $(document).on("click.backtolist", ".back-to-chat-list", function (e) {
-      e.stopPropagation();
-      me.$wrapper.find(".chat-contact-list").remove();
-      erpnext_chat_app.chat_contact_list = null;
-      erpnext_chat_app.chat_list = new ChatList({
-        $wrapper: me.$wrapper,
-        user: me.profile.user,
-        user_email: me.profile.user_email,
-        is_admin: me.profile.is_admin,
-        time_zone: me.profile.time_zone,
-        user_type: me.profile.user_type,
-        is_limited_user: me.profile.is_limited_user,
-      });
+  $(document).off("click.backtolist");
+  $(document).on("click.backtolist", ".back-to-chat-list", function (e) {
+    e.stopPropagation();
 
-      erpnext_chat_app.chat_list.render();
-    });}
+    const isWebView = $("body").hasClass("cc-chat-webview");
+
+    if (isWebView && me.add_member == 1 && me.chat_info) {
+      me.chat_info.$chat_info.removeClass("add-members-open");
+      me.chat_info.$chat_info.find(".list_members").empty();
+      me.chat_info.$chat_info.find(".filter-members").hide().val("");
+      me.chat_info.$chat_info.find(".close_members_lis").css("visibility", "hidden");
+      me.chat_info.add_member_list = null;
+      return;
+    }
+
+    me.$wrapper.find(".chat-contact-list").remove();
+    erpnext_chat_app.chat_contact_list = null;
+    erpnext_chat_app.chat_list = new ChatList({
+      $wrapper: me.$wrapper,
+      user: me.profile.user,
+      user_email: me.profile.user_email,
+      is_admin: me.profile.is_admin,
+      time_zone: me.profile.time_zone,
+      user_type: me.profile.user_type,
+      is_limited_user: me.profile.is_limited_user,
+    });
+
+    erpnext_chat_app.chat_list.render();
+  });
+}
     else{
       this.$chat_contact_list
       .find(".back-to-chat-list")
@@ -1043,9 +1056,9 @@ if (FRAPPE_MAJOR_VERSION == 16) {
         me.chat_info.$chat_info
           .find(".participants")
           .html(me.chat_info.count_group_members(me.chat_space.chat_members));
-        me.$wrapper.find(".chat-contact-list").remove();
-        me.chat_info.add_member_list = null;
-        me.$wrapper.find(".chat-info").show();
+        // me.$wrapper.find(".chat-contact-list").remove();
+        // me.chat_info.add_member_list = null;
+        // me.$wrapper.find(".chat-info").show();
 
         const added_members_name = get_user_names(me.selected_contacts);
         const added_members_email = get_user_emails(me.selected_contacts);
@@ -1084,6 +1097,27 @@ if (FRAPPE_MAJOR_VERSION == 16) {
           chat_topic: me.chat_space.chat_topic,
         };
         send_message(message_info);
+        const isWebView = $("body").hasClass("cc-chat-webview");
+
+        if (isWebView) {
+          me.chat_info.$chat_info.removeClass("add-members-open");
+          me.chat_info.$chat_info.find(".add-members-overlay").hide();
+          me.chat_info.$chat_info.find(".list_members").empty();
+          me.chat_info.$chat_info.find(".filter-members").hide().val("");
+          me.chat_info.$chat_info.find(".close_members_lis").css("visibility", "hidden");
+
+          me.chat_info.add_member_list = null;
+
+          me.chat_space.$wrapper.find(".chat-info").remove();
+          me.chat_space.$wrapper.find(".chat-space").show();
+          me.chat_space.$wrapper.find(".chat-topic-space").show();
+
+          return;
+        }
+
+        me.$wrapper.find(".chat-contact-list").remove();
+        me.chat_info.add_member_list = null;
+        me.$wrapper.find(".chat-info").show();
 
         for (const member of me.selected_contacts) {
           var html = `
@@ -1136,25 +1170,71 @@ if (FRAPPE_MAJOR_VERSION == 16) {
   }
 
 render() {
-  if (FRAPPE_MAJOR_VERSION == 16) {
-  let $view = this.$wrapper.find(".chat-view");
+  const isWebView = $("body").hasClass("cc-chat-webview");
 
-  if (!$view.length) {
-    $view = $("<div class='chat-view'></div>");
-    this.$wrapper.append($view);
+  if (isWebView && this.add_member == 1 && this.chat_info) {
+    const $overlay = this.chat_info.$chat_info.find(".add-members-overlay");
+    const $target = $overlay.find(".list_members");
+
+    this.chat_info.$chat_info.addClass("add-members-open");
+    this.chat_info.$chat_info.css({
+      position: "absolute",
+      inset: "0",
+      "z-index": 99999,
+      display: "flex",
+      "flex-direction": "column"
+    });
+
+    $overlay.css({
+      display: "flex",
+      position: "absolute",
+      inset: "0",
+      "z-index": 100000,
+      "flex-direction": "column",
+      background: "var(--card-bg, #fff)"
+    });
+
+    this.chat_info.$chat_info.find(".filter-members").show().val("").focus();
+    this.chat_info.$chat_info.find(".close_members_lis").css("visibility", "visible");
+
+    $target.empty().append(this.$chat_contact_list);
+
+    this.$chat_contact_list.css({
+      height: "100%",
+      display: "flex",
+      "flex-direction": "column"
+    });
+
+    this.$chat_contact_list.find(".chat-contacts-container").css({
+      flex: "1 1 auto",
+      height: "auto",
+      "min-height": "0",
+      "overflow-y": "auto"
+    });
+
+    return;
   }
 
-  $view.empty().append(this.$chat_contact_list);}
-  else{
-      if (this.add_member == 1 || this.forward == 1 || this.topic_picker) {
+
+  if (FRAPPE_MAJOR_VERSION == 16) {
+    this.ready.then(() => {
+      let $view = this.$wrapper.find(".chat-view");
+
+      if (!$view.length) {
+        $view = $("<div class='chat-view'></div>");
+        this.$wrapper.append($view);
+      }
+
+      $view.empty().append(this.$chat_contact_list);
+    });
+  } else {
+    if (this.add_member == 1 || this.forward == 1 || this.topic_picker) {
       this.$wrapper.find(".chat-info").hide();
       this.$wrapper.find(".chat-space").hide();
       this.$wrapper.append(this.$chat_contact_list);
     } else {
       this.$wrapper.html(this.$chat_contact_list);
     }
-
-    // this.setup_events();
   }
 }
 
