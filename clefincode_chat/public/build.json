@@ -1,0 +1,9 @@
+{
+  "chat.bundle.js": [
+    "public/js/erpnext_chat_contact.js",
+    "public/js/erpnext_chat_list.js",
+    "public/js/erpnext_chat_window.js",
+    "public/js/erpnext_chat_space.js",
+    "public/js/erpnext_chat_contact_list.js"
+  ]
+}

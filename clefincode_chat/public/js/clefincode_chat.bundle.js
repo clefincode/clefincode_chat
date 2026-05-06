@@ -1,13 +1,51 @@
 import { ChatBubble, ChatPortalSpace, ChatList } from "./components";
+import ChatContactList from "./components/erpnext_chat_contact_list";
+import ChatWindow from "./components/erpnext_chat_window";
+import ChatSpace from "./components/erpnext_chat_space";
+import { check_if_chat_window_open } from "./components/erpnext_chat_utils";
+
+window.CCChatContactList = ChatContactList;
+window.CCChatWindow = ChatWindow;
+window.CCChatSpace = ChatSpace;
+window.CCCheckIfChatWindowOpen = check_if_chat_window_open;
 
 frappe.provide("frappe.ErpnextChat");
 frappe.provide("frappe.ErpnextChat.settings");
 
+frappe.ErpnextChat.ContactList = ChatContactList;
+
+let FRAPPE_MAJOR_VERSION = null;
+async function initFrappeVersion() {
+  if (FRAPPE_MAJOR_VERSION !== null) return;
+
+  const r = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.get_frappe_major_version"
+  });
+
+  FRAPPE_MAJOR_VERSION = r.message;
+}
 frappe.ErpnextChat = class {
-  constructor() {
-    this.setup_app();
+constructor() {
+  this.boot();
+}
+
+async boot() {
+  await initFrappeVersion();
+  this.frappe_version = FRAPPE_MAJOR_VERSION;
+   if (this.frappe_version == 16) {
+    $("body").addClass("cc-frappe-v16");
   }
 
+  await this.setup_app();
+}
+apply_webview_layout(enable) {
+  if (enable) {
+    $("body").addClass("cc-chat-webview");
+    this.$chat_left_section?.show();     
+  } else {
+    $("body").removeClass("cc-chat-webview");
+  }
+}
   async setup_app() {
     const token = localStorage.getItem("guest_token") || "";
     const res = await get_settings(token);
@@ -33,7 +71,13 @@ frappe.ErpnextChat = class {
         }
       }
     } else await this.create_app();
-
+   // this.is_webview = frappe.utils.get_url_arg("clefinchat") === "1";//this.is_desk && window.matchMedia?.("(min-width: 992px)").matches;
+    // this.is_webview = frappe.get_route()[0] === "clefinchat";
+    if (typeof frappe.get_route === "function") {
+          this.is_webview = frappe.get_route()[0] === "clefinchat";
+        } else {
+          this.is_webview = false;
+        }
     frappe.socketio.init(res.socketio_port);
 
     if (this.res.is_admin) {
@@ -56,6 +100,9 @@ frappe.ErpnextChat = class {
         $("#chat-notification-count").text("");
       }
       this.setup_socketio();
+          if (this.is_webview) {
+      this.show_chat_widget();
+    }
       this.setup_socketio_mobile();
     } else if (res.is_verified) {
       this.chatbot_space = new ChatPortalSpace({
@@ -98,6 +145,17 @@ frappe.ErpnextChat = class {
     this.$chat_left_section = $(document.createElement("div"))
       .addClass("chat_left_section")
       .hide();
+      this.$empty_state = $(`
+  <div class="chat-empty-state">
+    <div class="empty-content">
+      <div class="empty-icon">💬</div>
+      <h3>Select a chat</h3>
+      <p>Choose a conversation from the left to start messaging</p>
+    </div>
+  </div>
+`);
+
+this.$chat_left_section.append(this.$empty_state);
 
     this.$app_element.append(this.$chat_left_section);
     this.$app_element.append(this.$chat_right_section);
@@ -208,6 +266,9 @@ frappe.ErpnextChat = class {
         }
         $(".minimized-chat[data-id|='"+parameter+"']").remove();
       }
+        if ($(".chat-window:visible").length === 0) {
+  $(".chat-empty-state").show();
+}
     </script>`);
 
     this.$chat_container = $(document.createElement("div")).addClass(
@@ -234,19 +295,40 @@ frappe.ErpnextChat = class {
     $("#chat-bubble").append(
       '<span class="badge" id="chat-notification-count"></span>'
     );
-
-    const navbar_icon_html = `
+    let navbar_icon_html;
+    if (FRAPPE_MAJOR_VERSION == 16) {
+    
+    //   navbar_icon_html = `
+    //     <li class='nav-item dropdown dropdown-notifications 
+    //     dropdown-mobile chat-navbar-icon' title="Show Chats" style="list-style: none" >
+    //       <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">
+    //     <span class="badge" id="chat-notification-count"></span>
+    //     </li>
+    // `;
+    $(".chat-navbar-icon").remove();
+    } else {
+      navbar_icon_html = `
         <li class='nav-item dropdown dropdown-notifications 
         dropdown-mobile chat-navbar-icon' title="Show Chats" >
           <img title="Show Chats" src="/assets/clefincode_chat/icons/clefincode_chat.svg" width="25px" height="25px">
         <span class="badge" id="chat-notification-count"></span>
         </li>
     `;
+    }
+   
 
     if (this.is_desk === true) {
-      $("header.navbar > .container > .navbar-collapse > ul").prepend(
-        navbar_icon_html
-      );
+      if (FRAPPE_MAJOR_VERSION == 16) {
+        // frappe.after_ajax(() => {
+        //   if (!$(".chat-navbar-icon").length) {
+        //     $(".desktop-notifications").after(navbar_icon_html);
+        //   }
+        // });
+      } else {
+        $("header.navbar > .container > .navbar-collapse > ul").prepend(
+          navbar_icon_html
+        );
+      }
     }
     this.setup_events();
   }
@@ -309,7 +391,6 @@ frappe.ErpnextChat = class {
         args: {
           token: localStorage.getItem("guest_token"),
           channel: this.res.channel
-          
         },
       });
     }
@@ -323,11 +404,13 @@ frappe.ErpnextChat = class {
         user_type: this.res.user_type,
         is_limited_user: this.res.is_limited_user,
       });
+      if (this.is_webview) this.apply_webview_layout(true);
       this.chat_list.render();
     }
   }
 
   hide_chat_widget() {
+    if (this.is_webview) this.apply_webview_layout(false);
     this.is_open = false;
     this.$chat_element.fadeOut(300);
     if (!this.res.is_admin && this.res.channel && this.res.user === "Guest") {
@@ -359,12 +442,23 @@ frappe.ErpnextChat = class {
       modal.has(e.target).length === 0
     );
   }
-
   setup_events() {
-    const me = this;
-    $(".chat-navbar-icon").on("click", function () {
-      me.chat_bubble.disk_chat_icon();
-    });
+    if (FRAPPE_MAJOR_VERSION == 16) {
+      const me = this;
+      $(document).on("click", ".chat-navbar-icon", function () {
+        $("#chat-bubble").fadeOut(150);
+        if (me.chat_bubble) {
+          me.chat_bubble.disk_chat_icon();
+        }
+      });
+    }
+    else {
+      const me = this;
+      $(".chat-navbar-icon").on("click", function () {
+        $("#chat-bubble").fadeOut(150);
+        me.chat_bubble.disk_chat_icon();
+      });
+    }
   }
 
   setup_socketio() {
@@ -463,10 +557,11 @@ frappe.ErpnextChat = class {
     });
 
     // This is a way to print data on browser console (only for testing)
-    
   }
 }; //End ErpnextChat Class
 
+frappe.ErpnextChat.ContactList = ChatContactList;
+window.CCChatContactList = ChatContactList;
 async function get_settings(token) {
   const res = await frappe.call({
     type: "GET",

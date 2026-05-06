@@ -13,7 +13,7 @@ from frappe.utils.safe_exec import get_safe_globals, safe_exec
 from frappe.integrations.utils import make_post_request
 from frappe.desk.form.utils import get_pdf_link
 from frappe.utils import add_to_date, nowdate, datetime
-from clefincode_chat.api.api_1_3_1.api import get_profile_id,create_channel,check_if_contact_has_chat, send
+from clefincode_chat.api.api_1_3_3.api import get_profile_id,create_channel,check_if_contact_has_chat, send
 from frappe.utils.print_format import download_pdf
 import frappe
 from frappe.utils.pdf import get_pdf
@@ -21,6 +21,7 @@ from frappe.utils import get_site_path
 import os
 
 from frappe.utils.file_manager import save_file
+from frappe.email.doctype.email_template.email_template import get_email_template
 import base64
 
 
@@ -41,7 +42,7 @@ class ClefincodeNotification(Document):
         #     if not any(field.fieldname == self.field_name for field in fields): # noqa
         #         frappe.throw(_("Field name {0} does not exists").format(self.field_name))
                 # Check if the "Attach Print" option is enabled
-        if self.message_type=="Template": 
+        if self.channel != "Email" and self.message_type=="Template":
             if self.attach_document_print:
                 # Ensure a template is selected
                 if not self.template:
@@ -74,6 +75,8 @@ class ClefincodeNotification(Document):
                             "Please replace the template with one belonging to this site."                            
                         )
                     )
+        if self.channel == "Email" and not self.email_template:
+              frappe.throw(_("Please select an Email Template for Email channel."))
         if self.custom_attachment:
             if not self.attach and not self.attach_from_field:
                 frappe.throw(_("Either {0} a file or add a {1} to send attachemt").format(
@@ -90,9 +93,12 @@ class ClefincodeNotification(Document):
                 ))
     def send_template_message(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
        if self.channel=="Whatsapp":
+            
             self.send_via_whatsapp( doc, phone_no, default_template, ignore_condition)
        if self.channel=="Telegram":
           self.send_via_telegram( doc, phone_no, default_template, ignore_condition)
+       if self.channel=="Email":
+             self.send_via_email(doc, phone_no, default_template, ignore_condition)
        doc_data = doc.as_dict()
        if doc_data and self.set_property_after_alert and self.property_value:
                         if doc_data.doctype and doc_data.name:
@@ -105,260 +111,751 @@ class ClefincodeNotification(Document):
                                     value = frappe.utils.cint(value)
 
                                 frappe.db.set_value(doc_data.get("doctype"), doc_data.get("name"), fieldname, value)
-
-
-    def send_via_whatsapp(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
+    def send_via_email(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
         doc_data = doc.as_dict()
-       
-       
-        recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
-            {"parent": self.name},
-            "rcevier_by_filed"
+
+        recipient_info = resolve_notification_recipient(self, doc, channel_type="Email")
+        if not recipient_info:
+            frappe.log_error(
+                message=f"Could not resolve Email recipient for notification: {self.name}, doc: {doc.doctype} {doc.name}",
+                title="Missing Email Recipient"
             )
-        recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
-        contact = frappe.db.get_value(
-                    "ClefinCode Chat Profile Contact Details",
-                    {"parent": recevie_profile, "type": "WhatsApp"},
-                    "contact_info"
-                    )
-        if contact is None:
-                frappe.log_error(
-                    message=f"WhatsApp contact_info not found for receive profile: {recevie_profile}",
-                    title="Missing WhatsApp Contact Info"
-                        )
-                return
-        default_whatsapp_number = frappe.db.get_value("ClefinCode WhatsApp Profile", {"user": self.owner}, "name")
-        
-        data= check_if_contact_has_chat(self.owner, contact, "WhatsApp")
-       
-        results = data.get("results", {})     
+            return
 
-        if results:
+        recipient_email = (recipient_info.get("contact") or "").strip()
+        if not recipient_email:
+            frappe.log_error(
+                message=f"Resolved recipient has no Email contact for notification: {self.name}",
+                title="Missing Email Contact"
+            )
+            return
 
-            result = results
-            room = result.get("name")
-            chat_status = result.get("chat_status")
-        else:
-            room = None
-            chat_status = None
-        if not room:
-            users=[{"email":self.owner,"name":self.owner,"platform":"Chat"},{"email":contact,"name":contact,"platform":"WhatsApp","platform_profile":"ClefinCode WhatsApp Profile","platform_gateway":default_whatsapp_number}]
-            channel=create_channel('' , json.dumps(users), 'Direct' ,'' , self.owner , get_profile_id(self.owner) , creation_date = None)   
-            
-            
-            results = channel.get("results", [])
-
-            room = results[0].get("room") if results else None
-            
-        
         cond = (self.condition or "").strip()
         if cond and not ignore_condition:
             try:
-                # allow dot access like doc.status
                 ctx_doc = _dict(doc.as_dict())
+                event_row = _dict(get_child_event_row(doc) or {})
                 env = get_safe_globals().copy()
 
-                passed = frappe.safe_eval(cond, env, {"doc": ctx_doc})
+                passed = frappe.safe_eval(cond, env, {
+                    "doc": ctx_doc,
+                    "row": event_row
+                })
+
                 if not passed:
                     frappe.log_error(
                         "ClefincodeNotification: condition not met",
-                        f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())} status : {doc.status} "
+                        f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())}"
                     )
                     return
-               
-               
-            except Exception as e:
-                
+
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Notification Condition Error")
                 return
-        recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
-            {"parent": self.name},
-            "rcevier_by_filed"
+
+        if not self.email_template:
+            frappe.log_error(
+                message=f"Email template is missing for notification: {self.name}",
+                title="Missing Email Template"
             )
-        variables = {}
+            return
+
+        payload = self.get_notification_payload(doc)
+        variables = payload["variables"]
+        attachment_values = payload["attachment_values"]
+
+        email_context = {
+            "doc": doc.as_dict(),
+            "notification_variables": variables,
+            **variables
+        }
+
+        rendered_email = get_email_template(self.email_template, email_context)
+
+        subject = rendered_email.get("subject") or self.email_template
+        message = (
+            rendered_email.get("message")
+            or rendered_email.get("response")
+            or ""
+        )
+
+        attachments = []
+        added_urls = set()
+
+        if self.attach_document_print:
+            from packaging import version
+            frappe_version = frappe.__version__
+
+            if version.parse(frappe_version) < version.parse("15.0.0"):
+                key = doc.get_document_share_key()
+                frappe.db.commit()
+
+                res = pdf(
+                    doctype=doc_data["doctype"],
+                    name=doc.name,
+                    key=key,
+                    format=self.print_format,
+                    lang=self.language,
+                    letterhead=self.letter_head
+                )
+            else:
+                res = generate_pdf_with_getpdf(
+                    doctype=doc_data["doctype"],
+                    name=doc.name,
+                    print_format=self.print_format,
+                    lang=self.language,
+                    letterhead=self.letter_head,
+                    is_private=self.is_private
+                )
+
+            file_url = res.get("file_url")
+            attachment = build_attachment_from_file_url(file_url, res.get("file_name"))
+            if attachment and file_url:
+                attachments.append(attachment)
+                added_urls.add(file_url)
+
+        custom_attachment_url = self.get_latest_custom_attachment_file(doc)
+        if custom_attachment_url and custom_attachment_url not in added_urls:
+            custom_info = self.get_attachment_url_info(doc, custom_attachment_url)
+            if custom_info and custom_info.get("file_url"):
+                custom_attachment = build_attachment_from_file_url(
+                    custom_info["file_url"],
+                    custom_info["file_name"]
+                )
+                if custom_attachment:
+                    attachments.append(custom_attachment)
+                    added_urls.add(custom_info["file_url"])
+
+        for raw_value in attachment_values:
+            info = self.get_attachment_url_info(doc, raw_value)
+            if not info:
+                continue
+
+            file_url = info.get("file_url")
+            file_name = info.get("file_name")
+
+            if not file_url or file_url in added_urls:
+                continue
+
+            attachment = build_attachment_from_file_url(file_url, file_name)
+            if attachment:
+                attachments.append(attachment)
+                added_urls.add(file_url)
+
+        frappe.sendmail(
+            recipients=[recipient_email],
+            subject=subject,
+            message=message,
+            reference_doctype=doc.doctype,
+            reference_name=doc.name,
+            attachments=attachments or None,
+            now=True
+        )
+    
+    def get_latest_custom_attachment_file(self, doc):
+        target_var = None
+
         for var in self.variables:
-                    key = str(var.variable_key).strip()
-                    source_doctype = str(var.source_doctype)
-                    source_field=str(var.source_field)
-                    value= frappe.db.get_value(
-                                    source_doctype,doc.name,source_field
-                                    )
-                    if key and value:
-                        variables[key] = value
-        recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
-        attachment=None
-        if self.message_type=="Template":  
-                content=self.template+","+doc.name    
+            source_type = (getattr(var, "source_type", "") or "").strip()
+            source_field = (getattr(var, "source_field", "") or "").strip()
+
+            if (
+                self.doctype_event == "Child Table Row Added"
+                and self.child_table_field == "custom_attachment_settings"
+                and source_type == "Child Row Field"
+                and source_field == "file_name"
+            ):
+                target_var = var
+                break
+
+        if not target_var:
+            return None
+
+        added_row = get_child_event_row(doc)
+
+        if not added_row:
+            return None
+
+        target_file_name = added_row.get(target_var.source_field)
+
+        if not target_file_name:
+            return None
+
+        latest_file = frappe.db.get_all(
+            "File",
+            filters={
+                "attached_to_doctype": self.reference_doctype,
+                "attached_to_name": doc.name,
+                "file_name": target_file_name,
+            },
+            fields=["name"],
+            order_by="creation desc",
+            limit=1,
+        )
+
+        if not latest_file:
+            return None
+
+        original_file = frappe.get_doc("File", latest_file[0].name)
+
+        copied_file = frappe.copy_doc(original_file)
+        copied_file.attached_to_doctype = self.reference_doctype
+        copied_file.attached_to_name = doc.name
+
+        if hasattr(copied_file, "custom_original_name_"):
+            copied_file.custom_original_name_ = getattr(original_file, "custom_original_name_", None) or original_file.file_name
+
+        copied_file.save(ignore_permissions=True)
+            
+
+        return copied_file.file_url
+
+    def send_via_whatsapp(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
+            doc_data = doc.as_dict()
+
+            recipient_info = resolve_notification_recipient(self, doc, channel_type="WhatsApp")
+            if not recipient_info:
+                frappe.log_error(
+                    message=f"Could not resolve WhatsApp recipient for notification: {self.name}, doc: {doc.doctype} {doc.name}",
+                    title="Missing WhatsApp Recipient"
+                )
+                return
+
+            contact = recipient_info.get("contact")
+            selected_profile = recipient_info.get("profile")
+
+            if not contact:
+                frappe.log_error(
+                    message=f"Resolved recipient has no WhatsApp contact for notification: {self.name}",
+                    title="Missing WhatsApp Contact"
+                )
+                return
+
+            room = get_or_create_notification_channel(
+                self,
+                contact,
+                platform="WhatsApp",
+                selected_profile=selected_profile
+            )
+
+            cond = (self.condition or "").strip()
+            if cond and not ignore_condition:
+                try:
+                    ctx_doc = _dict(doc.as_dict())
+                    event_row = _dict(get_child_event_row(doc) or {})
+                    env = get_safe_globals().copy()
+
+                    passed = frappe.safe_eval(cond, env, {
+                        "doc": ctx_doc,
+                        "row": event_row
+                    })
+
+                    if not passed:
+                        frappe.log_error(
+                            "ClefincodeNotification: condition not met",
+                            f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())}"
+                        )
+                        return
+
+                except Exception:
+                    frappe.log_error(frappe.get_traceback(), "Notification Condition Error")
+                    return
+
+            payload = self.get_notification_payload(doc)
+            variables = payload["variables"]
+            attachment_values = payload["attachment_values"]
+            attachment = None
+
+            if self.message_type == "Template":
+                content = self.template + "," + doc.name
+
                 if self.attach_document_print:
-                    # frappe.db.begin()
                     key = doc.get_document_share_key()  # noqa
                     frappe.db.commit()
+
                     from packaging import version
                     frappe_version = frappe.__version__
-                    if version.parse(frappe_version) < version.parse("15.0.0"):
-                           res =pdf(
-                            doctype=doc_data['doctype'],
-                            name=doc.name,
-                            key=key,
-                            format=self.print_format,
-                            lang=self.language,
-                            letterhead=self.letter_head   
-                        )  
-                    else:
-                        
-                        res = generate_pdf_with_getpdf(
-                                doctype=doc_data['doctype'],
-                                name=doc.name,
-                                print_format=self.print_format,
-                                lang=self.language,
-                                letterhead=self.letter_head,
-                                is_private=self.is_private
-                            )
-                   
-                    attachment=res['file_url']
-                      
 
-                
-                
-                send(content, get_profile_id(self.owner), room , self.owner ,message_type="information",message_template_type="Send Template",attachment=attachment)
-        else:
-           
-                   # for k, v in variables.items():
-        #     body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
-            message =self.message_content
-            body_preview = message or ""
-            for k, v in variables.items():
-              body_preview = body_preview.replace(f"{{{{{k}}}}}", v)
-            
-            #send_whatsapp_message_twilio_notification( "14155238886", to_number, message, "text")
-            send(body_preview, get_profile_id(self.owner), room , self.owner )
-            if self.attach_document_print:
-                # frappe.db.begin()
-                key = doc.get_document_share_key()  # noqa
-                frappe.db.commit()
-               
-                from packaging import version
-                frappe_version = frappe.__version__
-                if version.parse(frappe_version) < version.parse("15.0.0"):
-                           res =pdf(
-                            doctype=doc_data['doctype'],
+                    if version.parse(frappe_version) < version.parse("15.0.0"):
+                        res = pdf(
+                            doctype=doc_data["doctype"],
                             name=doc.name,
                             key=key,
                             format=self.print_format,
                             lang=self.language,
-                            letterhead=self.letter_head   
-                        )  
-                else:
+                            letterhead=self.letter_head
+                        )
+                    else:
                         res = generate_pdf_with_getpdf(
-                                doctype=doc_data['doctype'],
-                                name=doc.name,
-                                print_format=self.print_format,
-                                lang=self.language,
-                                letterhead=self.letter_head,
-                                is_private=False
+                            doctype=doc_data["doctype"],
+                            name=doc.name,
+                            print_format=self.print_format,
+                            lang=self.language,
+                            letterhead=self.letter_head,
+                            is_private=self.is_private
+                        )
+
+                    attachment = res.get("file_url")
+
+                if not attachment:
+                    attachment = self.get_latest_custom_attachment_file(doc)
+
+                send(
+                    content,
+                    get_profile_id(self.owner),
+                    room,
+                    self.owner,
+                    message_type="information",
+                    message_template_type="Send Template",
+                    attachment=attachment,
+                    override_variables=variables
+                )
+                for raw_attachment in attachment_values:
+                    file_info = self.build_attachment_from_dynamic_value(doc, raw_attachment)
+                    if not file_info:
+                        continue
+
+                    file_url = raw_attachment if isinstance(raw_attachment, str) else None
+
+                    if not file_url and file_info.get("fname"):
+                    
+                        continue
+
+                    send(
+                           content,
+                            get_profile_id(self.owner),
+                            room,
+                            self.owner,
+                            message_type="information",
+                            message_template_type="Send Template",
+                            attachment=file_url,
+                            override_variables=variables
                             )
-              
-                #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
-                send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
-        
+
+            else:
+                message = self.message_content
+                body_preview = message or ""
+
+                for k, v in variables.items():
+                    body_preview = body_preview.replace(f"{{{{{k}}}}}", str(v))
+
+                send(body_preview, get_profile_id(self.owner), room, self.owner)
+
+                if self.attach_document_print:
+                    key = doc.get_document_share_key()  # noqa
+                    frappe.db.commit()
+
+                    from packaging import version
+                    frappe_version = frappe.__version__
+
+                    if version.parse(frappe_version) < version.parse("15.0.0"):
+                        res = pdf(
+                            doctype=doc_data["doctype"],
+                            name=doc.name,
+                            key=key,
+                            format=self.print_format,
+                            lang=self.language,
+                            letterhead=self.letter_head
+                        )
+                    else:
+                        res = generate_pdf_with_getpdf(
+                            doctype=doc_data["doctype"],
+                            name=doc.name,
+                            print_format=self.print_format,
+                            lang=self.language,
+                            letterhead=self.letter_head,
+                            is_private=False
+                        )
+
+                    send(
+                        handle_pdf_attachment(res["file_url"], res["file_name"]),
+                        get_profile_id(self.owner),
+                        room,
+                        self.owner,
+                        attachment=res["file_url"],
+                        sub_channel=None,
+                        is_link=None,
+                        is_media=None,
+                        is_document=1,
+                        file_id=res["file_id"]
+                    )
     def send_via_telegram(self, doc: Document, phone_no=None, default_template=None, ignore_condition=False):
         doc_data = doc.as_dict()
-        recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
-            {"parent": self.name},
-            "rcevier_by_filed"
+
+        recipient_info = resolve_notification_recipient(self, doc, channel_type="Telegram")
+        if not recipient_info:
+            frappe.log_error(
+                message=f"Could not resolve Telegram recipient for notification: {self.name}, doc: {doc.doctype} {doc.name}",
+                title="Missing Telegram Recipient"
             )
-        recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
-        contact = frappe.db.get_value(
-                    "ClefinCode Chat Profile Contact Details",
-                    {"parent": recevie_profile, "type": "Telegram"},
-                    "contact_info"
-                    )
-        if contact is None:
-                frappe.log_error(
-                    message=f"Telegram contact_info not found for receive profile: {recevie_profile}",
-                    title="Missing Telegram Contact Info"
-                        )
-                return
-        default_whatsapp_number = frappe.db.get_value("ClefinCode Telegram Profile", {"user": self.owner}, "name")       
-        data= check_if_contact_has_chat(self.owner, contact, "Telegram")       
-        results = data.get("results", {})
-        if results:
-            result = results
-            room = result.get("name")
-            chat_status = result.get("chat_status")
-        else:
-            room = None
-            chat_status = None
+            return
+
+        contact = recipient_info.get("contact")
+        selected_profile = recipient_info.get("profile")
+
+        if not contact:
+            frappe.log_error(
+                message=f"Resolved recipient has no Telegram contact for notification: {self.name}",
+                title="Missing Telegram Contact"
+            )
+            return
+
+        room = get_or_create_notification_channel(
+            self,
+            contact,
+            platform="Telegram",
+            selected_profile=selected_profile
+        )
+
         if not room:
-            users=[{"email":self.owner,"name":self.owner,"platform":"Chat"},{"email":contact,"name":contact,"platform":"WhatsApp","platform_profile":"ClefinCode WhatsApp Profile","platform_gateway":default_whatsapp_number}]
-            channel=create_channel('' , json.dumps(users), 'Direct' ,'' , self.owner , get_profile_id(self.owner) , creation_date = None)                
-            results = channel.get("results", [])
-            room = results[0].get("room") if results else None
-        cond = (self.condition or "").strip()    
+            frappe.log_error(
+                message=f"Could not create/find Telegram room for contact {contact}",
+                title="Telegram Room Missing"
+            )
+            return
+
+        cond = (self.condition or "").strip()
         if cond and not ignore_condition:
             try:
-                # allow dot access like doc.status
                 ctx_doc = _dict(doc.as_dict())
+                event_row = _dict(get_child_event_row(doc) or {})
                 env = get_safe_globals().copy()
-                passed = frappe.safe_eval(cond, env, {"doc": ctx_doc})
+
+                passed = frappe.safe_eval(cond, env, {
+                    "doc": ctx_doc,
+                    "row": event_row
+                })
+
                 if not passed:
                     frappe.log_error(
                         "ClefincodeNotification: condition not met",
-                        f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())} status : {doc.status} "
+                        f"Condition: {cond}\nDoc: {doc.doctype} {doc.name}\nKeys: {list(ctx_doc.keys())}"
                     )
-                    return            
-            except Exception as e:                
-                return       
-        recevie_profile = frappe.db.get_value("Clefincode Notification Recipient list",
-            {"parent": self.name},
-            "rcevier_by_filed"
-            )
-        variables = {}
-        for var in self.variables:
-                    key = str(var.variable_key).strip()
-                    source_doctype = str(var.source_doctype)
-                    source_field=str(var.source_field)
-                    value= frappe.db.get_value(
-                                    source_doctype,doc.name,source_field
-                                    )
-                    if key and value:
-                        variables[key] = value
-        recevie_profile= frappe.db.get_value(self.reference_doctype,doc.name,recevie_profile)
-        attachment=None
-        message =self.message_content
-        body_preview = message or ""
-        for k, v in variables.items():
-               pattern = rf"{{{{\s*{re.escape(k)}\s*}}}}"
-               body_preview = re.sub(pattern, str(v), body_preview)
-        send(body_preview, get_profile_id(self.owner), room , self.owner )
-        if self.attach_document_print:
-                # frappe.db.begin()
-                key = doc.get_document_share_key()  # noqa
-                frappe.db.commit()
-               
-                from packaging import version
-                frappe_version = frappe.__version__
-                if version.parse(frappe_version) < version.parse("15.0.0"):
-                           res =pdf(
-                            doctype=doc_data['doctype'],
-                            name=doc.name,
-                            key=key,
-                            format=self.print_format,
-                            lang=self.language,
-                            letterhead=self.letter_head   
-                        )  
-                else:
-                        res = generate_pdf_with_getpdf(
-                                doctype=doc_data['doctype'],
-                                name=doc.name,
-                                print_format=self.print_format,
-                                lang=self.language,
-                                letterhead=self.letter_head,
-                                is_private=False
-                            )
-              
-                #send_whatsapp_message_twilio_notification( "14155238886", to_number, res['file_url'], "document",res['file_name'])
-                send( handle_pdf_attachment(res['file_url'], res['file_name']), get_profile_id(self.owner), room , self.owner,  attachment = res['file_url'] , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=res['file_id'])
+                    return
 
+            except Exception:
+                frappe.log_error(frappe.get_traceback(), "Notification Condition Error")
+                return
+
+        payload = self.get_notification_payload(doc)
+        variables = payload["variables"]
+        attachment_values = payload["attachment_values"]
+        message = self.message_content
+        body_preview = message or ""
+
+        for k, v in variables.items():
+            pattern = rf"{{{{\s*{re.escape(k)}\s*}}}}"
+            body_preview = re.sub(pattern, str(v), body_preview)
+
+        send(body_preview, get_profile_id(self.owner), room, self.owner)
+
+        if self.attach_document_print:
+            key = doc.get_document_share_key()
+            frappe.db.commit()
+
+            from packaging import version
+            frappe_version = frappe.__version__
+
+            if version.parse(frappe_version) < version.parse("15.0.0"):
+                res = pdf(
+                    doctype=doc_data['doctype'],
+                    name=doc.name,
+                    key=key,
+                    format=self.print_format,
+                    lang=self.language,
+                    letterhead=self.letter_head
+                )
+            else:
+                res = generate_pdf_with_getpdf(
+                    doctype=doc_data['doctype'],
+                    name=doc.name,
+                    print_format=self.print_format,
+                    lang=self.language,
+                    letterhead=self.letter_head,
+                    is_private=False
+                )
+
+            send(
+                handle_pdf_attachment(res['file_url'], res['file_name']),
+                get_profile_id(self.owner),
+                room,
+                self.owner,
+                attachment=res['file_url'],
+                sub_channel=None,
+                is_link=None,
+                is_media=None,
+                is_document=1,
+                file_id=res['file_id']
+            )
+        custom_attachment_url = self.get_latest_custom_attachment_file(doc)
+        if custom_attachment_url:
+                info = self.get_attachment_url_info(doc, custom_attachment_url)
+                if info and info.get("file_url"):
+                    ext = os.path.splitext((info.get("file_name") or ""))[1].lower()
+                    is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+
+                    send(
+                        info.get("file_name") or os.path.basename(info["file_url"]),
+                        get_profile_id(self.owner),
+                        room,
+                        self.owner,
+                        attachment=info["file_url"],
+                        sub_channel=None,
+                        is_link=None,
+                        is_media=1 if is_image else None,
+                        is_document=None if is_image else 1
+                    )
+
+        self.send_telegram_variable_attachments(doc, room, attachment_values)
+    def get_notification_variables(self, doc: Document):
+                variables = {}
+                added_row = get_child_event_row(doc)
+               
+
+                for var in self.variables:
+                    key = (var.variable_key or "").strip()
+                    source_type = (var.source_type or "").strip()
+                    source_field = (var.source_field or "").strip()
+                    default_value = (var.default or "").strip()
+
+                    if not key or not source_field:
+                        continue
+
+                    value = None
+
+                    if source_type == "Document Field":
+                        value = doc.get(source_field)
+
+                    elif source_type == "Child Row Field" and added_row:
+                        value = added_row.get(source_field)
+
+                    if value in (None, "") and default_value not in (None, ""):
+                        value = default_value
+
+                    if value not in (None, ""):
+                        variables[key] = str(value)
+
+                return variables
+    def get_variable_value(self, doc, variable_key):
+            added_row = get_child_event_row(doc)
+
+            for var in self.variables:
+                key = (var.variable_key or "").strip()
+                source_type = (var.source_type or "").strip()
+                source_field = (var.source_field or "").strip()
+                default_value = (var.default or "").strip()
+
+                if key != variable_key or not source_field:
+                    continue
+
+                value = None
+
+                if source_type == "Document Field":
+                    value = doc.get(source_field)
+
+                elif source_type == "Child Row Field" and added_row:
+                    value = added_row.get(source_field)
+
+                if value in (None, "") and default_value not in (None, ""):
+                    value = default_value
+
+                return value
+
+            return None
+    def get_variable_raw_value(self, doc, var):
+        added_row = get_child_event_row(doc)
+
+        source_type = (getattr(var, "source_type", "") or "").strip()
+        source_field = (getattr(var, "source_field", "") or "").strip()
+        default_value = (getattr(var, "default", "") or "").strip()
+
+        if not source_field:
+            return None
+
+        value = None
+
+        if source_type == "Document Field":
+            value = doc.get(source_field)
+
+        elif source_type == "Child Row Field" and added_row:
+            value = added_row.get(source_field)
+
+        if value in (None, "") and default_value not in (None, ""):
+            value = default_value
+
+        return value
+
+
+    def get_notification_payload(self, doc):
+        variables = {}
+        attachment_values = []
+
+        for var in self.variables:
+            key = (getattr(var, "variable_key", "") or "").strip()
+            is_attachment = frappe.utils.cint(getattr(var, "is_attachment", 0))
+
+            value = self.get_variable_raw_value(doc, var)
+            if value in (None, ""):
+                continue
+
+            if is_attachment:
+                attachment_values.append(value)
+            elif key:
+                variables[key] = str(value)
+
+        return {
+            "variables": variables,
+            "attachment_values": attachment_values
+        }
+
+
+    def get_attachment_url_info(self, doc, raw_value):
+        if not raw_value:
+            return None
+
+        raw_value = str(raw_value).strip()
+
+        def _make_result(file_url, file_name=None, original_name=None):
+            return {
+                "file_url": file_url,
+                "file_name": original_name or file_name or os.path.basename(file_url)
+            }
+
+        if raw_value.startswith("/files/") or raw_value.startswith("/private/files/"):
+            file_by_url = frappe.db.get_value(
+                "File",
+                {
+                    "file_url": raw_value
+                },
+                ["file_url", "file_name", "custom_original_name_"],
+                as_dict=True
+            )
+
+            if file_by_url:
+                return _make_result(
+                    file_by_url.file_url,
+                    file_by_url.file_name,
+                    file_by_url.custom_original_name_
+                )
+
+            return _make_result(raw_value)
+
+        file_by_original_name = frappe.db.get_value(
+            "File",
+            {
+                "custom_original_name_": raw_value
+            },
+            ["file_url", "file_name", "custom_original_name_"],
+            as_dict=True
+        )
+        if file_by_original_name:
+            return _make_result(
+                file_by_original_name.file_url,
+                file_by_original_name.file_name,
+                file_by_original_name.custom_original_name_
+            )
+
+        file_by_name = frappe.db.get_value(
+            "File",
+            {
+                "file_name": raw_value
+            },
+            ["file_url", "file_name", "custom_original_name_"],
+            as_dict=True
+        )
+        if file_by_name:
+            return _make_result(
+                file_by_name.file_url,
+                file_by_name.file_name,
+                file_by_name.custom_original_name_
+            )
+
+        if frappe.db.exists("File", raw_value):
+            file_doc = frappe.get_doc("File", raw_value)
+            return _make_result(
+                file_doc.file_url,
+                file_doc.file_name,
+                getattr(file_doc, "custom_original_name_", None)
+            )
+
+        return None
+
+
+
+    def send_whatsapp_variable_attachments(self, doc, room, attachment_values):
+        sent_files = set()
+
+        for raw_value in attachment_values:
+            info = self.get_attachment_url_info(doc, raw_value)
+            if not info or not info.get("file_url"):
+                continue
+
+            file_url = info.get("file_url")
+            file_name = info.get("file_name") or os.path.basename(file_url)
+
+            if file_url in sent_files:
+                continue
+            sent_files.add(file_url)
+
+            ext = os.path.splitext(file_name or "")[1].lower()
+            is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+
+            send(
+                file_name,
+                get_profile_id(self.owner),
+                room,
+                self.owner,
+                attachment=file_url,
+                sub_channel=None,
+                is_link=None,
+                is_media=1 if is_image else None,
+                is_document=None if is_image else 1
+            )
+    def build_attachment_from_dynamic_value(self, doc, raw_value):
+            info = self.get_attachment_url_info(doc, raw_value)
+            if not info:
+                return None
+
+            return build_attachment_from_file_url(
+                info.get("file_url"),
+                info.get("file_name")
+            )
+
+    def get_email_variable_attachment(self, doc):
+            attachment_value = self.get_variable_value(doc, "email_attachment")
+            if not attachment_value:
+                return None
+
+            return self.build_attachment_from_dynamic_value(doc, attachment_value)
+    def send_telegram_variable_attachments(self, doc, room, attachment_values):
+            sent_files = set()
+
+            for raw_value in attachment_values:
+                info = self.get_attachment_url_info(doc, raw_value)
+                if not info or not info.get("file_url"):
+                    continue
+
+                file_url = info.get("file_url")
+                file_name = info.get("file_name") or os.path.basename(file_url)
+
+                if file_url in sent_files:
+                    continue
+                sent_files.add(file_url)
+
+                ext = os.path.splitext(file_name or "")[1].lower()
+                is_image = ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
+
+                send(
+                    file_name,
+                    get_profile_id(self.owner),
+                    room,
+                    self.owner,
+                    attachment=file_url,
+                    sub_channel=None,
+                    is_link=None,
+                    is_media=1 if is_image else None,
+                    is_document=None if is_image else 1
+                )
 @frappe.whitelist()
 def call_trigger_notifications():
     """Trigger notifications."""
@@ -385,8 +882,7 @@ def trigger_notifications(method="daily"):
             alert.get_documents_for_today() 
 
 
-    
-@frappe.whitelist(allow_guest=True)
+
 @frappe.whitelist(allow_guest=True)
 def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
     import subprocess
@@ -403,7 +899,7 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
    
     create_folder_if_not_exists(DEFAULT_FOLDER,"Home/Attachments")
 
-    # 1️⃣ Ensure wkhtmltopdf is installed
+    #  Ensure wkhtmltopdf is installed
     wkhtml_path = shutil.which("wkhtmltopdf")
     if not wkhtml_path:
         frappe.throw("wkhtmltopdf is not installed on this server. Cannot generate PDF with header/footer.")
@@ -490,11 +986,11 @@ def pdf(doctype, name, key, format=None, lang=None, letterhead=None):
             )
             raise Exception("wkhtmltopdf failed. Check error logs.")
 
-        # 9️⃣ Read final PDF
+        #  Read final PDF
         with open(pdf_file.name, "rb") as f:
             pdf_data = f.read()
 
-        # 🔟 Save file into File DocType
+        #  Save file into File DocType
         file_name = f"{doctype}_{name.replace(' ', '_')}.pdf"
         _file = save_file(file_name, pdf_data, doctype, name, is_private=False,folder=f"Home/Attachments/{DEFAULT_FOLDER}")
 
@@ -596,7 +1092,28 @@ def create_folder_if_not_exists(folder_name, parent_folder="Home"):
         return folder.name
 
     return exists
+    
+def build_attachment_from_file_url(file_url, file_name=None):
+    if not file_url:
+        return None
 
+    cleaned_path = file_url.split("?", 1)[0].lstrip("/")
+
+    if cleaned_path.startswith("private/files/"):
+        absolute_path = get_site_path(*cleaned_path.split("/"))
+    elif cleaned_path.startswith("files/"):
+        absolute_path = get_site_path("public", *cleaned_path.split("/"))
+    else:
+        return None
+
+    if not os.path.exists(absolute_path):
+        return None
+
+    with open(absolute_path, "rb") as attachment_file:
+        return {
+            "fname": file_name or os.path.basename(absolute_path),
+            "fcontent": attachment_file.read()
+        }
        
 def handle_pdf_attachment(file_url, file_name):
     """Return HTML content for a PDF file attachment, similar to the JS handle_attachment function."""
@@ -617,3 +1134,317 @@ def handle_pdf_attachment(file_url, file_name):
     </div>
     """
     return html.strip()
+
+#========================================================================
+def get_child_event_row(doc):
+    return (
+        getattr(doc, "_added_child_row", None)
+        or getattr(doc, "_updated_child_row", None)
+        or getattr(doc, "_removed_child_row", None)
+        or getattr(doc, "_changed_child_row", None)
+    )
+
+
+def get_recipient_value_from_row(doc, row):
+    recipient_source = (row.recipient_source or "").strip()
+    receiver_field = (row.receiver_field or "").strip()
+    linked_phone_field = (row.linked_phone_field or "").strip()
+    receiver_value_type = (getattr(row, "receiver_value_type", "") or "").strip()
+    fixed_chat_profile = (getattr(row, "fixed_chat_profile", "") or "").strip()
+    fixed_profile_number = (getattr(row, "fixed_profile_number", "") or "").strip()
+    fixed_phone_number = (getattr(row, "fixed_phone_number", "") or "").strip()
+
+    child_row = get_child_event_row(doc)
+
+    if recipient_source == "Fixed Value":
+        if receiver_value_type == "Profile":
+            if not fixed_chat_profile:
+                return None
+
+            return {
+                "value_type": "Profile",
+                "value": fixed_chat_profile,
+                "contact_info": fixed_profile_number or None
+            }
+
+        elif receiver_value_type == "Phone":
+            return {
+                "value_type": "Phone",
+                "value": fixed_phone_number
+            }
+        return None
+
+    if not recipient_source or not receiver_field:
+        return None
+
+    if recipient_source == "From Profile Field":
+        return {
+            "value_type": "Profile",
+            "value": doc.get(receiver_field)
+        }
+
+    if recipient_source == "From Field":
+        return {
+            "value_type": "Phone",
+            "value": doc.get(receiver_field)
+        }
+
+    if recipient_source == "From Linked Field":
+        if not linked_phone_field:
+            return None
+
+        linked_docname = doc.get(linked_phone_field)
+        if not linked_docname:
+            return None
+
+        meta = frappe.get_meta(doc.doctype)
+        link_df = meta.get_field(linked_phone_field)
+        if not link_df or link_df.fieldtype != "Link" or not link_df.options:
+            return None
+
+        return {
+            "value_type": "Phone",
+            "value": frappe.db.get_value(link_df.options, linked_docname, receiver_field)
+        }
+
+    if recipient_source == "Child Row Field":
+        if not child_row:
+            return None
+        return {
+            "value_type": "Phone",
+            "value": child_row.get(receiver_field)
+        }
+
+    return None
+def find_chat_profile_by_contact(contact_info):
+    if not contact_info:
+        return None
+
+    profile = frappe.db.get_value(
+        "ClefinCode Chat Profile Contact Details",
+        {"contact_info": contact_info},
+        "parent"
+    )
+    if profile:
+        return profile
+
+    # جرّب مع +
+    if isinstance(contact_info, str) and not contact_info.startswith("+"):
+        profile = frappe.db.get_value(
+            "ClefinCode Chat Profile Contact Details",
+            {"contact_info": f"+{contact_info}"},
+            "parent"
+        )
+        if profile:
+            return profile
+
+    return None
+
+
+def create_contact_and_get_profile(contact_info, sender_name=None, platform="WhatsApp"):
+    if not contact_info:
+        return None
+
+    try:
+        contact_doc = frappe.get_doc({
+            "doctype": "Contact",
+            "first_name": sender_name or contact_info,
+            "platform": platform,
+            "phone_nos": [{
+                "phone": contact_info,
+                "is_primary_phone": 1,
+                "is_primary_mobile": 1
+            }]
+        })
+        contact_doc.insert(ignore_permissions=True)
+
+        profile = frappe.db.get_value(
+            "ClefinCode Chat Profile",
+            {"contact": contact_doc.name},
+            "name"
+        )
+        return profile
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Create Contact / Profile Error")
+        return None
+
+
+def get_or_create_chat_profile_from_phone(contact_info, sender_name=None, platform="WhatsApp"):
+    profile = find_chat_profile_by_contact(contact_info)
+    if profile:
+        return profile
+
+    return create_contact_and_get_profile(contact_info, sender_name=sender_name, platform=platform)
+
+def resolve_notification_recipient(self, doc, channel_type="WhatsApp"):
+    recipient_rows = frappe.get_all(
+        "Clefincode Notification Recipient list",
+        filters={"parent": self.name},
+        fields=[
+            "name",
+            "recipient_source",
+            "receiver_field",
+            "linked_phone_field",
+            "receiver_value_type",
+            "fixed_chat_profile",
+            "fixed_profile_number",
+            "fixed_phone_number"
+        ]
+    )
+
+    for row in recipient_rows:
+        row = frappe._dict(row)
+        result = get_recipient_value_from_row(doc, row)
+
+        if not result:
+            continue
+
+        raw_value = result.get("value")
+        value_type = result.get("value_type")
+
+        if not raw_value:
+            continue
+
+      
+        if value_type == "Profile":
+            profile_name = raw_value
+            selected_contact = (result.get("contact_info") or "").strip()
+
+        
+            if selected_contact:
+                contact = frappe.db.get_value(
+                    "ClefinCode Chat Profile Contact Details",
+                    {
+                        "parent": profile_name,
+                        "type": channel_type,
+                        "contact_info": selected_contact
+                    },
+                    "contact_info"
+                )
+
+                if contact:
+                    return {
+                        "profile": profile_name,
+                        "contact": contact,
+                        "source_row": row
+                    }
+
+           
+                continue
+
+           
+            contact = frappe.db.get_value(
+                "ClefinCode Chat Profile Contact Details",
+                {"parent": profile_name, "type": channel_type},
+                "contact_info"
+            )
+
+            if contact:
+                return {
+                    "profile": profile_name,
+                    "contact": contact,
+                    "source_row": row
+                }
+            continue
+
+   
+        if value_type == "Phone":
+            if channel_type == "Email":
+                return {
+                    "profile": None,
+                    "contact": raw_value,
+                    "source_row": row
+                }
+
+            profile_name = get_or_create_chat_profile_from_phone(
+                raw_value,
+                sender_name=str(raw_value),
+                platform=channel_type
+            )
+
+            if not profile_name:
+                continue
+
+            contact = frappe.db.get_value(
+                "ClefinCode Chat Profile Contact Details",
+                {"parent": profile_name, "type": channel_type},
+                "contact_info"
+            )
+
+            if not contact:
+                contact = raw_value
+
+            return {
+                "profile": profile_name,
+                "contact": contact,
+                "source_row": row
+            }
+
+    return None
+
+def get_or_create_notification_channel(self, contact, platform="WhatsApp", selected_profile=None):
+    default_gateway = None
+    platform_profile_doctype = None
+
+    if platform == "WhatsApp":
+        platform_profile_doctype = "ClefinCode WhatsApp Profile"
+        default_gateway = (
+            selected_profile
+            if self.owner == "Administrator" and selected_profile
+            else frappe.db.get_value(
+                platform_profile_doctype,
+                {"user": self.owner},
+                "name"
+            )
+        )
+
+    elif platform == "Telegram":
+        platform_profile_doctype = "ClefinCode Telegram Profile"
+        default_gateway = (
+            selected_profile
+            if self.owner == "Administrator" and selected_profile
+            else frappe.db.get_value(
+                platform_profile_doctype,
+                {"user": self.owner},
+                "name"
+            )
+        )
+
+    if not default_gateway:
+        frappe.log_error(
+            f"No default {platform} gateway found for user {self.owner}",
+            f"{platform} Gateway Missing"
+        )
+        return None
+
+    data = check_if_contact_has_chat(self.owner, contact, platform)
+    results = data.get("results", {})
+
+    if results:
+        room = results.get("name")
+        if room:
+            return room
+
+    users = [
+        {"email": self.owner, "name": self.owner, "platform": "Chat"},
+        {
+            "email": contact,
+            "name": contact,
+            "platform": platform,
+            "platform_profile": platform_profile_doctype,
+            "platform_gateway": default_gateway
+        }
+    ]
+
+    channel = create_channel(
+        "",
+        json.dumps(users),
+        "Direct",
+        "",
+        self.owner,
+        get_profile_id(self.owner),
+        creation_date=None
+    )
+
+    results = channel.get("results", [])
+    return results[0].get("room") if results else None

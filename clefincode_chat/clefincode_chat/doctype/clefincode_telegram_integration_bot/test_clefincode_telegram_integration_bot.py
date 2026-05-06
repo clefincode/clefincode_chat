@@ -5,5 +5,5 @@
 from frappe.tests.utils import FrappeTestCase
 
 
-class TestClefinCodeTelegramIntegration(FrappeTestCase):
+class TestClefinCodeTelegramIntegrationBot(FrappeTestCase):
 	pass

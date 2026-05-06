@@ -11,12 +11,22 @@ import {
   show_overlay,
   hide_overlay,
 } from "./erpnext_chat_utils";
+let FRAPPE_MAJOR_VERSION = null;
 
+async function initFrappeVersion() {
+  if (FRAPPE_MAJOR_VERSION !== null) return;
+
+  const r = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_1.api.get_frappe_major_version"
+  });
+
+  FRAPPE_MAJOR_VERSION = r.message;
+}
 export default class ChatContactList {
   constructor(opts) {
     this.$wrapper = opts.$wrapper;
     this.profile = opts.profile;
-    this.new_group = opts.new_group;
+    if (FRAPPE_MAJOR_VERSION == 16) {this.new_group = opts.new_group || 0;} else{this.new_group = opts.new_group;}
     this.add_member = opts.add_member;
     this.chat_info = opts.chat_info;
     this.limit = 10;
@@ -44,8 +54,12 @@ export default class ChatContactList {
 
     this.show_all_rooms = false;
     this.show_all_contacts = false;
-    
-    this.setup();
+    this.topic_picker = !!opts.topic_picker;
+    this.on_select = opts.on_select || null;
+   
+    if (FRAPPE_MAJOR_VERSION == 16) {this.ready = this.initialize();} else{  
+        this.setup();
+      }
   }
   inject_forward_select_styles() {
   if (this.forward != 1) return;
@@ -58,12 +72,12 @@ export default class ChatContactList {
         position: relative;
       }
       .chat-contact-list.forward-mode .chat-contact.forward-selected-contact {
-        background: rgba(120, 163, 8, 0.04);
+        background: rgba(119, 163, 8, 0.43);
       }
       .chat-contact-list.forward-mode .chat-contact.forward-selected-contact::after {
-        content: "✓";
+        content: "";
         position: absolute;
-        right: 12px;
+        left: 12px;
         top: 50%;
         transform: translateY(-50%);
         font-weight: 700;
@@ -119,11 +133,11 @@ this.search_text = value;
   this.$chat_contacts_container.find(".chat-contact").remove();
 
   
-  if (this.forward == 1) {
-    if (this.show_all_rooms) return await this.open_all_rooms_view();
-    if (this.show_all_contacts) return await this.open_all_contacts_view();
-    return await this.load_forward_preview();
-  }
+if (this.forward == 1 || this.topic_picker) {
+  if (this.show_all_rooms) return await this.open_all_rooms_view();
+  if (this.show_all_contacts) return await this.open_all_contacts_view();
+  return await this.load_forward_preview();
+}
 
   await this.load_next_page(true);
 }
@@ -149,21 +163,35 @@ this.search_text = value;
 
 
 
-  setup() {
+  async initialize() {
+    if (FRAPPE_MAJOR_VERSION == 16) {
+    await initFrappeVersion();  
+    await this.setup();
+    return true          }    
+    else return;
+  }
+
+
+  async setup() {
     this.$chat_contact_list = $(document.createElement("div"));
     this.$chat_contact_list.addClass("chat-contact-list");
     
-  if (this.forward == 1) this.$chat_contact_list.addClass("forward-mode");
+  if (this.forward == 1 || this.topic_picker) {
+  this.$chat_contact_list.addClass("forward-mode");
+}
 
   
   this.inject_forward_select_styles();
     this.setup_header();
     this.setup_search();
-    this.fetch_and_setup_contacts();
+    if (FRAPPE_MAJOR_VERSION == 16) {
+    await this.fetch_and_setup_contacts();}
+    else {this.fetch_and_setup_contacts();}
+
   }
   
   async load_next_rooms_page(is_first = false) {
-  if (this.forward != 1) return;
+  if (this.forward != 1 && !this.topic_picker) return;
   if (!this.room_has_more || this.room_loading) return;
 
   this.room_loading = true;
@@ -204,7 +232,21 @@ this.search_text = value;
       `);
 
       // click select/unselect
-      $row.on("click", () => this.toggle_room_target(r, $row));
+      $row.on("click", async () => {
+  if (this.topic_picker) {
+    await this.on_select?.({
+      type: "room",
+      room: r.room,
+      name: r.room_name || r.contact || r.room,
+      platform: r.platform || null,
+      room_type: r.type || null,
+      raw: r
+    });
+    return;
+  }
+
+  this.toggle_room_target(r, $row);
+});
 
       this.$chat_contacts_container.append($row);
     });
@@ -246,9 +288,31 @@ toggle_room_target(roomObj, $row) {
 }
 
 
+
+
   setup_header() {
     let chat_list_header_html = "";
-    if (this.forward == 1) {
+    if (this.topic_picker) {
+  chat_list_header_html = `
+    <div class='chat-list-header'>
+      <div class='d-flex'>
+        <div class='back-to-chat-list' title='Back'>
+          ${frappe.utils.icon("arrow-left", "lg")}
+        </div>
+        <h3 style="margin-left: 8px;">
+          ${__("Add To Chat")}
+          <br>
+          <span class="add-participants">${__("Select a chat or contact")}</span>
+        </h3>
+      </div>
+      <div class='chat-list-icons'>
+        <div class='close-chat-list' title='Close'>
+          ${frappe.utils.icon("close", "lg")}
+        </div>
+      </div>
+    </div>
+  `;
+} else if (this.forward == 1) {
   chat_list_header_html = `
     <div class='chat-list-header'>
       <div class='d-flex'>
@@ -279,8 +343,8 @@ toggle_room_target(roomObj, $row) {
             ${frappe.utils.icon("arrow-left", "lg")}
           </div>
           <h3 style="margin-left: 8px;">${__(
-            "New group"
-          )}<br><span class="add-participants">Add participants <span class="selected-contacts-number"></span></span></h3>
+        "New group"
+      )}<br><span class="add-participants">Add participants <span class="selected-contacts-number"></span></span></h3>
         </div>
         <div class='chat-list-icons'> 
           <div class="save-icon"></div>         
@@ -299,8 +363,8 @@ toggle_room_target(roomObj, $row) {
             ${frappe.utils.icon("arrow-left", "lg")}
           </div>
           <h3 style="margin-left: 8px;">${__(
-            "Select Contact"
-          )}<br><span class="add-participants">Add participants <span class="selected-contacts-number"></span></span></h3>
+        "Select Contact"
+      )}<br><span class="add-participants">Add participants <span class="selected-contacts-number"></span></span></h3>
         </div>
         <div class='chat-list-icons'> 
           <div class="save-icon"></div>          
@@ -315,8 +379,8 @@ toggle_room_target(roomObj, $row) {
             ${frappe.utils.icon("arrow-left", "lg")}
           </div>
           <h3 style="margin-left: 8px;">${__(
-            "Select Contact"
-          )}<br><span class="select-contacts"></span></h3>
+        "Select Contact"
+      )}<br><span class="select-contacts"></span></h3>
         </div>
         <div class='chat-list-icons'>          
           <div class='close-chat-list' 
@@ -357,6 +421,7 @@ toggle_room_target(roomObj, $row) {
           this.chat_info.chat_space.chat_members,
           this.chat_info.chat_space.contributors
         );
+  
          this.setup_contacts(); 
       this.setup_events();
       return;
@@ -368,14 +433,14 @@ toggle_room_target(roomObj, $row) {
       }
      
       this.setup_contacts_container_once();  
-         if (this.forward == 1) {
-        await this.load_forward_preview();      // ✅ 5 rooms + 5 contacts + see more
-      } else {
-        await this.load_next_page(true);
-      }
-        
-    this.setup_events();
-   if (this.forward != 1) this.setup_scroll_event();
+        if (this.forward == 1 || this.topic_picker) {
+          await this.load_forward_preview();
+        } else {
+          await this.load_next_page(true);
+        }
+
+        this.setup_events();
+        if (this.forward != 1 && !this.topic_picker) this.setup_scroll_event();
     } catch (error) {
       console.log(error);
     }
@@ -586,7 +651,7 @@ setup_contacts_container_once() {
     .addClass("chat-contacts-container");
 
   
-  if (!this.forward && frappe.model.can_create("ClefinCode Chat Profile")) {
+  if (!this.forward && !this.topic_picker && can_create_dt("ClefinCode Chat Profile")) {
     this.$chat_contacts_container.append(`
       <div class="new-contact">
         ${frappe.get_avatar("avatar-medium", "C")}
@@ -595,7 +660,7 @@ setup_contacts_container_once() {
     `);
   }
 
-  if (!this.forward && this.new_group == 0) {
+  if (!this.forward && !this.topic_picker && this.new_group == 0) {
     this.$chat_contacts_container.append(`
       <div class="new-group">
         ${frappe.get_avatar("avatar-medium","G")}
@@ -648,6 +713,27 @@ async load_next_page(is_first = false) {
         chat_contact_list: this,
         profile,
       });
+// if (this.topic_picker && cc.$chat_contact) {
+//   cc.$chat_contact.off("click.topicPickerSelect");
+
+//   cc.$chat_contact.on("click.topicPickerSelect", async (e) => {
+//     if (
+//       $(e.target).closest(
+//         "#dropdownMenuButton, .dropdown, .dropdown-toggle, .dropdown-menu, .dropdown-item, .chat-icons"
+//       ).length
+//     ) {
+//       return;
+//     }
+
+//     await this.on_select?.({
+//       type: "contact",
+//       name: element.full_name || element.user_id || element.profile_id,
+//       email: element.email || element.user_email || element.user_id || element.profile_id,
+//       profile_id: element.profile_id,
+//       raw: element
+//     });
+//   });
+// }
 
       this.chat_contacts.push(cc);
     });
@@ -673,20 +759,19 @@ setup_scroll_event() {
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
     if (!nearBottom) return;
 
-    if (me.forward == 1 && !me.show_all_rooms && !me.show_all_contacts) return;
-
+if ((me.forward == 1 || me.topic_picker) && !me.show_all_rooms && !me.show_all_contacts) return;
   
-    if (me.forward == 1 && me.show_all_rooms) {
+    if ((me.forward == 1 || me.topic_picker) && me.show_all_rooms) {
       me.load_next_rooms_page();
       return;
     }
 
-    if (me.forward == 1 && me.show_all_contacts) {
+  if ((me.forward == 1 || me.topic_picker) && me.show_all_contacts) {
       me.load_next_page();
       return;
     }
 
-    if (me.forward != 1) me.load_next_page();
+    if (me.forward != 1 && !me.topic_picker) me.load_next_page();
   });
 }
 
@@ -705,12 +790,12 @@ setup_scroll_event() {
   }
 
   setup_contacts() {
-  this.$chat_contacts_container = $(document.createElement("div")).addClass(
-    "chat-contacts-container"
-  );
+    this.$chat_contacts_container = $(document.createElement("div")).addClass(
+      "chat-contacts-container"
+    );
 
   // New Contact button
-  if (frappe.model.can_create("ClefinCode Chat Profile")){
+  if (can_create_dt("ClefinCode Chat Profile")){
   this.$chat_contacts_container.append(`
       <div class="new-contact" style="
           display:flex;
@@ -734,40 +819,44 @@ setup_scroll_event() {
           </div>
         </div>
       `;
-    this.$chat_contacts_container.append(
-      `<div class="new-group" style="display:flex; align-items:center; cursor:pointer; padding:10px;">
+      this.$chat_contacts_container.append(
+        `<div class="new-group" style="display:flex; align-items:center; cursor:pointer; padding:10px;">
           ${frappe.get_avatar("avatar-medium","G")} 
           ${new_group_html}
        </div>`
-    );
+      );
+    }
+
+    this.chat_contacts = [];
+
+    this.contacts.forEach((element) => {
+      let profile = {
+        user: this.profile.user,
+        user_email: this.profile.user_email,
+        is_admin: this.profile.is_admin,
+        time_zone: this.profile.time_zone,
+        profile_id: element.profile_id,
+        contact_name:
+          element.full_name ||
+          element.user_id ||
+          element.profile_id ||
+          "Unknown",
+        contact_details: element.contact_details || [],
+        add_member: this.add_member,
+      };
+
+      this.chat_contacts.push(
+        new ChatContact({
+          $wrapper: this.$wrapper,
+          $chat_contacts_container: this.$chat_contacts_container,
+          chat_contact_list: this,
+          profile: profile,
+        })
+      );
+    });
+    this.copy_chat_contacts = this.chat_contacts;
+    this.$chat_contact_list.append(this.$chat_contacts_container);
   }
-
-  this.chat_contacts = [];
-  
-  this.contacts.forEach((element) => {
-    let profile = {
-      user: this.profile.user,
-      user_email: this.profile.user_email,
-      is_admin: this.profile.is_admin,
-      time_zone: this.profile.time_zone,
-      profile_id: element.profile_id,
-      contact_name: element.full_name,
-      contact_details: element.contact_details,
-      add_member: this.add_member,
-    };
-
-    this.chat_contacts.push(
-      new ChatContact({
-        $wrapper: this.$wrapper,
-        $chat_contacts_container: this.$chat_contacts_container,
-        chat_contact_list: this,
-        profile: profile,
-      })
-    );
-  });
-  this.copy_chat_contacts = this.chat_contacts;
-  this.$chat_contact_list.append(this.$chat_contacts_container);
-}
 
   fitler_contacts(query) {
     if (query && query != "") {
@@ -828,24 +917,47 @@ setup_scroll_event() {
     });
   }
 
-  setup_events() {
+  async setup_events() {
     let me = this;
     setTimeout(() => {
-      $(".new-group").on("click", function (e) {
-        erpnext_chat_app.chat_contact_list = new ChatContactList({
+      if (FRAPPE_MAJOR_VERSION == 16) {
+      let me = this;
+
+      $(document).off("click.newgroup");
+
+      $(document).on("click.newgroup", ".new-group", async function (e) {
+        e.stopPropagation();
+
+        const contactList = new ChatContactList({
           $wrapper: me.$wrapper,
-          profile: {
-            user: me.profile.user,
-            user_email: me.profile.user_email,
-            is_admin: me.profile.is_admin,
-            time_zone: me.profile.time_zone,
-            user_type: me.profile.user_type,
-            is_limited_user: me.profile.is_limited_user,
-          },
+          profile: me.profile,
           new_group: 1,
         });
-        erpnext_chat_app.chat_contact_list.render();
+
+        await contactList.ready;      // ⏳ wait for initialize()
+        contactList.render();         // 🎯 render once
+
+        erpnext_chat_app.chat_contact_list = contactList;
       });
+
+      }
+      else {
+        $(".new-group").on("click", function (e) {
+          erpnext_chat_app.chat_contact_list = new ChatContactList({
+            $wrapper: me.$wrapper,
+            profile: {
+              user: me.profile.user,
+              user_email: me.profile.user_email,
+              is_admin: me.profile.is_admin,
+              time_zone: me.profile.time_zone,
+              user_type: me.profile.user_type,
+              is_limited_user: me.profile.is_limited_user,
+            },
+            new_group: 1,
+          });
+          erpnext_chat_app.chat_contact_list.render();
+        });
+      }
     }, 500);
 
     // this.$chat_contact_list.find(".chat-search-box").on("input", function (e) {
@@ -867,11 +979,47 @@ setup_scroll_event() {
         }, 300);
       });
 
-    this.$chat_contact_list
+if (FRAPPE_MAJOR_VERSION == 16) {
+  $(document).off("click.backtolist");
+  $(document).on("click.backtolist", ".back-to-chat-list", function (e) {
+    e.stopPropagation();
+
+    const isWebView = $("body").hasClass("cc-chat-webview");
+
+    if (isWebView && me.add_member == 1 && me.chat_info) {
+      me.chat_info.$chat_info.removeClass("add-members-open");
+      me.chat_info.$chat_info.find(".list_members").empty();
+      me.chat_info.$chat_info.find(".filter-members").hide().val("");
+      me.chat_info.$chat_info.find(".close_members_lis").css("visibility", "hidden");
+      me.chat_info.add_member_list = null;
+      return;
+    }
+
+    me.$wrapper.find(".chat-contact-list").remove();
+    erpnext_chat_app.chat_contact_list = null;
+    erpnext_chat_app.chat_list = new ChatList({
+      $wrapper: me.$wrapper,
+      user: me.profile.user,
+      user_email: me.profile.user_email,
+      is_admin: me.profile.is_admin,
+      time_zone: me.profile.time_zone,
+      user_type: me.profile.user_type,
+      is_limited_user: me.profile.is_limited_user,
+    });
+
+    erpnext_chat_app.chat_list.render();
+  });
+}
+    else{
+      this.$chat_contact_list
       .find(".back-to-chat-list")
       .on("click", function (e) {
-         if (me.forward == 1) {
-            me.back_to_chat_space();
+        if (me.forward == 1 || me.topic_picker) {
+            if (typeof me.on_cancel === "function") {
+              me.on_cancel();
+            } else {
+              me.back_to_chat_space();
+            }
             return;
           }
         if (me.add_member == 1) {
@@ -891,6 +1039,7 @@ setup_scroll_event() {
           erpnext_chat_app.chat_list.render();
         }
       });
+    }
 
     this.$chat_contact_list.find(".save-icon").on("click", async function () {
       if (me.forward == 1) {
@@ -907,9 +1056,9 @@ setup_scroll_event() {
         me.chat_info.$chat_info
           .find(".participants")
           .html(me.chat_info.count_group_members(me.chat_space.chat_members));
-        me.$wrapper.find(".chat-contact-list").remove();
-        me.chat_info.add_member_list = null;
-        me.$wrapper.find(".chat-info").show();
+        // me.$wrapper.find(".chat-contact-list").remove();
+        // me.chat_info.add_member_list = null;
+        // me.$wrapper.find(".chat-info").show();
 
         const added_members_name = get_user_names(me.selected_contacts);
         const added_members_email = get_user_emails(me.selected_contacts);
@@ -948,6 +1097,27 @@ setup_scroll_event() {
           chat_topic: me.chat_space.chat_topic,
         };
         send_message(message_info);
+        const isWebView = $("body").hasClass("cc-chat-webview");
+
+        if (isWebView) {
+          me.chat_info.$chat_info.removeClass("add-members-open");
+          me.chat_info.$chat_info.find(".add-members-overlay").hide();
+          me.chat_info.$chat_info.find(".list_members").empty();
+          me.chat_info.$chat_info.find(".filter-members").hide().val("");
+          me.chat_info.$chat_info.find(".close_members_lis").css("visibility", "hidden");
+
+          me.chat_info.add_member_list = null;
+
+          me.chat_space.$wrapper.find(".chat-info").remove();
+          me.chat_space.$wrapper.find(".chat-space").show();
+          me.chat_space.$wrapper.find(".chat-topic-space").show();
+
+          return;
+        }
+
+        me.$wrapper.find(".chat-contact-list").remove();
+        me.chat_info.add_member_list = null;
+        me.$wrapper.find(".chat-info").show();
 
         for (const member of me.selected_contacts) {
           var html = `
@@ -982,28 +1152,91 @@ setup_scroll_event() {
     });
 
     this.$chat_contact_list.find(".close-chat-list").on("click", function () {
-      if (me.forward == 1) {
-      me.back_to_chat_space();
-      return;
-    }
+
+  
+     if (me.forward == 1 || me.topic_picker) {
+          if (typeof me.on_cancel === "function") {
+            me.on_cancel();
+          } else {
+            me.back_to_chat_space();
+          }
+          return;
+        }
       erpnext_chat_app.hide_chat_widget();
     });
- $(document).on("click", ".new-contact", () => {
-    frappe.new_doc("ClefinCode Chat Profile");
-});
+    $(document).on("click", ".new-contact", () => {
+      frappe.new_doc("ClefinCode Chat Profile");
+    });
   }
 
-  render() {
-    if (this.add_member == 1 || this.forward == 1) {
+render() {
+  const isWebView = $("body").hasClass("cc-chat-webview");
+
+  if (isWebView && this.add_member == 1 && this.chat_info) {
+    const $overlay = this.chat_info.$chat_info.find(".add-members-overlay");
+    const $target = $overlay.find(".list_members");
+
+    this.chat_info.$chat_info.addClass("add-members-open");
+    this.chat_info.$chat_info.css({
+      position: "absolute",
+      inset: "0",
+      "z-index": 99999,
+      display: "flex",
+      "flex-direction": "column"
+    });
+
+    $overlay.css({
+      display: "flex",
+      position: "absolute",
+      inset: "0",
+      "z-index": 100000,
+      "flex-direction": "column",
+      background: "var(--card-bg, #fff)"
+    });
+
+    this.chat_info.$chat_info.find(".filter-members").show().val("").focus();
+    this.chat_info.$chat_info.find(".close_members_lis").css("visibility", "visible");
+
+    $target.empty().append(this.$chat_contact_list);
+
+    this.$chat_contact_list.css({
+      height: "100%",
+      display: "flex",
+      "flex-direction": "column"
+    });
+
+    this.$chat_contact_list.find(".chat-contacts-container").css({
+      flex: "1 1 auto",
+      height: "auto",
+      "min-height": "0",
+      "overflow-y": "auto"
+    });
+
+    return;
+  }
+
+
+  if (FRAPPE_MAJOR_VERSION == 16) {
+    this.ready.then(() => {
+      let $view = this.$wrapper.find(".chat-view");
+
+      if (!$view.length) {
+        $view = $("<div class='chat-view'></div>");
+        this.$wrapper.append($view);
+      }
+
+      $view.empty().append(this.$chat_contact_list);
+    });
+  } else {
+    if (this.add_member == 1 || this.forward == 1 || this.topic_picker) {
       this.$wrapper.find(".chat-info").hide();
       this.$wrapper.find(".chat-space").hide();
       this.$wrapper.append(this.$chat_contact_list);
     } else {
       this.$wrapper.html(this.$chat_contact_list);
     }
-
-    // this.setup_events();
   }
+}
 
   async create_group() {
     show_overlay("");
@@ -1038,6 +1271,7 @@ setup_scroll_event() {
       new_group: 1,
     });
 
+    if (FRAPPE_MAJOR_VERSION !== 16) {
     setTimeout(() => {
       erpnext_chat_app.chat_list = new ChatList({
         $wrapper: this.$wrapper,
@@ -1050,6 +1284,7 @@ setup_scroll_event() {
       });
       erpnext_chat_app.chat_list.render();
     }, 700);
+    }
     hide_overlay();
   }
   update_selected_counter() {
@@ -1057,6 +1292,17 @@ setup_scroll_event() {
   this.$chat_contact_list
     .find(".selected-contacts-number")
     .text(n ? `(${n})` : "");
+}
+getForwardPayloads() {
+  if (Array.isArray(this.forward_payload)) {
+    return this.forward_payload.filter(Boolean);
+  }
+
+  if (this.forward_payload) {
+    return [this.forward_payload];
+  }
+
+  return [];
 }
 
 back_to_chat_space() {
@@ -1115,15 +1361,21 @@ async create_direct_channel_for_forward(contact, platform, last_message_preview 
 async ensure_room_for_forward(contact) {
   const platform = contact.platform || "Chat";
 
-  
-  const roomRes = await check_if_contact_has_chat(this.profile.user_email, contact.email, platform);
- 
-  if (roomRes?.results?.name) return roomRes.results.name;
- 
+  const roomRes = await check_if_contact_has_chat(
+    this.profile.user_email,
+    contact.email,
+    platform
+  );
 
- 
-  const preview = this.forward_payload?.content
-    ? $("<div>").html(this.forward_payload.content).text().trim().slice(0, 60)
+  if (roomRes?.results?.name) {
+    return roomRes.results.name;
+  }
+
+  const payloads = this.getForwardPayloads();
+  const firstPayload = payloads[0] || {};
+
+  const preview = firstPayload?.content
+    ? $("<div>").html(firstPayload.content).text().trim().slice(0, 60)
     : "";
 
   return await this.create_direct_channel_for_forward(contact, platform, preview);
@@ -1135,59 +1387,55 @@ async forward_message() {
     return;
   }
 
-  if (!this.forward_payload?.content) {
-    frappe.msgprint(__("No message content to forward."));
+  const payloads = this.getForwardPayloads();
+
+  if (!payloads.length) {
+    frappe.msgprint(__("No messages to forward."));
     return;
   }
 
   show_overlay(__("Forwarding..."));
 
   try {
-  
-    // const forwarded_header = `
-    //   <div class="forwarded-label" style="font-size:11px;opacity:.7;margin-bottom:4px;">
-    //     ↪ ${__("Forwarded")}
-    //   </div>
-    // `;
+    for (const target of this.selected_contacts) {
+      let room = null;
 
-    const p = this.forward_payload || {};
-const forwarded_content = p.content;
+      if (target.type === "room" && target.room) {
+        room = target.room;
+      } else {
+        room = await this.ensure_room_for_forward(target);
+      }
 
+      if (!room) continue;
 
-for (const t of this.selected_contacts) {
-  let room = null;
+      for (const p of payloads) {
+        const message_info = {
+          content: p.content || "",
+          user: this.profile.user,
+          room: room,
+          email: this.profile.user_email,
+          is_first_message: 0,
+          is_forwarded: 1,
+          forwarded_from: p.source_message_name || p.message_name || "",
+          is_link: p.is_link || 0,
+          is_media: p.is_media || 0,
+          is_document: p.is_document || 0,
+          is_voice_clip: p.is_voice_clip || 0,
+          is_screenshot: p.is_screenshot || 0,
+          attachment: p.attachment || null,
+          file_id: p.file_id || null,
+          message_type: p.message_type || "",
+        };
 
-  if (t.type === "room" && t.room) {
-    room = t.room;                // ✅ existing room
-  } else {
-    room = await this.ensure_room_for_forward(t); // ✅ contact flow
-  }
+        await send_message(message_info);
+      }
+    }
 
-  if (!room) continue;
+    frappe.show_alert({
+      message: __("Forwarded successfully"),
+      indicator: "green"
+    });
 
-  const message_info = {
-    content: forwarded_content,
-    user: this.profile.user,
-    room: room,
-    email: this.profile.user_email,
-    is_first_message: 0,
-    is_forwarded: 1,
-    forwarded_from: p.source_message_name || p.message_name || "",
-    is_link: p.is_link || 0,
-    is_media: p.is_media || 0,
-    is_document: p.is_document || 0,
-    is_voice_clip: p.is_voice_clip || 0,
-    is_screenshot: p.is_screenshot || 0,
-    attachment: p.attachment || null,
-    file_id: p.file_id || null,
-    message_type: "",
-  };
-
-  await send_message(message_info);
-}
-
-
-    frappe.show_alert({ message: __("Forwarded successfully"), indicator: "green" });
     this.back_to_chat_space();
   } catch (e) {
     console.log(e);
@@ -1197,11 +1445,14 @@ for (const t of this.selected_contacts) {
   }
 }
 } //END Class
-
+function can_create_dt(doctype) {
+  const list = frappe?.boot?.user?.can_create;
+  return Array.isArray(list) && list.includes(doctype);
+}
 async function get_contacts(user_email, limit = 10, offset = 0, search_text = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_3.api.get_contacts",
+    method: "clefincode_chat.api.api_1_3_3.api.get_contacts_for_website",
     args: { user_email, limit, offset, search_text  },
   });
   return res.message.results[0]; // {contacts, total, has_more, next_offset}
@@ -1250,7 +1501,7 @@ async function get_contacts_for_adding_to_group(
 ) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_2_1.api.get_contacts_for_adding_to_group",
+      "clefincode_chat.api.api_1_3_3.api.get_contacts_for_adding_to_group",
     args: {
       user_email: user_email,
       existing_members: existing_members,
@@ -1270,4 +1521,9 @@ export async function add_group_member(new_members, room, last_active_sub_channe
     },
     freeze: true,
   });
+}
+function safeIncludes(haystack, needle) {
+  if (Array.isArray(haystack)) return haystack.includes(needle);
+  if (typeof haystack === "string") return haystack.includes(needle);
+  return false;
 }

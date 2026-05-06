@@ -228,6 +228,7 @@ save_all_contacts(dialog) {
     <div class="p-2 text-center roomname">
       <div>Contact</div>
       <div>${this.chat_space.$wrapper.attr("data-contact")}</div>
+      
     </div>`);
       this.chat_space.$wrapper.append(this.$chat_info);
       this.$chat_info.find(".avatar-frame").css("font-size", "3.5em");
@@ -293,6 +294,7 @@ save_all_contacts(dialog) {
       )}</span> participants
     </div>
     `;
+     body +=`<span class="toggle-search" title="Search" style="cursor:pointer;cursor:pointer;margin-right:8px; width:20px; height:20px; margin-left:8px;">${frappe.utils.icon("search", "sm")}</span>`;
     } else if (this.roomtype == "Direct") {
       body += `<div>${this.roomname}</div>`;
       const useremail = this.user_email;
@@ -390,24 +392,29 @@ save_all_contacts(dialog) {
       var room_emails = await get_chat_members(this.room);
       if (room_emails.length > 0) {
         group_sections += `<div class="p-4 chat-info-section members-section"><div class="pb-2 font-weight-bold">Members</div>`;
+          
       }
       const checkemail = this.user_email;
       if (this.chat_space.profile.is_removed != 1) {
         if (this.is_admin == 1) {
           group_sections += `
         <div class="add_members-button d-flex flex-row justify-content-between">
-          <div class="add_members">${frappe.utils.icon(
-            "assign",
-            "md"
-          )} Add members</div>
-          <div class="close_members_lis">${frappe.utils.icon(
-            "close",
-            "md"
-          )}</div>
-       </div>
-       <input type="text" placeholder="Search.." class="myInput filter-members" >
-        <div class="list_members">
-        </div>
+              <div class="add_members">${frappe.utils.icon(
+                "assign",
+                "md"
+              )} Add members</div>
+            </div>
+
+            <div class="add-members-overlay">
+              <div class="add-members-overlay-header">
+                <span class="close_members_lis">${frappe.utils.icon("arrow-left", "lg")}</span>
+                <span>Add members</span>
+              </div>
+
+              <input type="text" placeholder="Search.." class="myInput filter-members">
+
+              <div class="list_members"></div>
+            </div>
         `;
         }
       }
@@ -1406,22 +1413,32 @@ save_all_contacts(dialog) {
     });
 
     this.$chat_info.find(".add_members").on("click", function () {
-      me.add_member_list = new ChatContactList({
-        $wrapper: me.chat_space.$wrapper,
-        profile: me.chat_space.profile,
-        chat_info: me,
-        add_member: 1,
-      });
-      me.add_member_list.render();
-    });
+            me.$chat_info.addClass("add-members-open");
+            me.$chat_info.find(".filter-members").show().val("").focus();
+            me.$chat_info.find(".list_members").html("");
+
+            me.add_member_list = new ChatContactList({
+              $wrapper: me.chat_space.$wrapper,
+              profile: me.chat_space.profile,
+              chat_info: me,
+              add_member: 1,
+            });
+
+            me.add_member_list.render();
+          });
 
     this.$chat_info.find(".close_members_lis").on("click", function () {
-      const list_of_members = me.$chat_info.find(".list_members");
-      list_of_members.html("");
-      $(this).css("visibility", "hidden");
-      me.$chat_info.find(".filter-members").css("display", "none");
-      me.$chat_info.find(".filter-members").val("");
-    });
+  const list_of_members = me.$chat_info.find(".list_members");
+
+  me.$chat_info.removeClass("add-members-open");
+  me.$chat_info.find(".add-members-overlay").hide();
+
+  list_of_members.html("");
+  $(this).css("visibility", "hidden");
+  me.$chat_info.find(".filter-members").css("display", "none").val("");
+
+  me.add_member_list = null;
+});
 
     this.$chat_info.find(".filter-members").on("keyup", function () {
       var input, filter, members_to_add, i, txtValue;

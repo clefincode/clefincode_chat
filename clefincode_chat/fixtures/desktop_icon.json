@@ -1,0 +1,25 @@
+[
+ {
+  "_doctype": null,
+  "_report": null,
+  "app": null,
+  "blocked": 0,
+  "category": null,
+  "color": null,
+  "custom": 0,
+  "description": null,
+  "docstatus": 0,
+  "doctype": "Desktop Icon",
+  "force_show": 0,
+  "hidden": 0,
+  "icon": null,
+  "label": "ClefinChat",
+  "link": "/desk/clefinchat?webview=1",
+  "modified": "2026-03-07 15:25:25.953878",
+  "module_name": null,
+  "name": "ClefinChat",
+  "reverse": 0,
+  "standard": 0,
+  "type": null
+ }
+]

@@ -381,7 +381,12 @@ save_all_contacts(dialog) {
     }   
           const isUserContact = contact_details.some(cd => cd.contact_info === frappe.session.user);
       const isAdmin = frappe.session.user === "Administrator";
-      const isSystemManager = frappe.user_roles.includes("System Manager");
+      const roles =
+  (Array.isArray(frappe?.user_roles) && frappe.user_roles) ||
+  (Array.isArray(frappe?.boot?.user?.roles) && frappe.boot.user.roles) ||
+  [];
+
+const isSystemManager = roles.includes("System Manager");
 
     
       // Show Manage Contact if user owns contact OR is admin OR system manager
@@ -403,27 +408,95 @@ save_all_contacts(dialog) {
     return html_options
   }
 
-  setup_events() {
-    const me = this;
-  
-    this.$chat_contact.on("click", (e) => {
-          if (me.chat_contact_list.forward == 1) {
-    this.select_contact(e.target);
-    return;
-  }
-      if (me.chat_contact_list.new_group == 0) {
-        this.click_on_contact(e.target);
-      } else {
-        this.select_contact(e.target);
+ setup_events() {
+  const me = this;
+
+  this.$chat_contact.on("click", ".dropdown-menu .dropdown-item", async function (e) {
+    if (!me.chat_contact_list?.topic_picker) return;
+
+    const $item = $(this);
+
+    if ($item.hasClass("manage-contact")) {
+      return;
+    }
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const selected_email = $item.data("contact") || me.profile.default_contact;
+
+    const selected_platform =
+      ["Chat", "Email", "WhatsApp", "Instagram", "Messenger", "Telegram"]
+        .find((p) => $item.hasClass(p)) || me.profile.default_platform || "Chat";
+
+    await me.chat_contact_list.on_select?.({
+      type: "contact",
+      name: me.profile.contact_name,
+      email: selected_email,
+      profile_id: me.profile.profile_id,
+      raw: {
+        email: selected_email,
+        platform: selected_platform
       }
     });
-     this.$chat_contact.on("click", "#manageContactBtn", () => {
-        const user_contact = me.profile.contact_details.find(cd => cd.contact_info === frappe.session.user);
-        
-        
-        me.open_manage_popup(user_contact);
-    });
-  }
+  });
+
+  this.$chat_contact.on("click", async function (e) {
+    // ===== topic picker mode =====
+    if (me.chat_contact_list?.topic_picker) {
+      const $target = $(e.target);
+
+      
+      if ($target.closest("#dropdownMenuButton, .options-icon, .dropdown-toggle").length) {
+        return;
+      }
+
+     
+      if ($target.closest(".dropdown-menu").length) {
+        return;
+      }
+
+     
+      await me.chat_contact_list.on_select?.({
+        type: "contact",
+        name: me.profile.contact_name,
+        email: me.profile.default_contact,
+        profile_id: me.profile.profile_id,
+        raw: {
+          email: me.profile.default_contact,
+          platform: me.profile.default_platform || "Chat"
+        }
+      });
+
+      return;
+    }
+
+    // ===== forward mode =====
+    if (me.chat_contact_list.forward == 1) {
+      me.select_contact(e.target);
+      return;
+    }
+
+    // ===== normal existing behavior =====
+    if (me.chat_contact_list.new_group == 0) {
+      me.click_on_contact(e.target);
+    } else {
+      me.select_contact(e.target);
+    }
+  });
+
+  // 3) manage contact
+  this.$chat_contact.on("click", "#manageContactBtn", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const user_contact = me.profile.contact_details.find(
+      (cd) => cd.contact_info === frappe.session.user
+    );
+
+    me.open_manage_popup(user_contact);
+  });
+}
 
   click_on_contact(e) {
     const contact_element = $(e).closest(
@@ -873,3 +946,8 @@ export async function check_if_contact_has_whatsapp_chat(default_whatsapp_number
   return await res.message.results[0];
 };
 
+function safeIncludes(haystack, needle) {
+  if (Array.isArray(haystack)) return haystack.includes(needle);
+  if (typeof haystack === "string") return haystack.includes(needle);
+  return false;
+}
