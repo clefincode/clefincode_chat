@@ -5683,14 +5683,18 @@ def process_ai_reply_job(member, sender, channel,msg):
                 return
 
             if reply:
+                frappe.log_error("reply",reply)
                 try:
                     # frappe.log_error(message=reply+"\n"+f"{member.profile_id.lower()} says:",title="before conditions")
                     if "says:" in reply:
 
                         before, after = reply.split("says:", 1)
+                        frappe.log_error("beforebeforebefore",before)
                         if len(before) < 20:
-                            return after.strip()
+                            frappe.log_error(after.strip())
+                            reply= after.strip()
                     reply, has=linkify_and_detect(reply)  
+                    frappe.log_error("relpy after strip",reply)
                        
                     send(
                         content=f"<p>{reply}</p>",
@@ -5703,7 +5707,8 @@ def process_ai_reply_job(member, sender, channel,msg):
                     )
                     summarize_channel_if_needed(channel, ai_agent.name)
                 except Exception as e:
-                    frappe.log_error(title="API send error", message=str(e))
+                  
+                        frappe.log_error(title="API send error",message=traceback.format_exc()    )
 
     except Exception:
         frappe.log_error(frappe.get_traceback(), "process_ai_reply_job - participant loop error")
