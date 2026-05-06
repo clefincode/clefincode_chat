@@ -1088,7 +1088,10 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             new_message.file_id = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "name")               
             new_message.save(ignore_permissions = True)
 
-        if attachment: set_attach_message(attachment, new_message.name)
+        if file_id:
+            set_attach_message(file_id=file_id, message_name=new_message.name)
+        elif attachment:
+            set_attach_message(attachment=attachment, message_name=new_message.name)
         if reply_to_message_name:
                 try:
                   
@@ -1437,6 +1440,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_text,
             msg.reply_preview_sender_email,
             msg.reactions_json,
+            msg.chat_topic,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
@@ -1471,6 +1475,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_text,
             msg.reply_preview_sender_email,
             msg.reactions_json,
+            msg.chat_topic,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
@@ -2337,13 +2342,39 @@ def get_file_view_size(file_id,is_video=None):
         file_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return {"results" : [{'file_size':file_doc.file_size,'data':file_base64,'duration':duration}]}
 # ==========================================================================================
-def set_attach_message(attachment, message):
-    file_doc = frappe.get_doc("File", {"file_url": attachment})
-    file_doc.update({
-        "attached_to_doctype": "ClefinCode Chat Message",
-        "attached_to_name": message
-    })
-    file_doc.save(ignore_permissions = True)
+def set_attach_message(file_id=None, attachment=None, message_name=None):
+    import frappe
+    from urllib.parse import urlparse, unquote
+
+    file_doc = None
+
+    if file_id:
+        file_doc = frappe.get_doc("File", file_id)
+
+    elif attachment:
+        parsed = urlparse(attachment)
+
+        file_url = parsed.path if parsed.scheme and parsed.netloc else attachment
+        file_url = unquote(file_url)
+
+        if not file_url.startswith("/"):
+            file_url = "/" + file_url
+
+        file_name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+
+        if not file_name:
+            frappe.throw(f"File not found yet or wrong file_url: {file_url}")
+
+        file_doc = frappe.get_doc("File", file_name)
+
+    if not file_doc:
+        frappe.throw("No file_id or attachment provided")
+
+    file_doc.attached_to_doctype = "ClefinCode Chat Message"
+    file_doc.attached_to_name = message_name
+    file_doc.save(ignore_permissions=True)
+
+    return file_doc
 # ==========================================================================================
 def get_file_type(file_name):
     ext = os.path.splitext(file_name)[1]  # Get the file extension
@@ -6569,7 +6600,7 @@ def send_clefincode_chat_template(new_message):
 
         # Build download link
         pdf_url = frappe.utils.get_url(pdf_result['file_url'])
-        secure_pdf_url = frappe.utils.get_url(pdf_result['access_url'])
+        # secure_pdf_url = frappe.utils.get_url(pdf_result['access_url'])
 
         # pdf_html = f"""
         #     <div style="font-family: Arial; font-size:14px; padding:10px;">
@@ -6582,7 +6613,7 @@ def send_clefincode_chat_template(new_message):
         #         </a>
         #     </div>
         # """
-        send( handle_pdf_attachment(pdf_result['file_url'], pdf_result['file_name']),new_message.sender, new_message.chat_channel , template.owner,  attachment = secure_pdf_url , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=pdf_result['file_id'])
+        send( handle_pdf_attachment(pdf_result['file_url'], pdf_result['file_name']),new_message.sender, new_message.chat_channel , template.owner,  attachment = pdf_url , sub_channel = None , is_link = None , is_media = None , is_document = 1,file_id=pdf_result['file_id'])
         # Send PDF as attachment
         # send(
         #     pdf_html,
@@ -8506,6 +8537,7 @@ def _normalize_topic_doc(topic_doc):
 
     return {
         "name": topic_doc.name,
+        "date":str(topic_doc.creation),
         "subject": topic_doc.subject,
         "chat_channel": topic_doc.chat_channel,
         "topic_status": topic_doc.topic_status,
@@ -8636,4 +8668,41 @@ def relink_messages_to_topic(topic_name, message_names):
         "topic_name": topic_name,
         "updated_count": len(updated),
         "updated_messages": updated,
+    }
+
+@frappe.whitelist()
+def get_topic_reference_doctypes(search=None, page_length=20, start=0):
+    search = (search or "").strip()
+    page_length = max(1, min(cint(page_length or 20), 50))
+    start = max(cint(start or 0), 0)
+
+    filters = [
+        ["DocType", "istable", "=", 0],
+        ["DocType", "issingle", "=", 0],
+    ]
+
+    if search:
+        filters.append(["DocType", "name", "like", f"%{search}%"])
+
+    rows = frappe.get_all(
+        "DocType",
+        filters=filters,
+        fields=["name", "module"],
+        order_by="name asc",
+        start=start,
+        page_length=page_length,
+    )
+
+    doctypes = [
+        {
+            "doctype": row.name,
+            "label": row.name,
+            "description": row.module,
+        }
+        for row in rows
+    ]
+
+    return {
+        "count": len(doctypes),
+        "doctypes": doctypes,
     }
