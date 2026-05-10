@@ -2297,11 +2297,12 @@ hideAllReactButtons() {
 
 
 closeMessageActionMenu() {
-  if (this.$messageActionMenu?.length) {
+  if (this.$messageActionMenu && this.$messageActionMenu.length) {
     this.$messageActionMenu.remove();
   }
 
   this.$messageActionMenu = null;
+  $(document).off("pointerdown.messageActionMenu");
 }
 
 startBulkSelection(action, initialMessageName) {
@@ -5193,8 +5194,6 @@ async fetchTemplateSuggestions(textValue) {
 openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   this.closeMessageActionMenu();
 
-  const safeMessageName = frappe.utils.escape_html(String(messageName || ""));
-
   const icon = (name) => {
     const icons = {
       edit: `
@@ -5248,6 +5247,8 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
 
     return `<span class="menu-icon">${icons[name] || ""}</span>`;
   };
+
+  const safeMessageName = frappe.utils.escape_html(String(messageName || ""));
 
   const item = ({ actionClass, iconName, label, danger = false }) => `
     <button
@@ -5321,13 +5322,8 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
     </div>
   `);
 
- 
   this.$wrapper.append($menu);
   this.$messageActionMenu = $menu;
-
-  $menu.on("click pointerdown", function (e) {
-    e.stopPropagation();
-  });
 
   const triggerRect = $trigger[0].getBoundingClientRect();
 
@@ -5338,15 +5334,12 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
     let left = triggerRect.right - menuWidth;
     let top = triggerRect.bottom + 6;
 
-   
     left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
 
-   
     if (top + menuHeight > window.innerHeight - 8) {
       top = triggerRect.top - menuHeight - 6;
     }
 
-   
     top = Math.max(8, top);
 
     $menu.css({
