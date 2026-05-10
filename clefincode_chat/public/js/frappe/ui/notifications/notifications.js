@@ -4,16 +4,19 @@ frappe.provide("frappe.ui");
 	const OriginalNotifications = frappe.ui.Notifications;
 
 	if (!OriginalNotifications) {
-		console.warn("frappe.ui.Notifications is not available yet. Make sure this file loads after Frappe notifications.");
+		console.warn(
+			"frappe.ui.Notifications is not available yet. Make sure this file loads after Frappe notifications."
+		);
 		return;
 	}
 
 	frappe.ui.Notifications = class ClefinCodeNotifications extends OriginalNotifications {
 		constructor(opts) {
 			super(opts);
+
 			setTimeout(() => {
-        this.setup_clefincode_chat_notification_actions();
-      }, 0);
+				this.setup_clefincode_chat_notification_actions();
+			}, 0);
 		}
 
 		setup_clefincode_chat_notification_actions() {
@@ -50,7 +53,7 @@ frappe.provide("frappe.ui");
 
 				const $approve_btn = $(`
 					<div class="btn btn-primary approved-btn">
-						${__("Approved")}
+						${__("Approve")}
 					</div>
 				`);
 
@@ -58,7 +61,8 @@ frappe.provide("frappe.ui");
 					e.preventDefault();
 					e.stopImmediatePropagation();
 
-					const notification_log_name = item_html.data("name");
+					const notification_log_name =
+						item_html.data("name") || notification_log.name;
 
 					$approve_btn.remove();
 
@@ -72,7 +76,7 @@ frappe.provide("frappe.ui");
 						notification_log.document_name
 					);
 
-					frappe.msgprint(__("Approved has been sent"));
+					frappe.msgprint(__("Approval has been sent"));
 				});
 
 				$timestamp.append($approve_btn);
@@ -85,38 +89,7 @@ frappe.provide("frappe.ui");
 			}
 		}
 	};
-				return item_html;
-			};
 
-			if (notifications_view.dropdown_items?.length) {
-				notifications_view.render_notifications_dropdown();
-			}
-		}
-	};
-
-	function approve_access_request(
-		sender,
-		reciever,
-		chat_topic,
-		notification_log,
-		chat_topic_subject,
-		reference_doctype,
-		reference_docname
-	) {
-		return frappe.call({
-			method: "clefincode_chat.api.api_1_2_1.api.approve_access_request",
-			args: {
-				sender,
-				reciever,
-				chat_topic,
-				notification_log,
-				chat_topic_subject,
-				reference_doctype,
-				reference_docname,
-			},
-		});
-	}
-})();
 	function approve_access_request(
 		sender,
 		reciever,
