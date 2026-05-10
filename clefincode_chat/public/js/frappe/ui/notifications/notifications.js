@@ -85,7 +85,38 @@ frappe.provide("frappe.ui");
 			}
 		}
 	};
+				return item_html;
+			};
 
+			if (notifications_view.dropdown_items?.length) {
+				notifications_view.render_notifications_dropdown();
+			}
+		}
+	};
+
+	function approve_access_request(
+		sender,
+		reciever,
+		chat_topic,
+		notification_log,
+		chat_topic_subject,
+		reference_doctype,
+		reference_docname
+	) {
+		return frappe.call({
+			method: "clefincode_chat.api.api_1_2_1.api.approve_access_request",
+			args: {
+				sender,
+				reciever,
+				chat_topic,
+				notification_log,
+				chat_topic_subject,
+				reference_doctype,
+				reference_docname,
+			},
+		});
+	}
+})();
 	function approve_access_request(
 		sender,
 		reciever,

@@ -8706,3 +8706,79 @@ def get_topic_reference_doctypes(search=None, page_length=20, start=0):
         "count": len(doctypes),
         "doctypes": doctypes,
     }
+
+###########################
+@frappe.whitelist()
+def get_topic_open_context(chat_topic, message_name=None):
+    user = frappe.session.user
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    if not topic.chat_channel:
+        return {
+            "can_write": False,
+            "chat_topic": topic.name,
+            "chat_topic_subject": getattr(topic, "subject", None),
+            "chat_channel": None,
+            "message_name": message_name,
+        }
+
+    channel = frappe.get_doc("ClefinCode Chat Channel", topic.chat_channel)
+
+    user_email = frappe.db.get_value("User", user, "email") or user
+
+    is_member = frappe.db.exists(
+        "ClefinCode Chat Channel User",
+        {
+            "parent": topic.chat_channel,
+            "user": user_email,
+        },
+    ) or frappe.db.exists(
+        "ClefinCode Chat Channel User",
+        {
+            "parent": topic.chat_channel,
+            "email": user_email,
+        },
+    )
+
+    is_contributor = frappe.db.exists(
+        "ClefinCode Chat Channel Contributor",
+        {
+            "parent": topic.chat_channel,
+            "user": user_email,
+        },
+    ) or frappe.db.exists(
+        "ClefinCode Chat Channel Contributor",
+        {
+            "parent": topic.chat_channel,
+            "email": user_email,
+        },
+    )
+
+    can_write = bool(is_member or is_contributor)
+
+    room_name = (
+        getattr(channel, "channel_name", None)
+        or getattr(channel, "room_name", None)
+        or getattr(channel, "subject", None)
+        or topic.chat_channel
+    )
+
+    room_type = (
+        getattr(channel, "type", None)
+        or getattr(channel, "room_type", None)
+        or "Group"
+    )
+
+    return {
+        "can_write": can_write,
+        "chat_topic": topic.name,
+        "chat_topic_subject": getattr(topic, "subject", None),
+        "chat_channel": topic.chat_channel,
+        "room_name": room_name,
+        "room_type": room_type,
+        "chat_status": getattr(channel, "chat_status", None),
+        "platform": getattr(channel, "platform", "Chat"),
+        "is_private_topic": cint(getattr(topic, "is_private", 0)),
+        "message_name": message_name,
+    }

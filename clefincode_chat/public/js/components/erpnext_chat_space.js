@@ -66,11 +66,15 @@ export default class ChatSpace {
     this.autoScrollThresholdPx = 120;
 
     // open chat space for showing topic information
-    this.chat_topic_space = opts.chat_topic;
+   this.chat_topic_space = opts.chat_topic;
     this.chat_topic_channel = opts.chat_topic_channel;
     this.is_private_topic = opts.is_private_topic;
     this.chat_topic_space_subject = opts.chat_topic_subject;
     this.alternative_subject = opts.alternative_subject;
+    this.topic_write_mode = opts.topic_write_mode || false;  
+    if (this.chat_topic_space) {
+      this.chat_topic = this.chat_topic_space;
+    }
     this.not_authorized_user = false;
     this.chat_status = opts.chat_status;
     this.reply_to_message_name = null;
@@ -95,7 +99,14 @@ export default class ChatSpace {
     
 
     if (this.chat_topic_space) {
-      this.profile.room_type = "Topic";
+      if (this.topic_write_mode && this.chat_topic_channel) {
+        
+        this.profile.room = this.chat_topic_channel;
+
+        this.profile.room_type = opts.original_room_type || this.profile.room_type || "Group";
+      } else {
+        this.profile.room_type = "Topic";
+      }
     }
 
     if (this.profile.room_type != "Topic") {
@@ -706,16 +717,17 @@ getMessageKindLabel(cached = {}) {
   return __("Text message");
 }
 async getLinkedTopicInfo(cached = {}) {
-  if (this.profile.room_type === "Topic") {
-    return {
-      name: this.chat_topic_space || this.profile.chat_topic || cached.chat_topic || null,
-      subject:
-        this.chat_topic_space_subject ||
-        this.alternative_subject ||
-        cached.chat_topic_subject ||
-        null
-    };
-  }
+if (this.profile.room_type === "Topic") {
+  return {
+    name: this.chat_topic_space || this.profile.chat_topic || cached.chat_topic || null,
+    subject:
+      this.chat_topic_space_subject ||
+      this.alternative_subject ||
+      cached.chat_topic_subject ||
+      null,
+    references: this.reference_doctypes || []
+  };
+}
 
   const topicName =
     cached.chat_topic ||
@@ -762,11 +774,12 @@ async getLinkedTopicInfo(cached = {}) {
     const found = topics.find(t => t.name === topicName);
 
     return {
-      name: topicName,
-      subject: found?.subject || topicName,
-      status: found?.topic_status || null,
-      is_private: found?.is_private || 0
-    };
+        name: topicName,
+        subject: found?.subject || topicName,
+        status: found?.topic_status || null,
+        is_private: found?.is_private || 0,
+        references: found?.references || found?.reference_doctypes || []
+      };
   } catch (e) {
     console.warn("Failed to load linked topic info", e);
 
@@ -818,7 +831,41 @@ async openMessageInfoDialog(messageName) {
   const sentAt = this.formatMessageInfoDate(cached.send_date, cached.display_time);
   const messageType = this.getMessageKindLabel(cached);
   const linkedTopic = await this.getLinkedTopicInfo(cached);
+  const linkedTopicReferences = linkedTopic?.references || [];
 
+const linkedTopicReferencesHtml = linkedTopicReferences.length
+  ? `
+    <div style="margin-top:6px;">
+      <div style="font-size:12px; opacity:.65; margin-bottom:2px;">
+        ${__("References")}
+      </div>
+
+      ${linkedTopicReferences.map(ref => {
+        const doctype = ref.doctype || ref.reference_doctype || "";
+        const docname = ref.docname || ref.reference_docname || "";
+
+        if (!doctype || !docname) return "";
+
+        return `
+          <a href="#"
+             class="message-info-doctype-link"
+             data-doctype="${frappe.utils.escape_html(doctype)}"
+             data-docname="${frappe.utils.escape_html(docname)}"
+             style="
+               display:block;
+               font-size:12px;
+               color:#007bff;
+               text-decoration:underline;
+               word-break:break-word;
+               margin-top:2px;
+             ">
+            ${frappe.utils.escape_html(doctype)} / ${frappe.utils.escape_html(docname)}
+          </a>
+        `;
+      }).join("")}
+    </div>
+  `
+  : "";
 const linkedTopicHtml = linkedTopic
   ? `
     <div>
@@ -834,13 +881,14 @@ const linkedTopicHtml = linkedTopic
           : ``
       }
       ${
-        linkedTopic.status
-          ? `<div style="font-size:12px; opacity:.7;">
-              ${__("Status")}: ${frappe.utils.escape_html(linkedTopic.status)}
-              ${linkedTopic.is_private ? " • " + __("Private") : ""}
-            </div>`
-          : ``
-      }
+  linkedTopic.status
+    ? `<div style="font-size:12px; opacity:.7;">
+        ${__("Status")}: ${frappe.utils.escape_html(linkedTopic.status)}
+        ${linkedTopic.is_private ? " • " + __("Private") : ""}
+      </div>`
+    : ``
+}
+${linkedTopicReferencesHtml}
     </div>
   `
   : `
@@ -932,6 +980,19 @@ const linkedTopicHtml = linkedTopic
   });
 
   d.show();
+  d.$wrapper.off("click", ".message-info-doctype-link")
+  .on("click", ".message-info-doctype-link", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const doctype = $(this).attr("data-doctype");
+    const docname = $(this).attr("data-docname");
+
+    if (doctype && docname) {
+      d.hide();
+      frappe.set_route("Form", doctype, docname);
+    }
+  });
 }
 openEmojiMenu({ $bubble, messageName }) {
   this.closeEmojiMenu();
@@ -1190,11 +1251,11 @@ async jumpToMessage(messageName, maxTries = 50) {
         limit,
         this.messages_offset
       );
-    } else if (this.profile.room_type === "Topic") {
+    } else if (this.profile.room_type === "Topic" || this.topic_write_mode) {
       res = await get_messages(
         "",
         this.profile.user_email,
-        this.profile.room_type,
+        "Topic",
         this.chat_topic_space,
         this.profile.remove_date,
         limit,
@@ -1462,10 +1523,13 @@ async fetch_single_message(messageName) {
         return;
       }      
     }
+    // Get topic info first so reference_doctypes is available when rendering messages
+    if (this.chat_topic_space) {
+      await this.get_topic_info();
+    }
     this.profile.room || this.chat_topic_space
       ? await this.fetch_and_setup_messages()
       : this.create_empty_space();
-    await this.get_topic_info();
   }
 
  setup_chat_window() {
@@ -1793,11 +1857,11 @@ async fetch_single_message(messageName) {
           this.messages_limit,
           this.messages_offset
         );
-      } else if (this.profile.room_type == "Topic") {
+      } else if (this.profile.room_type == "Topic" || this.topic_write_mode) {
         res = await get_messages(
           "",
           this.profile.user_email,
-          this.profile.room_type,
+          "Topic",
           this.chat_topic_space,
           this.profile.remove_date,
           this.messages_limit,
@@ -1918,10 +1982,13 @@ async fetch_single_message(messageName) {
 
   async setup_actions() {
     
+    const is_readonly_topic =
+    this.profile.room_type == "Topic" && !this.topic_write_mode;
+
     if (
       (this.profile.room_type == "Contributor" &&
         this.last_active_sub_channel == "") ||
-      this.profile.room_type == "Topic"
+      is_readonly_topic
     ) {
       return;
     }
@@ -3495,8 +3562,10 @@ async setup_messages(messages_list) {
          reply_preview,   
         is_forwarded:element.is_forwarded,
          is_deleted: element.is_deleted,
-          is_edited: element.is_edited ,
-
+        is_edited: element.is_edited ,
+        reference_doctypes: (this.chat_topic_space && this.reference_doctypes) || null,
+        chat_topic: element.chat_topic || element.topic || null,
+        chat_topic_subject: element.chat_topic_subject || element.topic_subject || element.chat_topic_title || null,
       });
        
         const $messageBubble = message_content.find(".message-bubble");
@@ -3597,6 +3666,9 @@ async setup_messages(messages_list) {
       sender_email,
       is_edited=0,
       original_content= null,
+      reference_doctypes = null,
+      chat_topic = null,
+      chat_topic_subject = null,
     } = params;
     const $recipient_element = $(document.createElement("div"))
       .addClass(type)
@@ -3649,6 +3721,35 @@ async setup_messages(messages_list) {
         }
 
         $message_element.append($sanitized_content);
+
+// ================= Message Topic Badge =================
+if (chat_topic) {
+  const safeTitle = frappe.utils.escape_html(
+    chat_topic_subject || chat_topic || __("Topic")
+  );
+
+  const tagIcon = `
+    <svg class="icon icon-md message-topic-badge__icon" aria-hidden="true">
+      <use href="#icon-tag"></use>
+    </svg>
+  `;
+
+  const $topicBadge = $(`
+    <button
+      type="button"
+      class="message-topic-badge"
+      title="${__('Topic')}: ${safeTitle}"
+      aria-label="${__('Topic')}"
+    >
+      ${tagIcon}
+    </button>
+  `);
+
+  $message_element.addClass("has-topic-badge");
+  $message_element.append($topicBadge);
+}
+    // ================= Doctype Badge for Topic Messages =================
+        
 // ===================================================
     if (is_edited && !is_deleted) {
       $message_element.append(`
@@ -4192,14 +4293,15 @@ if (!is_deleted && type !== "info-message") {
             <span aria-hidden="true">×</span>
           </button>
         </div>          
-        </div>
-      <div>
+          </div>
+        <div>
       `;
         this.$chat_space_container.append(
           await this.make_message({
             content: this.ask_to_join_template,
             type: "mention-message",
             sender: this.profile.user,
+            reference_doctypes: null,
           })
         );
 
@@ -5033,7 +5135,7 @@ async fetchTemplateSuggestions(textValue) {
         sender_email: res.sender_email, 
         message_name: res.message_name,
         message_template_type: res.message_template_type,
-        reply_to_message:res.reply_to_message,
+        reply_to_message:res.reply_to_message ,
         reply_preview: {
             type: res.reply_preview_type || null,
             text: res.reply_preview_text || null,
@@ -5045,7 +5147,8 @@ async fetchTemplateSuggestions(textValue) {
           },
         is_forwarded: res.is_forwarded || 0,
         is_deleted:res.is_deleted || 0,
-         is_edited: res.is_edited || 0,
+        is_edited: res.is_edited || 0,
+        reference_doctypes: this.chat_topic_space ? this.reference_doctypes : null,
       });
       let attributeFound = false;
       let file_name = "";
@@ -5087,99 +5190,187 @@ async fetchTemplateSuggestions(textValue) {
     this.prevMessage = res;
   }
 
-  openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
+openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   this.closeMessageActionMenu();
+
+  const safeMessageName = frappe.utils.escape_html(String(messageName || ""));
+
+  const icon = (name) => {
+    const icons = {
+      edit: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 17.25V21h3.75L17.8 9.95l-3.75-3.75L3 17.25z"></path>
+          <path d="M20.7 7.05c.4-.4.4-1 0-1.4l-2.35-2.35a1 1 0 0 0-1.4 0l-1.85 1.85 3.75 3.75 1.85-1.85z"></path>
+        </svg>
+      `,
+      reply: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-.7-5-3.6-11-11-11z"></path>
+        </svg>
+      `,
+      copy: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1z"></path>
+          <path d="M19 5H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"></path>
+        </svg>
+      `,
+      react: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM8.5 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM12 17.5c-2.3 0-4.2-1.3-5-3.2h10c-.8 1.9-2.7 3.2-5 3.2z"></path>
+        </svg>
+      `,
+      forward: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 8V4l8 8-8 8v-4H4v-8h8z"></path>
+        </svg>
+      `,
+      relink: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3.9 12a5 5 0 0 1 5-5h4v2h-4a3 3 0 0 0 0 6h4v2h-4a5 5 0 0 1-5-5z"></path>
+          <path d="M8 13h8v-2H8v2z"></path>
+          <path d="M11 17h4a3 3 0 0 0 0-6h-4V9h4a5 5 0 0 1 0 10h-4v-2z"></path>
+        </svg>
+      `,
+      delete: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12z"></path>
+          <path d="M8 4l1-1h6l1 1h4v2H4V4h4z"></path>
+        </svg>
+      `,
+      info: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M11 17h2v-6h-2v6z"></path>
+          <path d="M11 9h2V7h-2v2z"></path>
+          <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"></path>
+        </svg>
+      `
+    };
+
+    return `<span class="menu-icon">${icons[name] || ""}</span>`;
+  };
+
+  const item = ({ actionClass, iconName, label, danger = false }) => `
+    <button
+      type="button"
+      class="menu-item ${actionClass} ${danger ? "danger" : ""}"
+      data-message-name="${safeMessageName}"
+    >
+      ${icon(iconName)}
+      <span class="menu-label">${__(label)}</span>
+    </button>
+  `;
 
   const items = [];
 
   if (isTextOnly && isMyMessage) {
-    items.push(`
-      <button type="button" class="menu-item edit-action" data-message-name="${messageName}">
-        Edit
-      </button>
-    `);
+    items.push(item({
+      actionClass: "edit-action",
+      iconName: "edit",
+      label: "Edit"
+    }));
   }
 
-  items.push(`
-    <button type="button" class="menu-item reply-action" data-message-name="${messageName}">
-      Reply
-    </button>
-  `);
-  items.push(`
-  <button type="button" class="menu-item copy-action" data-message-name="${messageName}">
-    Copy
-  </button>
-`);
+  items.push(item({
+    actionClass: "reply-action",
+    iconName: "reply",
+    label: "Reply"
+  }));
 
-  items.push(`
-    <button type="button" class="menu-item react-action" data-message-name="${messageName}">
-      React
-    </button>
-  `);
+  items.push(item({
+    actionClass: "copy-action",
+    iconName: "copy",
+    label: "Copy"
+  }));
 
-  items.push(`
-    <button type="button" class="menu-item forward-action" data-message-name="${messageName}">
-      Forward
-    </button>
-  `);
+  items.push(item({
+    actionClass: "react-action",
+    iconName: "react",
+    label: "React"
+  }));
 
-  items.push(`
-    <button type="button" class="menu-item relink-action" data-message-name="${messageName}">
-      ReLink Topic
-    </button>
-  `);
+  items.push(item({
+    actionClass: "forward-action",
+    iconName: "forward",
+    label: "Forward"
+  }));
+
+  items.push(item({
+    actionClass: "relink-action",
+    iconName: "relink",
+    label: "ReLink Topic"
+  }));
 
   if (isMyMessage) {
-    items.push(`
-      <button type="button" class="menu-item delete-action danger" data-message-name="${messageName}">
-        Delete
-      </button>
-    `);
+    items.push(item({
+      actionClass: "delete-action",
+      iconName: "delete",
+      label: "Delete",
+      danger: true
+    }));
   }
-  items.push(`
-  <button type="button" class="menu-item message-info-action" data-message-name="${messageName}">
-    Message Info
-  </button>
-`);
+
+  items.push(item({
+    actionClass: "message-info-action",
+    iconName: "info",
+    label: "Message Info"
+  }));
 
   const $menu = $(`
-    <div class="message-action-menu">
+    <div class="message-action-menu" role="menu">
       ${items.join("")}
     </div>
   `);
 
+ 
   this.$wrapper.append($menu);
+  this.$messageActionMenu = $menu;
 
-  const rect = $trigger[0].getBoundingClientRect();
-  const wrapperRect = this.$wrapper[0].getBoundingClientRect();
+  $menu.on("click pointerdown", function (e) {
+    e.stopPropagation();
+  });
+
+  const triggerRect = $trigger[0].getBoundingClientRect();
 
   requestAnimationFrame(() => {
-    const w = $menu.outerWidth();
-    const h = $menu.outerHeight();
+    const menuWidth = $menu.outerWidth();
+    const menuHeight = $menu.outerHeight();
 
-    let left = rect.right - wrapperRect.left - w;
-    let top = rect.bottom - wrapperRect.top + 6;
+    let left = triggerRect.right - menuWidth;
+    let top = triggerRect.bottom + 6;
 
-    const maxLeft = this.$wrapper.innerWidth() - w - 8;
-    const maxTop = this.$wrapper.innerHeight() - h - 8;
+   
+    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8));
 
-    left = Math.max(8, Math.min(left, maxLeft));
-
-    if (top > maxTop) {
-      top = rect.top - wrapperRect.top - h - 6;
+   
+    if (top + menuHeight > window.innerHeight - 8) {
+      top = triggerRect.top - menuHeight - 6;
     }
 
-    top = Math.max(8, Math.min(top, maxTop));
+   
+    top = Math.max(8, top);
 
     $menu.css({
-      position: "absolute",
-      left: `${left}px`,
+      position: "fixed",
       top: `${top}px`,
-      zIndex: 9999
+      left: `${left}px`,
+      zIndex: 99999
     });
   });
 
-  this.$messageActionMenu = $menu;
+
+  setTimeout(() => {
+    $(document)
+      .off("pointerdown.messageActionMenu")
+      .on("pointerdown.messageActionMenu", (e) => {
+        const insideMenu = $(e.target).closest(".message-action-menu").length;
+        const insideTrigger = $(e.target).closest(".message-menu-trigger").length;
+
+        if (!insideMenu && !insideTrigger) {
+          this.closeMessageActionMenu();
+          this.hideAllReactButtons();
+        }
+      });
+  }, 0);
 }
 
 
@@ -5617,25 +5808,25 @@ async rebuildMessage(messageName) {
     message_type = "info-message";
   }
 
-  const rebuilt = await this.make_message({
-    content: msg.content,
-    original_content: msg.original_content || null,
-    time: get_time(msg.send_date, this.profile.time_zone),
-    type: message_type,
-    sender: msg.sender,
-    message_name: msg.message_name,
-    message_template_type: msg.message_template_type,
-    reply_to_message: msg.reply_to_message,
-    reply_preview: {
-      type: msg.reply_preview_type,
-      text: msg.reply_preview_text,
-      sender: msg.reply_preview_sender,
-      file_url: msg.reply_preview_file_url
-
-    },
-    is_forwarded: msg.is_forwarded,
-     is_edited: msg.is_edited ,
-  });
+      const rebuilt = await this.make_message({
+        content: msg.content,
+        original_content: msg.original_content || null,
+        time: get_time(msg.send_date, this.profile.time_zone),
+        type: message_type,
+        sender: msg.sender,
+        message_name: msg.message_name,
+        message_template_type: msg.message_template_type,
+        reply_to_message: msg.reply_to_message,
+        reply_preview: {
+          type: msg.reply_preview_type,
+          text: msg.reply_preview_text,
+          sender: msg.reply_preview_sender,
+          file_url: msg.reply_preview_file_url
+        },
+        is_forwarded: msg.is_forwarded,
+        is_edited: msg.is_edited ,
+        reference_doctypes: this.chat_topic_space ? this.reference_doctypes : null,
+      });
 
   const $old = this.$chat_space.find(`#msg-${messageName}`);
   if ($old.length) {

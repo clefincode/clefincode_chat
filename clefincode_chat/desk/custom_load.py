@@ -168,9 +168,7 @@ def add_chat_topics(doc, docinfo):
 		display_subject = chat_topic_subject if chat_topic_subject else split_channel_name(alternative_subject)
 		
 		channel_name = (
-			f"<span class='topic-card' data-channel='{chat_channel}' data-topic='{chat_topic_data.parent}' "
-			f"data-subject='{chat_topic_subject}' data-alternative-subject='{alternative_subject}' "
-			f"data-is-private='{is_private}' title='{title}' "
+			f"<span class='topic-link' title='{title}' "
 			f"style='text-decoration:underline;cursor:pointer'>{display_subject}</span>"
 		)
 		subject = f"<b>@ClefinCode Chat Topic:</b> {channel_name}"
@@ -181,6 +179,10 @@ def add_chat_topics(doc, docinfo):
 			"subject": subject,
 			"creation": chat_topic_data.creation,
 			"topic_status": chat_topic_data.topic_status,
+			"chat_channel": chat_channel,
+			"is_private_topic": is_private,
+			"chat_topic_subject": chat_topic_subject,
+			"alternative_subject": alternative_subject,
 		})
 
 

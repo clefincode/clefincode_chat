@@ -37,12 +37,16 @@ from frappe.utils import cint
 from frappe.utils import get_files_path, get_url
 from frappe.utils.file_manager import save_file
 from frappe.utils.pdf import get_pdf
+from frappe.utils import now_datetime
 import shutil
 from collections import Counter
 import threading
 import time
+from frappe.auth import LoginManager
+from frappe.utils.password import check_password, update_password
+from frappe.sessions import clear_sessions
 
-from frappe.utils import now_datetime
+
 
 
 
@@ -81,42 +85,69 @@ def get_clean_timezone(user_timezone):
 #############################################################################################
 ######################################## Users Accounts #####################################
 #############################################################################################
-@frappe.whitelist(allow_guest = True)
-def login(email , password): 
-    user = frappe.db.get("User", {"email": email}) 
-    if user:
-        if not user.enabled:          
-            return [{"status":0,"description":"User Account is disabled","data":None}]
-        result =(
-            frappe.qb.from_(Auth)
-            .select(Auth.name, Auth.password)
-            .where(
-                (Auth.doctype == "User")
-                & (Auth.name == user.email)
-                & (Auth.fieldname == "password")
-                & (Auth.encrypted == 0)
-            )
-            .limit(1)
-            .run(as_dict=True)
-        )
 
-        if not result or not passlibctx.verify(password, result[0].password):
-            return [{"status":0,"description":"Incorrect email or password","data":None}]
-            
-        else:
-            user = frappe.get_doc('User' , email)
-            api_secret = frappe.generate_hash(length=15)
-            # if api key is not set generate api key
-            if not user.api_key:
-                api_key = frappe.generate_hash(length=15)
-                user.api_key = api_key
-            user.api_secret = api_secret
-            user.save(ignore_permissions=True)
-            frappe.db.commit()               
-            return [{'status':1,"description":"Done successfully","data":[{"api_key":user.api_key,"api_secret":api_secret,'full_name':user.full_name}]}]
-            
-    else:    
-        return [{"status":0,"description":"User doesn't exist","data":None}]
+@frappe.whitelist(allow_guest=True)
+def login(email=None, password=None):
+    if not email or not password:
+        return [{
+            "status": 0,
+            "description": "Email and password are required",
+            "data": None
+        }]
+
+    user = frappe.db.get_value(
+        "User",
+        {"email": email},
+        ["name", "email", "enabled", "full_name", "user_image"],
+        as_dict=True
+    )
+
+    if not user:
+        return [{
+            "status": 0,
+            "description": "User doesn't exist",
+            "data": None
+        }]
+
+    if not user.enabled:
+        return [{
+            "status": 0,
+            "description": "User Account is disabled",
+            "data": None
+        }]
+
+    try:
+        lm = LoginManager()
+        lm.authenticate(user=user.name, pwd=password)
+        lm.post_login()
+
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "login_failure")
+        return [{
+            "status": 0,
+            "description": "Incorrect email or password",
+            "data": None
+        }]
+
+    sid = getattr(frappe.session, "sid", None)
+
+    if not sid and getattr(frappe.local, "session", None):
+        sid = getattr(frappe.local.session, "sid", None)
+
+    if not sid and getattr(frappe.local, "session", None):
+        sid = frappe.local.session.data.get("sid")
+
+    return [{
+        "status": 1,
+        "description": "Done successfully",
+        "data": [{
+            "sid": sid,
+            "full_name": user.full_name,
+            "email": user.email,
+            "user_image": user.user_image
+        }]
+    }]
+
 # ==========================================================================================
 @frappe.whitelist()
 def get_versions():   
