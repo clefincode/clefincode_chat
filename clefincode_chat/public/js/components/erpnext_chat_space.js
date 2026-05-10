@@ -789,6 +789,7 @@ if (this.profile.room_type === "Topic") {
     };
   }
 }
+
 async openMessageInfoDialog(messageName) {
   let cached = this.messageCache.get(messageName) || {};
 
@@ -990,7 +991,14 @@ ${linkedTopicReferencesHtml}
 
     if (doctype && docname) {
       d.hide();
-      frappe.set_route("Form", doctype, docname);
+
+   
+
+    const url = getFormUrl(doctype, docname);
+    console.log("Dsdsdsds");
+
+    window.open(url, "_blank", "noopener,noreferrer");
+     
     }
   });
 }
@@ -6907,4 +6915,25 @@ function show_doctype_selector(doctype, callback) {
   });
 
   d.show();
+}
+ function getDeskBasePath() {
+  const path = window.location.pathname || "";
+
+  // Frappe v16
+  if (path.startsWith("/desk")) return "/desk";
+
+  // Frappe v15
+  if (path.startsWith("/app")) return "/app";
+
+  // fallback: v15 default
+  return "/app";
+}
+
+ function getFormUrl(doctype, docname) {
+  const routeDoctype =
+    frappe.router && frappe.router.slug
+      ? frappe.router.slug(doctype)
+      : doctype.toLowerCase().replace(/\s+/g, "-");
+
+  return `${getDeskBasePath()}/${routeDoctype}/${encodeURIComponent(docname)}`;
 }
