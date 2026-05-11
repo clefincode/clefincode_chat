@@ -662,7 +662,7 @@ save_all_contacts(dialog) {
       direct_chat_sections += refernce_doctypes_section;
       this.$chat_info.append(direct_chat_sections);
     } else if (this.roomtype == "Topic") {
-      const topicName = this.chat_space.chat_topic_space || this.chat_space.chat_topic;
+      const topicName = this.chat_space.chat_topic_space || this.chat_space.chat_topic || this.chat_space.profile?.chat_topic || null;
       const topicSubject =
         this.chat_space.chat_topic_space_subject ||
         this.chat_space.chat_topic_subject ||
@@ -772,6 +772,21 @@ save_all_contacts(dialog) {
         });
         this.$chat_info.append(contributors_section);
       }
+
+      if (
+        topicName &&
+        (!Array.isArray(this.chat_space.reference_doctypes) ||
+          !this.chat_space.reference_doctypes.length) &&
+        this.chat_space.fetchTopicDetails
+      ) {
+        const details = await this.chat_space.fetchTopicDetails(topicName);
+
+        if (details?.references?.length) {
+          this.chat_space.reference_doctypes = details.references;
+        }
+      }
+
+      this.$chat_info.append(this.renderTopicReferencesSection());
     } else if (this.roomtype == "Guest") {
         let guest_sections = ``;
 
@@ -1548,6 +1563,12 @@ save_all_contacts(dialog) {
       e.stopPropagation();
       me.openEditTopicInfoDialog();
     });
+
+    this.$chat_info.find(".add-topic-reference").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      me.openAddTopicReferenceDialog();
+    });
   } // end of setup_events
 
   openEditTopicInfoDialog() {
@@ -1593,6 +1614,18 @@ save_all_contacts(dialog) {
           fieldname: "topic_color",
           fieldtype: "Color",
           default: currentColor
+        },
+        {
+          label: __("Add Reference DocType"),
+          fieldname: "new_reference_doctype",
+          fieldtype: "Link",
+          options: "DocType"
+        },
+        {
+          label: __("Add Reference Document"),
+          fieldname: "new_reference_docname",
+          fieldtype: "Dynamic Link",
+          options: "new_reference_doctype"
         }
       ],
       primary_action_label: __("Save"),
@@ -1650,6 +1683,29 @@ save_all_contacts(dialog) {
             if (details?.references?.length) {
               me.chat_space.reference_doctypes = details.references;
             }
+          }
+
+          if (values.new_reference_doctype && values.new_reference_docname) {
+            const refRes = await frappe.call({
+              method: "clefincode_chat.api.api_1_3_3.api.add_chat_topic_reference",
+              args: {
+                chat_topic: topicName,
+                reference_doctype: values.new_reference_doctype,
+                reference_docname: values.new_reference_docname
+              }
+            });
+
+            const refUpdated = refRes.message || {};
+            const refs =
+              refUpdated.reference_doctypes ||
+              refUpdated.references ||
+              [];
+
+            if (Array.isArray(refs)) {
+              me.chat_space.reference_doctypes = refs;
+            }
+
+            me.refreshTopicReferencesSection?.();
           }
 
           if (newSubject !== oldSubject && me.chat_space.send_rename_topic_message) {
@@ -1806,6 +1862,145 @@ save_all_contacts(dialog) {
     this.chat_space.$chat_space
       .find(`.topic-select-row[data-topic-name="${safe}"] .topic-dot`)
       .css("background", color);
+  }
+
+  renderTopicReferencesSection() {
+    const refs = Array.isArray(this.chat_space.reference_doctypes)
+      ? this.chat_space.reference_doctypes
+      : [];
+
+    const rows = refs.length
+      ? refs.map((ref) => {
+          const doctype = ref.doctype || ref.reference_doctype || "";
+          const docname = ref.docname || ref.reference_docname || "";
+
+          return `
+            <div class="topic-reference-row d-flex flex-row justify-content-between pb-2">
+              <div>
+                <div>${frappe.utils.escape_html(doctype)}</div>
+                <div class="small">${frappe.utils.escape_html(docname)}</div>
+              </div>
+            </div>
+          `;
+        }).join("")
+      : `<div class="small text-muted">${__("No references")}</div>`;
+
+    return `
+      <div class="p-4 chat-info-section topic-references-section">
+        <div class="d-flex justify-content-between align-items-center pb-2">
+          <div class="font-weight-bold">${__("References")}</div>
+          <button type="button" class="btn btn-xs btn-secondary add-topic-reference">
+            ${__("Add")}
+          </button>
+        </div>
+        ${rows}
+      </div>
+    `;
+  }
+
+  refreshTopicReferencesSection() {
+    const $old = this.$chat_info.find(".topic-references-section");
+    const html = this.renderTopicReferencesSection();
+
+    if ($old.length) {
+      $old.replaceWith(html);
+    } else {
+      this.$chat_info.append(html);
+    }
+
+    this.$chat_info.find(".add-topic-reference").off("click").on("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.openAddTopicReferenceDialog();
+    });
+  }
+
+  openAddTopicReferenceDialog() {
+    const me = this;
+
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    if (!topicName) {
+      frappe.msgprint({
+        title: __("Error"),
+        message: __("No topic found."),
+        indicator: "red"
+      });
+      return;
+    }
+
+    const d = new frappe.ui.Dialog({
+      title: __("Add Topic Reference"),
+      fields: [
+        {
+          label: __("DocType"),
+          fieldname: "reference_doctype",
+          fieldtype: "Link",
+          options: "DocType",
+          reqd: 1
+        },
+        {
+          label: __("Document"),
+          fieldname: "reference_docname",
+          fieldtype: "Dynamic Link",
+          options: "reference_doctype",
+          reqd: 1
+        }
+      ],
+      primary_action_label: __("Add"),
+      async primary_action(values) {
+        if (!values.reference_doctype || !values.reference_docname) {
+          frappe.msgprint({
+            title: __("Missing values"),
+            message: __("Please select DocType and Document."),
+            indicator: "orange"
+          });
+          return;
+        }
+
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_3_3.api.add_chat_topic_reference",
+            args: {
+              chat_topic: topicName,
+              reference_doctype: values.reference_doctype,
+              reference_docname: values.reference_docname
+            }
+          });
+
+          const updated = r.message || {};
+          const refs =
+            updated.reference_doctypes ||
+            updated.references ||
+            [];
+
+          if (Array.isArray(refs)) {
+            me.chat_space.reference_doctypes = refs;
+          }
+
+          me.refreshTopicReferencesSection();
+
+          frappe.show_alert({
+            message: __("Reference added"),
+            indicator: "green"
+          });
+
+          d.hide();
+        } catch (e) {
+          console.error("Failed to add topic reference", e);
+          frappe.msgprint({
+            title: __("Error"),
+            message: __("Failed to add reference."),
+            indicator: "red"
+          });
+        }
+      }
+    });
+
+    d.show();
   }
 
   open_chat_space(channel, channel_name, roome_type = "Group") {

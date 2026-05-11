@@ -8935,3 +8935,49 @@ def get_chat_topic_details(chat_topic):
         "reference_doctypes": references,
         "references": references,
     }
+
+@frappe.whitelist()
+def add_chat_topic_reference(chat_topic, reference_doctype, reference_docname):
+    if not chat_topic:
+        frappe.throw("chat_topic is required")
+
+    if not reference_doctype or not reference_docname:
+        frappe.throw("Reference DocType and Document are required")
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    exists = False
+
+    for ref in topic.get("references") or []:
+        existing_doctype = getattr(ref, "doctype_link", None) or getattr(ref, "reference_doctype", None) or getattr(ref, "doctype", None)
+        existing_docname = getattr(ref, "docname", None) or getattr(ref, "reference_docname", None)
+
+        if existing_doctype == reference_doctype and existing_docname == reference_docname:
+            exists = True
+            break
+
+    if not exists:
+        topic.append("references", {
+            "doctype_link": reference_doctype,
+            "docname": reference_docname,
+        })
+        topic.save(ignore_permissions=True)
+        frappe.db.commit()
+
+    references = []
+
+    for ref in topic.get("references") or []:
+        references.append({
+            "doctype": getattr(ref, "doctype_link", None) or getattr(ref, "doctype", None),
+            "docname": getattr(ref, "docname", None),
+        })
+
+    return {
+        "chat_topic": topic.name,
+        "chat_topic_subject": topic.subject,
+        "subject": topic.subject,
+        "topic_color": topic.topic_color,
+        "chat_channel": topic.chat_channel,
+        "reference_doctypes": references,
+        "references": references,
+    }

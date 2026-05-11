@@ -332,6 +332,17 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
       style="--topic-color:${safeColor};"
     >
       <span class="topic-separator-title">${__("Topic")}: ${safeSubject}</span>
+
+      <button
+        type="button"
+        class="topic-open-window-btn topic-separator-open-btn"
+        data-topic-name="${safeTopicName}"
+        data-topic-subject="${safeSubject}"
+        title="${__("Open topic in new window")}"
+        aria-label="${__("Open topic in new window")}"
+      >
+        ↗
+      </button>
     </div>
   `;
 }
@@ -2810,6 +2821,16 @@ async fetch_single_message(messageName) {
     this.type_message_input = new TypeMessageInput({ chat_space: this });
     this.voice_clip = new VoiceClip({ chat_space: this });
 
+    const isDedicatedTopicWindow = Boolean(this.chat_topic_space || this.is_topic_window);
+
+    const topicMenuItems = isDedicatedTopicWindow
+      ? ``
+      : `
+            <button type="button" class="chat-plus-topics">🏷 ${__("Select Topic")}</button>
+            <button type="button" class="chat-plus-add-topic">＋ ${__("Add New Topic")}</button>
+            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">🚫 ${__("Remove Topic")}</button>
+          `;
+
     const plus_btn = `<span class="open-chat-plus-menu plus-btn">＋</span>`;
 
     const chat_actions_html = `
@@ -2823,9 +2844,7 @@ async fetch_single_message(messageName) {
           </span>
           <div class="chat-plus-menu" style="display:none;">
             <button type="button" class="chat-plus-attach">${frappe.utils.icon("attachment", "sm")} ${__("Attach File")}</button>
-            <button type="button" class="chat-plus-topics">🏷 ${__("Select Topic")}</button>
-            <button type="button" class="chat-plus-add-topic">＋ ${__("Add New Topic")}</button>
-            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">🚫 ${__("Remove Topic")}</button>
+            ${topicMenuItems}
           </div>
           <input type='file' id='chat-file-uploader' 
             accept='image/*, application/pdf, .doc, .docx'
