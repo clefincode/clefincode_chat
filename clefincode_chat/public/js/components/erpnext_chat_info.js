@@ -662,28 +662,98 @@ save_all_contacts(dialog) {
       direct_chat_sections += refernce_doctypes_section;
       this.$chat_info.append(direct_chat_sections);
     } else if (this.roomtype == "Topic") {
-      let topic_title_section = ``;
-      topic_title_section += `<div class="p-4 chat-info-section"><div class="pb-2 font-weight-bold">Topic Subject</div>`;
-      topic_title_section += this.chat_space.chat_topic_space_subject
-        ? this.chat_space.chat_topic_space_subject.replace(/"/g, "")
-        : this.chat_space.alternative_subject;
+      const topicName = this.chat_space.chat_topic_space || this.chat_space.chat_topic;
+      const topicSubject =
+        this.chat_space.chat_topic_space_subject ||
+        this.chat_space.chat_topic_subject ||
+        this.chat_space.alternative_subject ||
+        topicName;
+
+      const topicColor =
+        this.chat_space.activeMessageTopicColor ||
+        this.chat_space.topicColorMap?.get(topicName) ||
+        this.chat_space.getTopicColor?.(topicName) ||
+        "#7c3aed";
+
+      let topic_title_section = `
+        <div class="p-4 chat-info-section topic-info-editor-section">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="pb-2 font-weight-bold">${__("Topic")}</div>
+              <div class="topic-info-subject" title="${frappe.utils.escape_html(topicName || "")}">
+                ${frappe.utils.escape_html(topicSubject || topicName || "")}
+              </div>
+              ${
+                topicName && topicSubject !== topicName
+                  ? `<div class="small text-muted topic-info-name">${frappe.utils.escape_html(topicName)}</div>`
+                  : ``
+              }
+            </div>
+
+            <button type="button" class="btn btn-xs btn-secondary edit-topic-info">
+              ${frappe.utils.icon("edit", "sm")}
+            </button>
+          </div>
+
+          <div class="d-flex align-items-center mt-2">
+            <span
+              class="topic-info-color-dot"
+              style="
+                width:14px;
+                height:14px;
+                border-radius:50%;
+                display:inline-block;
+                background:${frappe.utils.escape_html(topicColor)};
+                margin-right:8px;
+                border:1px solid rgba(0,0,0,.12);
+              "
+            ></span>
+            <span class="small text-muted">${frappe.utils.escape_html(topicColor || "")}</span>
+          </div>
+        </div>
+      `;
+
       this.$chat_info.append(topic_title_section);
 
+      const topicChannel =
+        this.chat_space.chat_topic_channel ||
+        this.chat_space.profile?.room ||
+        this.room;
+
+      let chat_members = [];
+
+      if (topicChannel) {
+        try {
+          chat_members = await get_chat_members(topicChannel);
+        } catch (e) {
+          console.warn("[ChatInfo] Failed to load topic members", e);
+          chat_members = [];
+        }
+      } else {
+        console.warn("[ChatInfo] Missing topic channel for members", {
+          chat_topic: this.chat_space.chat_topic_space || this.chat_space.chat_topic,
+          chat_topic_channel: this.chat_space.chat_topic_channel,
+          profile_room: this.chat_space.profile?.room,
+          room: this.room
+        });
+      }
+
       let member_section = ``;
-      let chat_members = await get_chat_members(
-        this.chat_space.chat_topic_channel
-      );
-      member_section += `<div class="p-4 chat-info-section members-section"><div class="pb-2 font-weight-bold">Members</div>`;
-      chat_members.map((member) => {
-        member_section += `
-      <div class="d-flex flex-row justify-content-between pb-2">
-        <div>
-          <div>${member.name == frappe.session.user ? "You" : member.name}</div>
-          <div class="small">${member.email}</div>
-        </div>
-      </div>`;
-      });
-      this.$chat_info.append(member_section);
+
+      if (chat_members.length > 0) {
+        member_section += `<div class="p-4 chat-info-section members-section"><div class="pb-2 font-weight-bold">Members</div>`;
+        chat_members.map((member) => {
+          member_section += `
+        <div class="d-flex flex-row justify-content-between pb-2">
+          <div>
+            <div>${member.name == frappe.session.user ? "You" : member.name}</div>
+            <div class="small">${member.email}</div>
+          </div>
+        </div>`;
+        });
+        member_section += `</div>`;
+        this.$chat_info.append(member_section);
+      }
 
       let topic_contributors = await get_topic_contributors(
         this.chat_space.chat_topic_space
@@ -1472,9 +1542,271 @@ save_all_contacts(dialog) {
         }
       }
     });
+
+    this.$chat_info.find(".edit-topic-info").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      me.openEditTopicInfoDialog();
+    });
   } // end of setup_events
 
+  openEditTopicInfoDialog() {
+    const me = this;
 
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic;
+
+    if (!topicName) {
+      frappe.msgprint({
+        title: __("Error"),
+        message: __("No topic found."),
+        indicator: "red"
+      });
+      return;
+    }
+
+    const currentSubject =
+      this.chat_space.chat_topic_space_subject ||
+      this.chat_space.chat_topic_subject ||
+      this.chat_space.alternative_subject ||
+      topicName;
+
+    const currentColor =
+      this.chat_space.activeMessageTopicColor ||
+      this.chat_space.topicColorMap?.get(topicName) ||
+      this.chat_space.getTopicColor?.(topicName) ||
+      "#7c3aed";
+
+    const d = new frappe.ui.Dialog({
+      title: __("Edit Topic"),
+      fields: [
+        {
+          label: __("Subject"),
+          fieldname: "subject",
+          fieldtype: "Data",
+          reqd: 1,
+          default: currentSubject
+        },
+        {
+          label: __("Color"),
+          fieldname: "topic_color",
+          fieldtype: "Color",
+          default: currentColor
+        }
+      ],
+      primary_action_label: __("Save"),
+      async primary_action(values) {
+        if (!values.subject) {
+          frappe.msgprint({
+            title: __("Missing Subject"),
+            message: __("Please enter a topic subject."),
+            indicator: "orange"
+          });
+          return;
+        }
+
+        const existingReferences = Array.isArray(me.chat_space.reference_doctypes)
+          ? [...me.chat_space.reference_doctypes]
+          : [];
+
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_3_3.api.update_chat_topic_info",
+            args: {
+              chat_topic: topicName,
+              subject: values.subject,
+              topic_color: values.topic_color
+            }
+          });
+
+          const updated = r.message || {};
+          const newSubject =
+            updated.chat_topic_subject ||
+            updated.subject ||
+            values.subject ||
+            topicName;
+
+          const newColor =
+            updated.topic_color ||
+            values.topic_color ||
+            currentColor;
+
+          if (
+            Array.isArray(updated.reference_doctypes) &&
+            updated.reference_doctypes.length
+          ) {
+            me.chat_space.reference_doctypes = updated.reference_doctypes;
+          } else if (existingReferences.length) {
+            me.chat_space.reference_doctypes = existingReferences;
+          }
+
+          const oldSubject = currentSubject;
+          me.applyUpdatedTopicInfo(topicName, newSubject, newColor);
+
+          if (me.chat_space.fetchTopicDetails) {
+            const details = await me.chat_space.fetchTopicDetails(topicName);
+
+            if (details?.references?.length) {
+              me.chat_space.reference_doctypes = details.references;
+            }
+          }
+
+          if (newSubject !== oldSubject && me.chat_space.send_rename_topic_message) {
+            const chatChannel =
+              me.chat_space.chat_topic_channel ||
+              me.chat_space.profile.room;
+
+            await me.chat_space.send_rename_topic_message(newSubject, chatChannel);
+          }
+
+          frappe.show_alert({
+            message: __("Topic updated"),
+            indicator: "green"
+          });
+
+          d.hide();
+        } catch (e) {
+          console.error("Failed to update topic", e);
+          frappe.msgprint({
+            title: __("Error"),
+            message: __("Failed to update topic."),
+            indicator: "red"
+          });
+        }
+      }
+    });
+
+    d.show();
+  }
+
+  applyUpdatedTopicInfo(topicName, subject, color) {
+    if (!topicName) return;
+
+    const existingReferences = Array.isArray(this.chat_space.reference_doctypes)
+      ? [...this.chat_space.reference_doctypes]
+      : [];
+
+    const safeSubject =
+      typeof subject === "object"
+        ? String(
+            subject.chat_topic_subject ||
+            subject.subject ||
+            subject.topic_subject ||
+            subject.name ||
+            topicName ||
+            ""
+          )
+        : String(subject || topicName || "");
+
+    this.chat_space.chat_topic_space_subject = safeSubject;
+    this.chat_space.chat_topic_subject = safeSubject;
+    this.chat_space.alternative_subject = safeSubject;
+
+    if (this.chat_space.profile) {
+      this.chat_space.profile.room_name = safeSubject;
+      this.chat_space.profile.chat_topic_subject = safeSubject;
+    }
+
+    if (color) {
+      this.chat_space.activeMessageTopicColor = color;
+
+      if (this.chat_space.topicColorMap) {
+        this.chat_space.topicColorMap.set(topicName, color);
+      }
+    }
+
+    if (
+      (!Array.isArray(this.chat_space.reference_doctypes) ||
+        !this.chat_space.reference_doctypes.length) &&
+      existingReferences.length
+    ) {
+      this.chat_space.reference_doctypes = existingReferences;
+    }
+
+    this.$chat_info.find(".topic-info-subject").text(safeSubject);
+    this.$chat_info.find(".topic-info-subject").attr("title", topicName);
+    this.$chat_info.find(".topic-info-color-dot").css("background", color);
+
+    const $colorText = this.$chat_info.find(".topic-info-color-dot").next(".small");
+    if ($colorText.length) {
+      $colorText.text(color || "");
+    }
+
+    const shortTitle =
+      safeSubject.length > 25
+        ? safeSubject.substring(0, 25) + "..."
+        : safeSubject;
+
+    this.chat_space.$chat_space
+      .find(".chat-profile-name")
+      .text(shortTitle)
+      .attr("title", safeSubject);
+
+    if (color && this.chat_space.refreshTopicColor) {
+      this.chat_space.refreshTopicColor(topicName);
+    } else {
+      this.updateTopicColorInDom(topicName, color);
+    }
+
+    this.updateTopicSubjectInDom(topicName, safeSubject);
+
+    this.chat_space.buildTopicMetaMap?.();
+    this.chat_space.refreshTopicNavBar?.();
+    this.chat_space.normalizeTopicSeparators?.();
+    this.chat_space.applyTopicVisibility?.();
+  }
+
+  updateTopicSubjectInDom(topicName, subject) {
+    if (!topicName || !this.chat_space?.$chat_space) return;
+
+    const safe = this.chat_space.escapeSelectorValue
+      ? this.chat_space.escapeSelectorValue(topicName)
+      : String(topicName).replace(/"/g, '\\"');
+
+    this.chat_space.$chat_space
+      .find(`[data-topic-name="${safe}"]`)
+      .attr("data-topic-subject", subject);
+
+    this.chat_space.$chat_space
+      .find(`.chat-topic-separator[data-topic-name="${safe}"] .topic-separator-title`)
+      .text(`${__("Topic")}: ${subject}`);
+
+    this.chat_space.$chat_space
+      .find(`.message-bubble[data-topic-name="${safe}"]`)
+      .attr("title", `${__("Topic")}: ${subject}`);
+
+    this.chat_space.$chat_space
+      .find(`.topic-select-main[data-topic-name="${safe}"]`)
+      .attr("data-topic-subject", subject)
+      .find(".topic-select-title")
+      .text(subject);
+  }
+
+  updateTopicColorInDom(topicName, color) {
+    if (!topicName || !color || !this.chat_space?.$chat_space) return;
+
+    const safe = this.chat_space.escapeSelectorValue
+      ? this.chat_space.escapeSelectorValue(topicName)
+      : String(topicName).replace(/"/g, '\\"');
+
+    this.chat_space.$chat_space
+      .find(`[data-topic-name="${safe}"]`)
+      .attr("data-topic-color", color)
+      .css("--topic-color", color);
+
+    this.chat_space.$chat_space
+      .find(`[data-topic-name="${safe}"] .message-topic-bar`)
+      .css("background", color);
+
+    this.chat_space.$chat_space
+      .find(`.topic-select-main[data-topic-name="${safe}"]`)
+      .attr("data-topic-color", color);
+
+    this.chat_space.$chat_space
+      .find(`.topic-select-row[data-topic-name="${safe}"] .topic-dot`)
+      .css("background", color);
+  }
 
   open_chat_space(channel, channel_name, roome_type = "Group") {
     if (check_if_chat_window_open(channel, "room")) {

@@ -69,8 +69,16 @@ export default class ChatSpace {
    this.chat_topic_space = opts.chat_topic;
     this.chat_topic_channel = opts.chat_topic_channel;
     this.is_private_topic = opts.is_private_topic;
-    this.chat_topic_space_subject = opts.chat_topic_subject;
-    this.alternative_subject = opts.alternative_subject;
+
+    this.chat_topic_space_subject = this.normalizeTopicSubject(
+      opts.chat_topic_subject,
+      opts.alternative_subject || opts.chat_topic || ""
+    );
+
+    this.alternative_subject = this.normalizeTopicSubject(
+      opts.alternative_subject,
+      opts.chat_topic_subject || opts.chat_topic || ""
+    );
     this.topic_write_mode = opts.topic_write_mode || false;  
     this.is_topic_window = Boolean(opts.is_topic_window);
     if (this.chat_topic_space) {
@@ -134,6 +142,7 @@ export default class ChatSpace {
       if (opts.is_topic_window) {
         this.profile.room = this.chat_topic_channel || this.profile.room;
         this.profile.room_type = "Topic";
+        this.profile.chat_topic = this.chat_topic_space;
         this.chat_topic = this.chat_topic_space;
       } else if (this.topic_write_mode && this.chat_topic_channel) {
         this.profile.room = this.chat_topic_channel;
@@ -425,6 +434,9 @@ openTopicChatWindow(topicName, topicSubject = null) {
   }
 
   const topicKey = String(topicName);
+  const safeTopicSubject = this.normalizeTopicSubject
+    ? this.normalizeTopicSubject(topicSubject, topicKey)
+    : String(topicSubject || topicKey);
 
   if (check_if_chat_window_open(topicKey, "topic")) {
     $(`.expand-chat-window[data-id|='${topicKey}']`).click();
@@ -443,8 +455,9 @@ openTopicChatWindow(topicName, topicSubject = null) {
       ...this.profile,
       room: chatChannel,
       room_type: "Topic",
-      room_name: topicSubject || topicKey,
+      room_name: safeTopicSubject,
       chat_topic: topicKey,
+      chat_topic_subject: safeTopicSubject,
       is_admin: this.profile.is_admin,
       user: this.profile.user,
       user_email: this.profile.user_email,
@@ -454,8 +467,8 @@ openTopicChatWindow(topicName, topicSubject = null) {
     },
     chat_topic: topicKey,
     chat_topic_channel: chatChannel,
-    chat_topic_subject: topicSubject || topicKey,
-    alternative_subject: topicSubject || topicKey,
+    chat_topic_subject: safeTopicSubject,
+    alternative_subject: safeTopicSubject,
 
     topic_write_mode: true,
 
@@ -1256,15 +1269,69 @@ getMessageKindLabel(cached = {}) {
   return __("Text message");
 }
 async getLinkedTopicInfo(cached = {}) {
-if (this.profile.room_type === "Topic") {
+if (this.profile.room_type === "Topic" || this.is_topic_window) {
+  const topicName =
+    this.chat_topic_space ||
+    this.chat_topic ||
+    this.profile.chat_topic ||
+    cached.chat_topic ||
+    null;
+
+  const topicSubject = this.normalizeTopicSubject
+    ? this.normalizeTopicSubject(
+        this.chat_topic_space_subject ||
+          this.chat_topic_subject ||
+          this.profile.chat_topic_subject ||
+          this.alternative_subject ||
+          cached.chat_topic_subject,
+        topicName || ""
+      )
+    : String(
+        this.chat_topic_space_subject ||
+          this.chat_topic_subject ||
+          this.profile.chat_topic_subject ||
+          this.alternative_subject ||
+          cached.chat_topic_subject ||
+          topicName ||
+          ""
+      );
+
+  let references =
+    Array.isArray(this.reference_doctypes) && this.reference_doctypes.length
+      ? this.reference_doctypes
+      : Array.isArray(cached.reference_doctypes) && cached.reference_doctypes.length
+        ? cached.reference_doctypes
+        : Array.isArray(cached.references) && cached.references.length
+          ? cached.references
+          : [];
+
+  let status = this.chat_topic_status || cached.chat_topic_status || null;
+
+  if ((!references || !references.length) && topicName && this.fetchTopicDetails) {
+    const details = await this.fetchTopicDetails(topicName);
+
+    if (details) {
+      references =
+        details.reference_doctypes ||
+        details.references ||
+        [];
+
+      status = details.status || status;
+
+      return {
+        name: topicName,
+        subject: details.subject || topicSubject || topicName,
+        status,
+        references
+      };
+    }
+  }
+
   return {
-    name: this.chat_topic_space || this.profile.chat_topic || cached.chat_topic || null,
-    subject:
-      this.chat_topic_space_subject ||
-      this.alternative_subject ||
-      cached.chat_topic_subject ||
-      null,
-    references: this.reference_doctypes || []
+    name: topicName,
+    subject: topicSubject,
+    status,
+    references
   };
 }
 
@@ -1284,10 +1351,28 @@ if (this.profile.room_type === "Topic") {
     return null;
   }
 
+  if (topicName && this.fetchTopicDetails) {
+    const details = await this.fetchTopicDetails(topicName);
+
+    if (details) {
+      return {
+        name: topicName,
+        subject: details.subject || topicSubject || topicName,
+        status: details.status || null,
+        is_private: details.is_private || 0,
+        references:
+          details.reference_doctypes ||
+          details.references ||
+          []
+      };
+    }
+  }
+
   if (topicSubject) {
     return {
       name: topicName,
-      subject: topicSubject
+      subject: topicSubject,
+      references: []
     };
   }
 
@@ -1352,6 +1437,20 @@ async openMessageInfoDialog(messageName) {
             msg.chat_topic_title ||
             cached.chat_topic_subject ||
             null,
+
+          reference_doctypes:
+            msg.reference_doctypes ||
+            msg.references ||
+            cached.reference_doctypes ||
+            cached.references ||
+            [],
+
+          references:
+            msg.references ||
+            msg.reference_doctypes ||
+            cached.references ||
+            cached.reference_doctypes ||
+            [],
 
           is_deleted: msg.is_deleted || cached.is_deleted,
           message_type: msg.message_type || cached.message_type,
@@ -1985,12 +2084,15 @@ async fetch_single_message(messageName) {
     args.sub_channel = this.profile.room;
   }
 
-  if (this.profile.room_type === "Topic") {
-    args.chat_topic = this.profile.chat_topic;
+  if (this.profile.room_type === "Topic" || this.is_topic_window) {
+    args.chat_topic =
+      this.profile.chat_topic ||
+      this.chat_topic_space ||
+      this.chat_topic;
   }
 
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_1.api.get_single_message",
+    method: "clefincode_chat.api.api_1_3_3.api.get_single_message",
     args
   });
 
@@ -2105,9 +2207,10 @@ async fetch_single_message(messageName) {
 
     if (this.chat_topic_space) {
         this.avatar_html = "";
-        header_title = this.chat_topic_space_subject
-            ? this.chat_topic_space_subject.replace(/"/g, "")
-            : this.alternative_subject;
+        header_title = this.normalizeTopicSubject(
+          this.chat_topic_space_subject,
+          this.alternative_subject || this.chat_topic_space
+        );
         header_full_name = header_title;
         header_title = header_title.length > 25 ? header_title.substring(0, 25) + "..." : header_title;
     } else {
@@ -2451,6 +2554,30 @@ async fetch_single_message(messageName) {
   }
 
   async get_topic_info() {
+    if (this.chat_topic_space && this.fetchTopicDetails) {
+      const details = await this.fetchTopicDetails(this.chat_topic_space);
+
+      if (details) {
+        this.chat_topic = details.name;
+        this.chat_topic_subject = details.subject;
+        this.chat_topic_status = details.status;
+
+        if (Array.isArray(details.references) && details.references.length) {
+          this.reference_doctypes = details.references;
+        }
+      }
+
+      if (this.is_topic_window) {
+        this.$chat_space.find(".mentioned-doctype-section").remove();
+        return;
+      }
+
+      if (this.chat_topic) {
+        this.render_mentioned_doctype_section(this.chat_topic_subject);
+      }
+      return;
+    }
+
     if (!this.profile.room) {
       return;
     }
@@ -2467,7 +2594,15 @@ async fetch_single_message(messageName) {
     this.updateActiveTopicButton(this.chat_topic);
     this.chat_topic_subject = topic_info[0].chat_topic_subject;
     this.chat_topic_status = topic_info[0].chat_topic_status;
-    this.reference_doctypes = topic_info[0].reference_doctypes;
+
+    const refs =
+      topic_info[0].reference_doctypes ||
+      topic_info[0].references ||
+      null;
+
+    if (Array.isArray(refs) && refs.length) {
+      this.reference_doctypes = refs;
+    }
 
     if (this.is_topic_window) {
       this.$chat_space.find(".mentioned-doctype-section").remove();
@@ -2476,6 +2611,61 @@ async fetch_single_message(messageName) {
 
     if (this.chat_topic) {
       this.render_mentioned_doctype_section(this.chat_topic_subject);
+    }
+  }
+
+  async fetchTopicDetails(topicName) {
+    if (!topicName) return null;
+
+    try {
+      const r = await frappe.call({
+        method: "clefincode_chat.api.api_1_3_3.api.get_chat_topic_details",
+        args: {
+          chat_topic: topicName
+        }
+      });
+
+      const details = r.message || null;
+      if (!details) return null;
+
+      const refs =
+        details.reference_doctypes ||
+        details.references ||
+        [];
+
+      if (Array.isArray(refs) && refs.length) {
+        this.reference_doctypes = refs;
+      }
+
+      const subject =
+        details.chat_topic_subject ||
+        details.subject ||
+        topicName;
+
+      this.chat_topic_subject = subject;
+      this.chat_topic_space_subject = this.normalizeTopicSubject
+        ? this.normalizeTopicSubject(subject, topicName)
+        : String(subject || topicName);
+
+      this.chat_topic_status = details.topic_status || this.chat_topic_status;
+
+      if (details.topic_color) {
+        this.topicColorMap?.set(topicName, details.topic_color);
+        this.activeMessageTopicColor = details.topic_color;
+      }
+
+      return {
+        name: details.chat_topic || details.name || topicName,
+        subject,
+        status: details.topic_status || null,
+        is_private: details.is_private || 0,
+        topic_color: details.topic_color || null,
+        references: refs,
+        reference_doctypes: refs
+      };
+    } catch (e) {
+      console.warn("Failed to fetch topic details", e);
+      return null;
     }
   }
 
@@ -2944,9 +3134,12 @@ async handleBulkDelete() {
         e.stopPropagation();
 
         const topicName = $(this).attr("data-topic-name");
-        const topicSubject = $(this).attr("data-topic-subject") || topicName;
+        const rawSubject = $(this).attr("data-topic-subject") || topicName;
+        const safeSubject = me.normalizeTopicSubject
+          ? me.normalizeTopicSubject(rawSubject, topicName)
+          : String(rawSubject || topicName);
 
-        me.openTopicChatWindow(topicName, topicSubject);
+        me.openTopicChatWindow(topicName, safeSubject);
       });
 
 // ===== Message action menu =====
@@ -3774,9 +3967,12 @@ if (!me.chat_topic_space) {
     e.preventDefault();
     e.stopPropagation();
     const topicName = $(this).data("topic-name");
-    const topicSubject = $(this).data("topic-subject") || topicName;
+    const rawSubject = $(this).data("topic-subject") || topicName;
+    const safeSubject = me.normalizeTopicSubject
+      ? me.normalizeTopicSubject(rawSubject, topicName)
+      : String(rawSubject || topicName);
     if (!topicName) return;
-    me.openTopicChatWindow(topicName, topicSubject);
+    me.openTopicChatWindow(topicName, safeSubject);
   });
 }
 
@@ -4431,6 +4627,28 @@ normalizeTopicSeparators() {
       $msg.before(html);
     }
   });
+}
+
+normalizeTopicSubject(value, fallback = "") {
+  if (value == null) return String(fallback || "");
+
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value).replace(/"/g, "");
+  }
+
+  if (typeof value === "object") {
+    return String(
+      value.chat_topic_subject ||
+      value.subject ||
+      value.topic_subject ||
+      value.name ||
+      value.chat_topic ||
+      fallback ||
+      ""
+    ).replace(/"/g, "");
+  }
+
+  return String(value || fallback || "").replace(/"/g, "");
 }
 
 // ================= Topic Helpers =================
@@ -6213,7 +6431,7 @@ async fetchTemplateSuggestions(textValue) {
 
   try {
     const res = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_1.api.get_template_suggestions",
+      method: "clefincode_chat.api.api_1_3_3.api.get_template_suggestions",
       args: {
         user: this.profile.user_email,
         platform: this.profile.platform || "Chat",
@@ -8321,7 +8539,7 @@ async function add_reference_doctype(
 
 async function get_topic_info(chat_channel) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_1.api.get_topic_info",
+    method: "clefincode_chat.api.api_1_3_3.api.get_topic_info",
     args: {
       chat_channel: chat_channel,
     },
@@ -8425,7 +8643,7 @@ async function create_website_support_group(website_user_email, content) {
 
 async function check_reference_doctype_empty(docname,template_type) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_1.api.is_reference_doctype_Template_empty",
+    method: "clefincode_chat.api.api_1_3_3.api.is_reference_doctype_Template_empty",
     args: { docname,template_type },
   });
   

@@ -178,22 +178,39 @@ setup_topic_click_event() {
         console.error("[ClefinCode Chat] Failed to get topic context", err);
       }
 
+      const topicKey = ctx.chat_topic || chat_topic;
+      const topicSubject =
+        ctx.chat_topic_subject ||
+        chat_topic_subject ||
+        topicKey;
+
+      const chatChannel = ctx.chat_channel;
+
+      if (!chatChannel) {
+        frappe.msgprint({
+          title: __("Error"),
+          message: __("No chat channel found for this topic."),
+          indicator: "red"
+        });
+        return;
+      }
+
       const chat_window = new ChatWindow({
         profile: {
-          chat_topic: chat_topic,
+          chat_topic: topicKey,
         },
       });
 
       new ChatSpace({
         $wrapper: chat_window.$chat_window,
 
-        chat_topic: ctx.chat_topic || chat_topic,
-        chat_topic_subject:
-          ctx.chat_topic_subject || chat_topic_subject,
-        chat_topic_channel: ctx.chat_channel,
+        chat_topic: topicKey,
+        chat_topic_subject: topicSubject,
+        chat_topic_channel: chatChannel,
         is_private_topic: ctx.is_private_topic || 0,
-        alternative_subject:
-          ctx.chat_topic_subject || chat_topic_subject,
+        alternative_subject: topicSubject,
+
+        is_topic_window: true,
 
         topic_write_mode: !!ctx.can_write,
         original_room_type: ctx.room_type || "Group",
@@ -204,16 +221,12 @@ setup_topic_click_event() {
           user: frappe.session.user,
           user_email: frappe.session.user_email || frappe.session.user,
 
-    
-          room: ctx.can_write ? ctx.chat_channel : null,
+          room: chatChannel,
+          room_type: "Topic",
+          room_name: topicSubject,
+          chat_topic: topicKey,
+          chat_topic_subject: topicSubject,
 
-          room_name:
-            ctx.room_name ||
-            ctx.chat_topic_subject ||
-            chat_topic_subject ||
-            "Topic",
-
-          room_type: ctx.room_type || "Group",
           platform: ctx.platform || "Chat",
           is_removed: ctx.is_removed || 0,
           remove_date: ctx.remove_date || null,
