@@ -204,7 +204,7 @@ setup_topic_click_event() {
           user: frappe.session.user,
           user_email: frappe.session.user_email || frappe.session.user,
 
-          // إذا المستخدم ضمن المحادثة، الإرسال يكون على الروم الأصلي
+    
           room: ctx.can_write ? ctx.chat_channel : null,
 
           room_name:

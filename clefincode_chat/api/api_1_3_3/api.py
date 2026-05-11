@@ -51,6 +51,22 @@ from frappe.desk.search import validate_and_sanitize_search_inputs
 
 
 
+TOPIC_COLOR_PALETTE = [
+    "#7c3aed",
+    "#059669",
+    "#dc2626",
+    "#2563eb",
+    "#ea580c",
+    "#0891b2",
+    "#be123c",
+    "#4f46e5",
+    "#16a34a",
+    "#9333ea",
+]
+
+def get_random_topic_color():
+    return random.choice(TOPIC_COLOR_PALETTE)
+
 passlibctx = None
 if int(frappe_version.split('.')[0]) > 14:
     from frappe.client import get_time_zone
@@ -1441,9 +1457,13 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_sender_email,
             msg.reactions_json,
             msg.chat_topic,
+            topic.subject AS chat_topic_subject,
+            topic.topic_color AS topic_color,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
+        LEFT JOIN `tabClefinCode Chat Topic` topic
+            ON topic.name = msg.chat_topic
         LEFT JOIN `tabCiC Backup Chat Message` backup
             ON msg.name = backup.original_message AND backup.change_type = 'Edit'
         WHERE {base_condition}
@@ -1476,9 +1496,13 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_sender_email,
             msg.reactions_json,
             msg.chat_topic,
+            topic.subject AS chat_topic_subject,
+            topic.topic_color AS topic_color,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
+        LEFT JOIN `tabClefinCode Chat Topic` topic
+            ON topic.name = msg.chat_topic
         LEFT JOIN `tabCiC Backup Chat Message` backup
             ON msg.name = backup.original_message
         WHERE {base_condition}
@@ -2678,8 +2702,9 @@ def ensure_video_thumbnail(message_doc, max_size=(320, 320), quality=80):
 #############################################################################################
 @frappe.whitelist()
 def get_topic_info(chat_channel):
-    chat_topic = frappe.get_all("ClefinCode Chat Topic" , ["name" , "subject" , "is_private"] , {"chat_channel":chat_channel , "topic_status" : "Open"})
+    chat_topic = frappe.get_all("ClefinCode Chat Topic" , ["name" , "subject" , "is_private" , "topic_color"] , {"chat_channel":chat_channel , "topic_status" : "Open"})
     if chat_topic:
+        topic_color = chat_topic[0].topic_color
         reference_doctypes = frappe.db.sql(f"""
         SELECT doctype_link AS doctype , docname
         FROM `tabClefinCode Chat Topic Reference`
@@ -2687,9 +2712,9 @@ def get_topic_info(chat_channel):
         ORDER BY idx
         """ , as_dict = True)
         if reference_doctypes:    
-            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : reference_doctypes, "chat_topic_subject" : chat_topic[0].subject , "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
+            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : reference_doctypes, "chat_topic_subject" : chat_topic[0].subject , "topic_color": topic_color, "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
         else:        
-            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : [] , "chat_topic_subject" : chat_topic[0].subject , "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
+            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : [] , "chat_topic_subject" : chat_topic[0].subject , "topic_color": topic_color, "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
     else:
         return {"results" : [{"chat_topic" : None , "reference_doctypes" : [] , "chat_topic_subject" : None}]}
 # ==========================================================================================
@@ -2712,7 +2737,8 @@ def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = 
         "doctype" : "ClefinCode Chat Topic",
         "chat_channel" : chat_channel,
         "topic_status": "Open",
-        "is_private" : 1
+        "is_private" : 1,
+        "topic_color": get_random_topic_color(),
     }).insert(ignore_permissions = True)
     for doc in mention_doctypes:
         chat_topic.append("references", {"doctype_link": doc["doctype"] , "docname":doc["docname"], "active":1})
@@ -2722,7 +2748,10 @@ def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = 
     results = {
         "realtime_type" : "set_topic",
         "chat_topic": chat_topic.name,
-        "mention_doctypes" : mention_doctypes
+        "mention_doctypes" : mention_doctypes,
+        "topic_color": chat_topic.topic_color
+        
+
     }
 
     for member in frappe.get_doc("ClefinCode Chat Channel" , chat_channel).members:
@@ -2744,7 +2773,7 @@ def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = 
             # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user) 
             send_notification(contributor.user , results, "set_topic")  
 
-    return {"results" : [{"chat_topic" : chat_topic.name}]}
+    return {"results" : [{"chat_topic" : chat_topic.name, "topic_color" : chat_topic.topic_color}]}
 
 # ==========================================================================================
 @frappe.whitelist()
@@ -8425,9 +8454,11 @@ def create_chat_topic_with_message(
     return {
         "results": [{
             "chat_topic": chat_topic,
-            "chat_channel": chat_channel
+            "chat_channel": chat_channel,
+            "topic_color": frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "topic_color"),
         }]
     }
+
 
 #========================
 @frappe.whitelist()
@@ -8535,6 +8566,10 @@ def _normalize_topic_doc(topic_doc):
         if parsed:
             refs.append(parsed)
 
+    if not topic_doc.topic_color:
+        topic_doc.topic_color = get_random_topic_color()
+        topic_doc.save(ignore_permissions=True)
+
     return {
         "name": topic_doc.name,
         "date":str(topic_doc.creation),
@@ -8542,6 +8577,7 @@ def _normalize_topic_doc(topic_doc):
         "chat_channel": topic_doc.chat_channel,
         "topic_status": topic_doc.topic_status,
         "is_private": cint(topic_doc.is_private),
+        "topic_color": topic_doc.topic_color,
         "modified": str(topic_doc.modified),
         "references": refs,
         "references_count": len(refs),
@@ -8781,4 +8817,62 @@ def get_topic_open_context(chat_topic, message_name=None):
         "platform": getattr(channel, "platform", "Chat"),
         "is_private_topic": cint(getattr(topic, "is_private", 0)),
         "message_name": message_name,
+    }
+
+
+@frappe.whitelist()
+def get_first_real_topic_message(chat_channel, chat_topic, user_email=None):
+    if not chat_channel or not chat_topic:
+        return None
+
+    rows = frappe.db.get_all(
+        "ClefinCode Chat Message",
+        filters={
+            "chat_channel": chat_channel,
+            "chat_topic": chat_topic,
+        },
+        fields=[
+            "name as message_name",
+            "send_date",
+            "chat_topic",
+            "message_type",
+            "message_template_type",
+        ],
+        order_by="send_date asc",
+        limit=20,
+    )
+
+    for row in rows:
+        message_type = (row.get("message_type") or "").lower()
+        template = (row.get("message_template_type") or "").lower()
+
+        if message_type == "information":
+            continue
+
+        if template in ["set topic", "set-topic", "settopic"]:
+            continue
+
+        topic_subject = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "subject")
+        return {
+            "message_name": row["message_name"],
+            "send_date": row["send_date"],
+            "chat_topic": row["chat_topic"],
+            "chat_topic_subject": topic_subject,
+        }
+
+    return None
+@frappe.whitelist()
+def get_chat_topic_color(chat_topic):
+    if not chat_topic:
+        return None
+
+    color = frappe.db.get_value(
+        "ClefinCode Chat Topic",
+        chat_topic,
+        "topic_color"
+    )
+
+    return {
+        "chat_topic": chat_topic,
+        "topic_color": color
     }
