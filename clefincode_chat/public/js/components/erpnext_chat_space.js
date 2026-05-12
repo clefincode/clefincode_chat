@@ -4615,6 +4615,110 @@ isDedicatedTopicContext() {
   );
 }
 
+getTopicReferenceTargetForSend() {
+  const isTopicWindow = Boolean(
+    this.is_topic_window ||
+    this.profile?.room_type === "Topic" ||
+    this.chat_topic_space
+  );
+
+  const topicName = isTopicWindow
+    ? (
+        this.chat_topic_space ||
+        this.profile?.chat_topic ||
+        this.chat_topic ||
+        null
+      )
+    : (
+        this.activeMessageTopic ||
+        null
+      );
+
+  if (!topicName) return null;
+
+  const topicSubject = isTopicWindow
+    ? (
+        this.chat_topic_space_subject ||
+        this.profile?.chat_topic_subject ||
+        this.chat_topic_subject ||
+        topicName
+      )
+    : (
+        this.activeMessageTopicSubject ||
+        topicName
+      );
+
+  const topicColor =
+    this.activeMessageTopicColor ||
+    this.topicColorMap?.get(topicName) ||
+    this.getTopicColor(topicName);
+
+  return {
+    name: String(topicName),
+    subject: this.normalizeTopicSubject
+      ? this.normalizeTopicSubject(topicSubject, topicName)
+      : String(topicSubject || topicName),
+    color: topicColor
+  };
+}
+
+showMentionWillBeAddedToTopicMessage(topicTarget, mentions = []) {
+  if (!topicTarget || !mentions.length) return;
+
+  const label =
+    mentions.length === 1
+      ? `${mentions[0].doctype} / ${mentions[0].docname}`
+      : `${mentions.length} ${__("documents")}`;
+
+  frappe.show_alert({
+    message: ` ${label} will be added as a reference to topic: ${topicTarget.subject || topicTarget.name}`,
+    indicator: "blue"
+  });
+}
+
+mergeTopicReferencesLocally(topicName, mentionDoctypes = []) {
+  if (!topicName || !mentionDoctypes.length) return;
+
+  if (!Array.isArray(this.reference_doctypes)) {
+    this.reference_doctypes = [];
+  }
+
+  mentionDoctypes.forEach((m) => {
+    const exists = this.reference_doctypes.some((r) => {
+      const rDoctype = r.doctype || r.reference_doctype;
+      const rDocname = r.docname || r.reference_docname;
+
+      return rDoctype === m.doctype && rDocname === m.docname;
+    });
+
+    if (!exists) {
+      this.reference_doctypes.push({
+        doctype: m.doctype,
+        docname: m.docname
+      });
+    }
+  });
+
+  if (this.messageCache) {
+    this.messageCache.forEach((cachedMsg) => {
+      if (
+        cachedMsg.chat_topic === topicName ||
+        cachedMsg.topic === topicName
+      ) {
+        cachedMsg.reference_doctypes = this.reference_doctypes;
+        cachedMsg.references = this.reference_doctypes;
+      }
+    });
+  }
+
+  if (this.topicDetailsCache?.has(topicName)) {
+    const cached = this.topicDetailsCache.get(topicName) || {};
+    cached.reference_doctypes = this.reference_doctypes;
+    cached.references = this.reference_doctypes;
+    this.topicDetailsCache.set(topicName, cached);
+  }
+}
+
 extractDoctypeMentionsFromComposer() {
   const mentions = [];
 
@@ -6259,10 +6363,6 @@ if (!is_deleted && type !== "info-message") {
       chat_room = this.profile.room;
     }
 
-    const topicMentionRefs = this.isDedicatedTopicContext?.()
-      ? this.extractDoctypeMentionsFromComposer()
-      : [];
-
     this.$chat_actions.find(".ql-editor").html("");
     this.voice_clip.$voice_clip.css("display", "block");
     this.$chat_actions.find(".message-send-button").css("display", "none");
@@ -6362,6 +6462,8 @@ if (!is_deleted && type !== "info-message") {
             me.$chat_space_container.find(".mention-message").remove();
           });
 
+        const topicReferenceTarget = this.getTopicReferenceTargetForSend();
+
         const message_info = {
           content:
             content && content.length == 1
@@ -6381,18 +6483,33 @@ if (!is_deleted && type !== "info-message") {
           is_document: this.is_document,
           is_voice_clip: this.is_voice_clip,
           file_id: file_id,
-          chat_topic: this.chat_topic || messageChatTopic,
-          chat_topic_subject: this.chat_topic ? null : messageChatTopicSubject,
+          chat_topic: topicReferenceTarget ? topicReferenceTarget.name : this.chat_topic,
+          chat_topic_subject: topicReferenceTarget ? topicReferenceTarget.subject : null,
+          topic_color: topicReferenceTarget ? topicReferenceTarget.color : null,
         };
         this.last_chat_space_message = await send_message(message_info);
 
         // ================= Handling with Doctypes Mentions =======================
-        if (this.chat_topic) {
+        if (topicReferenceTarget) {
+          this.showMentionWillBeAddedToTopicMessage(
+            topicReferenceTarget,
+            mention_doctypes
+          );
+
           await add_reference_doctype(
             mention_doctypes,
-            this.chat_topic,
+            topicReferenceTarget.name,
             this.last_active_sub_channel
           );
+
+          this.mergeTopicReferencesLocally(
+            topicReferenceTarget.name,
+            mention_doctypes
+          );
+
+          this.clearTopicMentionReferenceHint?.();
+          this.chat_info?.refreshTopicReferencesSection?.();
+
           await this.send_add_document_message(mention_doctypes, chat_room);
         } else {
           let results = await create_chat_topic(
@@ -6400,8 +6517,7 @@ if (!is_deleted && type !== "info-message") {
             chat_room,
             this.last_active_sub_channel
           );
-          // we must update the chat topic in the chat channel message
-          // this.chat_topic = results[0].chat_topic
+
           await this.send_set_topic_message(
             mention_doctypes[0].docname,
             chat_room
@@ -6487,6 +6603,8 @@ if (!is_deleted && type !== "info-message") {
       }
       // =========================================================================
       else if (mention_doctypes.length > 0) {
+        const topicReferenceTarget = this.getTopicReferenceTargetForSend();
+
         let message_info = {
           content:
             content && content.length == 1
@@ -6506,81 +6624,88 @@ if (!is_deleted && type !== "info-message") {
           is_document: this.is_document,
           is_voice_clip: this.is_voice_clip,
           file_id: file_id,
-          chat_topic: this.chat_topic,
-          topic_color: this.chat_topic ? this.getTopicColor(this.chat_topic) : null,
+
+          chat_topic: topicReferenceTarget ? topicReferenceTarget.name : null,
+          chat_topic_subject: topicReferenceTarget ? topicReferenceTarget.subject : null,
+          topic_color: topicReferenceTarget ? topicReferenceTarget.color : null,
         };
 
-        const isDedicatedTopic = this.isDedicatedTopicContext?.();
+        if (topicReferenceTarget) {
+          this.showMentionWillBeAddedToTopicMessage(
+            topicReferenceTarget,
+            mention_doctypes
+          );
 
-        if (this.chat_topic) {
+          this.last_chat_space_message = await send_message(message_info);
+
           await add_reference_doctype(
             mention_doctypes,
-            this.chat_topic,
+            topicReferenceTarget.name,
             this.last_active_sub_channel
           );
 
-          mention_doctypes.forEach((m) => {
-            if (
-              !this.reference_doctypes.some(
-                (r) =>
-                  (r.doctype || r.reference_doctype) === m.doctype &&
-                  (r.docname || r.reference_docname) === m.docname
-              )
-            ) {
-              this.reference_doctypes.push({
-                doctype: m.doctype,
-                docname: m.docname
-              });
-            }
-          });
+          this.mergeTopicReferencesLocally(
+            topicReferenceTarget.name,
+            mention_doctypes
+          );
 
           this.clearTopicMentionReferenceHint?.();
           this.chat_info?.refreshTopicReferencesSection?.();
 
-          this.last_chat_space_message = await send_message(message_info);
           await this.send_add_document_message(mention_doctypes, chat_room);
-        } else if (isDedicatedTopic) {
-          await this.addMentionedDoctypesAsTopicReferences(mention_doctypes);
-          this.clearTopicMentionReferenceHint?.();
 
-          this.last_chat_space_message = await send_message(message_info);
-        } else {
-          let results = await create_chat_topic(
-            mention_doctypes,
-            chat_room,
-            this.last_active_sub_channel
-          );
-          const createdTopicName = results[0].chat_topic;
-          const createdTopicColor = results[0].topic_color || null;
-
-          if (createdTopicName) {
-            this.topicColorMap.set(createdTopicName, createdTopicColor || this.getTopicColor(createdTopicName));
-            this.activeMessageTopic = createdTopicName;
-            this.activeMessageTopicSubject = mention_doctypes[0].docname || createdTopicName;
-            this.updatePlusTopicButton?.();
-          }
-
-          message_info["chat_topic"] = createdTopicName;
-          message_info.topic_color = createdTopicColor;
-
-          this.last_chat_space_message = await send_message(message_info);
-
-          if (this.last_chat_space_message && createdTopicName) {
-            setTimeout(() => {
-              this.applyTopicToRenderedMessage(
-                this.last_chat_space_message,
-                createdTopicName,
-                this.activeMessageTopicSubject,
-                createdTopicColor
-              );
-            }, 150);
-          }
-
-          await this.send_set_topic_message(
-            mention_doctypes[0].docname,
-            chat_room
-          );
+          return;
         }
+
+        // No selected/current topic: keep old behavior and create a new topic.
+        let results = await create_chat_topic(
+          mention_doctypes,
+          chat_room,
+          this.last_active_sub_channel
+        );
+
+        const createdTopicName = results[0].chat_topic;
+        const createdTopicColor = results[0].topic_color || null;
+
+        if (createdTopicName) {
+          this.topicColorMap.set(
+            createdTopicName,
+            createdTopicColor || this.getTopicColor(createdTopicName)
+          );
+
+          this.activeMessageTopic = createdTopicName;
+          this.activeMessageTopicSubject =
+            mention_doctypes[0].docname || createdTopicName;
+
+          this.activeMessageTopicColor =
+            createdTopicColor || this.getTopicColor(createdTopicName);
+
+          this.updatePlusTopicButton?.();
+        }
+
+        message_info.chat_topic = createdTopicName;
+        message_info.chat_topic_subject =
+          mention_doctypes[0].docname || createdTopicName;
+        message_info.topic_color = createdTopicColor;
+
+        this.last_chat_space_message = await send_message(message_info);
+
+        if (this.last_chat_space_message && createdTopicName) {
+          setTimeout(() => {
+            this.applyTopicToRenderedMessage(
+              this.last_chat_space_message,
+              createdTopicName,
+              this.activeMessageTopicSubject,
+              createdTopicColor
+            );
+          }, 150);
+        }
+
+        await this.send_set_topic_message(
+          mention_doctypes[0].docname,
+          chat_room
+        );
+
         return;
       }
     }
@@ -6623,11 +6748,6 @@ if (!is_deleted && type !== "info-message") {
           outgoingTopic.topic_color
         );
       }, 150);
-    }
-
-    if (topicMentionRefs?.length) {
-      await this.addMentionedDoctypesAsTopicReferences(topicMentionRefs);
-      this.clearTopicMentionReferenceHint?.();
     }
 
     this.reply_to_message_name = null;
