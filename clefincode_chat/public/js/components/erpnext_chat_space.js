@@ -1348,7 +1348,8 @@ if (this.profile.room_type === "Topic" || this.is_topic_window) {
         name: topicName,
         subject: details.subject || topicSubject || topicName,
         status,
-        references
+        references,
+        topic_color: details.topic_color || this.topicColorMap?.get(topicName) || null
       };
     }
   }
@@ -1389,7 +1390,8 @@ if (this.profile.room_type === "Topic" || this.is_topic_window) {
         references:
           details.reference_doctypes ||
           details.references ||
-          []
+          [],
+        topic_color: details.topic_color || this.topicColorMap?.get(topicName) || null
       };
     }
   }
@@ -1398,7 +1400,8 @@ if (this.profile.room_type === "Topic" || this.is_topic_window) {
     return {
       name: topicName,
       subject: topicSubject,
-      references: []
+      references: [],
+      topic_color: this.topicColorMap?.get(topicName) || null
     };
   }
 
@@ -1531,13 +1534,36 @@ const linkedTopicReferencesHtml = linkedTopicReferences.length
     </div>
   `
   : "";
+const linkedTopicName = linkedTopic?.name || "";
+const linkedTopicSubject = linkedTopic?.subject || linkedTopicName || "—";
+const linkedTopicColor =
+  linkedTopic?.topic_color ||
+  linkedTopic?.color ||
+  this.topicColorMap?.get(linkedTopicName) ||
+  "";
+
+const safeLinkedTopicName = frappe.utils.escape_html(linkedTopicName);
+const safeLinkedTopicSubject = frappe.utils.escape_html(linkedTopicSubject);
+const safeLinkedTopicColor = frappe.utils.escape_html(linkedTopicColor || "");
 const linkedTopicHtml = linkedTopic
   ? `
     <div>
       <div style="opacity:.65;">${__("Linked Topic")}</div>
-      <div style="font-weight:600;">
-        ${frappe.utils.escape_html(linkedTopic.subject || linkedTopic.name || "—")}
-      </div>
+      <a href="#"
+         class="message-info-topic-link"
+         data-topic-name="${safeLinkedTopicName}"
+         data-topic-subject="${safeLinkedTopicSubject}"
+         data-topic-color="${safeLinkedTopicColor}"
+         style="
+           font-weight:600;
+           color:#007bff;
+           text-decoration:underline;
+           cursor:pointer;
+           word-break:break-word;
+           display:inline-block;
+         ">
+        ${safeLinkedTopicSubject}
+      </a>
       ${
         linkedTopic.name && linkedTopic.subject && linkedTopic.name !== linkedTopic.subject
           ? `<div style="font-size:12px; opacity:.7; word-break:break-all;">
@@ -1645,6 +1671,29 @@ ${linkedTopicReferencesHtml}
   });
 
   d.show();
+  d.$wrapper.off("click", ".message-info-topic-link")
+  .on("click", ".message-info-topic-link", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const $link = $(e.currentTarget);
+
+    const topicName = $link.attr("data-topic-name");
+    const topicSubject = $link.attr("data-topic-subject") || topicName;
+    const topicColor = $link.attr("data-topic-color") || null;
+
+    if (!topicName) return;
+
+    d.hide();
+
+    if (topicColor) {
+      this.topicColorMap?.set(topicName, topicColor);
+    }
+
+    this.openTopicChatWindow(topicName, topicSubject, {
+      topic_color: topicColor
+    });
+  });
   d.$wrapper.off("click", ".message-info-doctype-link")
   .on("click", ".message-info-doctype-link", function(e) {
     e.preventDefault();
@@ -4016,7 +4065,7 @@ if (!me.chat_topic_space) {
 
   me.closeTopicSelectPopup?.();
 
-  await me.scrollToFirstRealTopicMessage(topicName);
+  // await me.scrollToFirstRealTopicMessage(topicName);
 });
 
   me.$chat_space.on("click", ".topic-select-open", function (e) {
@@ -5384,15 +5433,15 @@ selectMessageTopic(topicName, topicSubject = null, opts = {}) {
     $removeBtn.show();
   }
 
-  if (opts.scroll !== false) {
-    setTimeout(() => {
-      if (this.scrollToFirstRealTopicMessage) {
-        this.scrollToFirstRealTopicMessage(key);
-      } else {
-        this.scrollToTopicStart(key);
-      }
-    }, 80);
-  }
+  // if (opts.scroll !== false) {
+  //   setTimeout(() => {
+  //     if (this.scrollToFirstRealTopicMessage) {
+  //       this.scrollToFirstRealTopicMessage(key);
+  //     } else {
+  //       this.scrollToTopicStart(key);
+  //     }
+  //   }, 80);
+  // }
 }
 
 clearMessageTopic() {
@@ -9008,7 +9057,7 @@ async function create_chat_topic(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_3.api.create_chat_topic",
+    method: "clefincode_chat.api.api_1_3_3.api.create_chat_topic",
     args: {
       mention_doctypes: mention_doctypes,
       chat_channel: chat_channel,
