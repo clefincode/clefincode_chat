@@ -16,6 +16,7 @@
   "chat_platform",
   "token",
   "last_active",
+  "app_language",
   "contact_details",
   "registration_token",
   "platform",
@@ -100,6 +101,12 @@
    "fieldname": "chat_platform",
    "fieldtype": "Data",
    "label": "Chat Platform"
+  },
+  {
+   "fieldname": "app_language",
+   "fieldtype": "Link",
+   "label": "App Language ",
+   "options": "Language"
   }
  ],
  "index_web_pages_for_search": 1,
@@ -110,7 +117,7 @@
    "link_fieldname": "name"
   }
  ],
- "modified": "2026-01-07 16:33:40.605746",
+ "modified": "2026-05-11 14:52:38.884237",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Profile",
