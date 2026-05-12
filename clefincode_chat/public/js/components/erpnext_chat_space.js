@@ -3349,6 +3349,9 @@ this.$wrapper.off("click.chatMenuActions", ".edit-action")
         const $ql = $tmp.find(".ql-editor").first();
         formattedContent = $ql.length ? $ql.html() : $tmp.html();
 
+        formattedContent = me.check_if_content_has_email(formattedContent);
+        formattedContent = me.check_if_content_has_link(formattedContent);
+
         await frappe.call({
           method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
           args: {
@@ -7060,7 +7063,7 @@ async fetchTemplateSuggestions(textValue) {
     const paragraphs = doc.querySelectorAll("p");
 
     paragraphs.forEach((p) => {
-      const mailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+      const mailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
       Array.from(p.childNodes).forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) {
           const replacedText = node.textContent.replace(
@@ -7938,6 +7941,10 @@ async handleMessageEdit(res) {
   const $msg = this.$chat_space.find(`#msg-${message_name}`);
   if (!$msg.length) return;
 
+  let processedContent = content || "";
+  processedContent = this.check_if_content_has_email(processedContent);
+  processedContent = this.check_if_content_has_link(processedContent);
+
   const $bubble = $msg.find(".message-bubble");
 
   const $menuTrigger = $bubble.find(".message-menu-trigger").detach();
@@ -7950,7 +7957,7 @@ async handleMessageEdit(res) {
   if ($replyLink.length) $bubble.append($replyLink);
   if ($forwardedLabel.length) $bubble.append($forwardedLabel);
 
-  $bubble.append(content);
+  $bubble.append(processedContent);
 
   $bubble.append(`
     <div class="edited-label" style="
@@ -7967,7 +7974,7 @@ async handleMessageEdit(res) {
 
   const cached = this.messageCache.get(message_name);
   if (cached) {
-    cached.content = content;
+    cached.content = processedContent;
     cached.is_edited = 1;
     cached.original_content = original_content;
     this.messageCache.set(message_name, cached);
@@ -8019,12 +8026,16 @@ $bubble.empty();
 if ($replyLink.length) $bubble.append($replyLink);
 if ($forwardedLabel.length) $bubble.append($forwardedLabel);
 
-$bubble.append(changes.content);
+let patchedContent = changes.content || "";
+patchedContent = this.check_if_content_has_email(patchedContent);
+patchedContent = this.check_if_content_has_link(patchedContent);
+
+$bubble.append(patchedContent);
 
 if ($editedLabel.length) $bubble.append($editedLabel);
 $bubble.append($menuTrigger);
 $bubble.append($reactHoverBtn);
-    
+
   }
 
   // forwarded
