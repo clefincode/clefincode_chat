@@ -1219,8 +1219,19 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             "utc_message_date" : send_date,
             "is_forwarded":is_forwarded,
             
-            "platform": platform 
+            "platform": platform ,
+            "chat_channel": room,
+            "chat_topic": chat_topic,
         }
+        
+        if chat_topic:
+            try:
+                topic_info = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, ["topic_subject", "topic_color"], as_dict=True)
+                if topic_info:
+                    results["chat_topic_subject"] = topic_info.topic_subject
+                    results["topic_color"] = topic_info.topic_color
+            except Exception:
+                pass
         
         if reply_to_message_name :
             results.update({"reply_to_message":reply_to_message_name,
@@ -8937,6 +8948,69 @@ def get_chat_topic_details(chat_topic):
     }
 
 @frappe.whitelist()
+def remove_chat_topic_reference(chat_topic, reference_doctype, reference_docname):
+    if not chat_topic:
+        frappe.throw("chat_topic is required")
+
+    if not reference_doctype or not reference_docname:
+        frappe.throw("Reference DocType and Document are required")
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    kept_rows = []
+
+    for ref in topic.get("references") or []:
+        ref_doctype = (
+            getattr(ref, "reference_doctype", None)
+            or getattr(ref, "doctype_link", None)
+            or getattr(ref, "doctype", None)
+        )
+        ref_docname = (
+            getattr(ref, "reference_docname", None)
+            or getattr(ref, "docname", None)
+        )
+
+        if str(ref_doctype) == str(reference_doctype) and str(ref_docname) == str(reference_docname):
+            continue
+
+        kept_rows.append(ref)
+
+    topic.set("references", [])
+
+    for ref in kept_rows:
+        topic.append("references", {
+            "doctype_link": (
+                getattr(ref, "reference_doctype", None)
+                or getattr(ref, "doctype_link", None)
+                or getattr(ref, "doctype", None)
+            ),
+            "docname": (
+                getattr(ref, "reference_docname", None)
+                or getattr(ref, "docname", None)
+            ),
+        })
+
+    topic.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    references = []
+
+    for ref in topic.get("references") or []:
+        references.append({
+            "doctype": getattr(ref, "doctype_link", None) or getattr(ref, "doctype", None),
+            "docname": getattr(ref, "docname", None),
+        })
+
+    return {
+        "chat_topic": topic.name,
+        "chat_topic_subject": topic.subject,
+        "subject": topic.subject,
+        "topic_color": topic.topic_color,
+        "chat_channel": topic.chat_channel,
+        "reference_doctypes": references,
+        "references": references,
+    }
+
 def add_chat_topic_reference(chat_topic, reference_doctype, reference_docname):
     if not chat_topic:
         frappe.throw("chat_topic is required")

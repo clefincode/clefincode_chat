@@ -715,78 +715,40 @@ save_all_contacts(dialog) {
 
       this.$chat_info.append(topic_title_section);
 
-      const topicChannel =
-        this.chat_space.chat_topic_channel ||
-        this.chat_space.profile?.room ||
-        this.room;
-
-      let chat_members = [];
-
-      if (topicChannel) {
-        try {
-          chat_members = await get_chat_members(topicChannel);
-        } catch (e) {
-          console.warn("[ChatInfo] Failed to load topic members", e);
-          chat_members = [];
-        }
-      } else {
-        console.warn("[ChatInfo] Missing topic channel for members", {
-          chat_topic: this.chat_space.chat_topic_space || this.chat_space.chat_topic,
-          chat_topic_channel: this.chat_space.chat_topic_channel,
-          profile_room: this.chat_space.profile?.room,
-          room: this.room
-        });
-      }
-
-      let member_section = ``;
-
-      if (chat_members.length > 0) {
-        member_section += `<div class="p-4 chat-info-section members-section"><div class="pb-2 font-weight-bold">Members</div>`;
-        chat_members.map((member) => {
-          member_section += `
-        <div class="d-flex flex-row justify-content-between pb-2">
-          <div>
-            <div>${member.name == frappe.session.user ? "You" : member.name}</div>
-            <div class="small">${member.email}</div>
-          </div>
-        </div>`;
-        });
-        member_section += `</div>`;
-        this.$chat_info.append(member_section);
-      }
-
-      let topic_contributors = await get_topic_contributors(
-        this.chat_space.chat_topic_space
-      );
-      if (topic_contributors.length > 0) {
-        let contributors_section = ``;
-        contributors_section += `<div class="p-4 chat-info-section"><div class="pb-2 font-weight-bold">Contributors</div>`;
-        topic_contributors.map((c) => {
-          contributors_section += `
-        <div class="d-flex flex-row justify-content-between pb-2">
-          <div>
-            <div>${c.email == frappe.session.user ? "You" : c.name}</div>
-            <div class="small">${c.email}</div>
-          </div>
-        </div>`;
-        });
-        this.$chat_info.append(contributors_section);
-      }
-
-      if (
-        topicName &&
-        (!Array.isArray(this.chat_space.reference_doctypes) ||
-          !this.chat_space.reference_doctypes.length) &&
-        this.chat_space.fetchTopicDetails
-      ) {
-        const details = await this.chat_space.fetchTopicDetails(topicName);
-
-        if (details?.references?.length) {
-          this.chat_space.reference_doctypes = details.references;
-        }
-      }
-
       this.$chat_info.append(this.renderTopicReferencesSection());
+
+      const hasRefs =
+        Array.isArray(this.chat_space.reference_doctypes) &&
+        this.chat_space.reference_doctypes.length;
+
+      if (!hasRefs && topicName && this.chat_space.fetchTopicDetails) {
+        this.chat_space.fetchTopicDetails(topicName)
+          .then((details) => {
+            if (details?.references?.length) {
+              this.chat_space.reference_doctypes = details.references;
+              this.refreshTopicReferencesSection();
+            }
+          })
+          .catch((e) => {
+            console.warn("[ChatInfo] Failed to refresh topic references", e);
+          });
+      }
+
+      this.$chat_info.append(`
+        <div class="p-4 chat-info-section members-section topic-members-section">
+          <div class="pb-2 font-weight-bold">${__("Members")}</div>
+          <div class="small text-muted topic-members-loading">${__("Loading...")}</div>
+        </div>
+      `);
+      this.loadTopicMembersSection?.();
+
+      this.$chat_info.append(`
+        <div class="p-4 chat-info-section topic-contributors-section">
+          <div class="pb-2 font-weight-bold">${__("Contributors")}</div>
+          <div class="small text-muted topic-contributors-loading">${__("Loading...")}</div>
+        </div>
+      `);
+      this.loadTopicContributorsSection?.();
     } else if (this.roomtype == "Guest") {
         let guest_sections = ``;
 
@@ -1569,6 +1531,17 @@ save_all_contacts(dialog) {
       e.stopPropagation();
       me.openAddTopicReferenceDialog();
     });
+
+    this.$chat_info.find(".remove-topic-reference").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $btn = $(this);
+      const referenceDoctype = $btn.attr("data-reference-doctype");
+      const referenceDocname = $btn.attr("data-reference-docname");
+
+      me.removeTopicReference(referenceDoctype, referenceDocname);
+    });
   } // end of setup_events
 
   openEditTopicInfoDialog() {
@@ -1805,6 +1778,10 @@ save_all_contacts(dialog) {
       this.updateTopicColorInDom(topicName, color);
     }
 
+    if (color) {
+      this.chat_space.applyTopicHeaderBorderColor?.(topicName, color);
+    }
+
     this.updateTopicSubjectInDom(topicName, safeSubject);
 
     this.chat_space.buildTopicMetaMap?.();
@@ -1864,6 +1841,81 @@ save_all_contacts(dialog) {
       .css("background", color);
   }
 
+  async loadTopicMembersSection() {
+    const topicChannel =
+      this.chat_space.chat_topic_channel ||
+      this.chat_space.profile?.room ||
+      this.room;
+
+    const $section = this.$chat_info.find(".topic-members-section");
+
+    if (!$section.length) return;
+
+    if (!topicChannel) {
+      $section.find(".topic-members-loading").text(__("No channel found"));
+      return;
+    }
+
+    try {
+      const chat_members = await get_chat_members(topicChannel);
+
+      const rows = chat_members.length
+        ? chat_members.map((member) => `
+            <div class="d-flex flex-row justify-content-between pb-2">
+              <div>
+                <div>${frappe.utils.escape_html(member.name == frappe.session.user ? "You" : member.name)}</div>
+                <div class="small">${frappe.utils.escape_html(member.email || "")}</div>
+              </div>
+            </div>
+          `).join("")
+        : `<div class="small text-muted">${__("No members")}</div>`;
+
+      $section.find(".topic-members-loading").replaceWith(rows);
+    } catch (e) {
+      console.warn("[ChatInfo] Failed to load topic members", e);
+      $section.find(".topic-members-loading").text(__("Failed to load members"));
+    }
+  }
+
+  async loadTopicContributorsSection() {
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    const $section = this.$chat_info.find(".topic-contributors-section");
+
+    if (!$section.length) return;
+
+    if (!topicName) {
+      $section.remove();
+      return;
+    }
+
+    try {
+      const contributors = await get_topic_contributors(topicName);
+
+      if (!contributors || !contributors.length) {
+        $section.remove();
+        return;
+      }
+
+      const rows = contributors.map((c) => `
+        <div class="d-flex flex-row justify-content-between pb-2">
+          <div>
+            <div>${frappe.utils.escape_html(c.email == frappe.session.user ? "You" : c.name)}</div>
+            <div class="small">${frappe.utils.escape_html(c.email || "")}</div>
+          </div>
+        </div>
+      `).join("");
+
+      $section.find(".topic-contributors-loading").replaceWith(rows);
+    } catch (e) {
+      console.warn("[ChatInfo] Failed to load topic contributors", e);
+      $section.remove();
+    }
+  }
+
   renderTopicReferencesSection() {
     const refs = Array.isArray(this.chat_space.reference_doctypes)
       ? this.chat_space.reference_doctypes
@@ -1874,12 +1926,27 @@ save_all_contacts(dialog) {
           const doctype = ref.doctype || ref.reference_doctype || "";
           const docname = ref.docname || ref.reference_docname || "";
 
+          const safeDoctype = frappe.utils.escape_html(doctype);
+          const safeDocname = frappe.utils.escape_html(docname);
+
           return `
-            <div class="topic-reference-row d-flex flex-row justify-content-between pb-2">
+            <div class="topic-reference-row d-flex flex-row justify-content-between align-items-center pb-2"
+                 data-reference-doctype="${safeDoctype}"
+                 data-reference-docname="${safeDocname}">
               <div>
-                <div>${frappe.utils.escape_html(doctype)}</div>
-                <div class="small">${frappe.utils.escape_html(docname)}</div>
+                <div>${safeDoctype}</div>
+                <div class="small">${safeDocname}</div>
               </div>
+
+              <button
+                type="button"
+                class="btn btn-xs remove-topic-reference topic-reference-delete-btn"
+                data-reference-doctype="${safeDoctype}"
+                data-reference-docname="${safeDocname}"
+                title="${__("Remove Reference")}"
+              >
+                ${frappe.utils.icon("delete-active", "sm")}
+              </button>
             </div>
           `;
         }).join("")
@@ -1912,6 +1979,17 @@ save_all_contacts(dialog) {
       e.preventDefault();
       e.stopPropagation();
       this.openAddTopicReferenceDialog();
+    });
+
+    this.$chat_info.find(".remove-topic-reference").off("click").on("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $btn = $(e.currentTarget);
+      const referenceDoctype = $btn.attr("data-reference-doctype");
+      const referenceDocname = $btn.attr("data-reference-docname");
+
+      this.removeTopicReference(referenceDoctype, referenceDocname);
     });
   }
 
@@ -1981,6 +2059,18 @@ save_all_contacts(dialog) {
             me.chat_space.reference_doctypes = refs;
           }
 
+          if (me.chat_space.messageCache) {
+            me.chat_space.messageCache.forEach((cached) => {
+              if (
+                cached.chat_topic === topicName ||
+                cached.topic === topicName
+              ) {
+                cached.reference_doctypes = refs;
+                cached.references = refs;
+              }
+            });
+          }
+
           me.refreshTopicReferencesSection();
 
           frappe.show_alert({
@@ -2001,6 +2091,81 @@ save_all_contacts(dialog) {
     });
 
     d.show();
+  }
+
+  removeTopicReference(referenceDoctype, referenceDocname) {
+    const me = this;
+
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    if (!topicName || !referenceDoctype || !referenceDocname) {
+      frappe.msgprint({
+        title: __("Error"),
+        message: __("Missing topic or reference."),
+        indicator: "red"
+      });
+      return;
+    }
+
+    frappe.confirm(
+      __("Remove this reference?"),
+      async () => {
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_3_3.api.remove_chat_topic_reference",
+            args: {
+              chat_topic: topicName,
+              reference_doctype: referenceDoctype,
+              reference_docname: referenceDocname
+            }
+          });
+
+          const updated = r.message || {};
+          const refs =
+            updated.reference_doctypes ||
+            updated.references ||
+            [];
+
+          me.chat_space.reference_doctypes = Array.isArray(refs) ? refs : [];
+
+          if (me.chat_space.topicDetailsCache?.has(topicName)) {
+            const cached = me.chat_space.topicDetailsCache.get(topicName) || {};
+            cached.references = refs;
+            cached.reference_doctypes = refs;
+            me.chat_space.topicDetailsCache.set(topicName, cached);
+          }
+
+          if (me.chat_space.messageCache) {
+            me.chat_space.messageCache.forEach((cached) => {
+              if (
+                cached.chat_topic === topicName ||
+                cached.topic === topicName
+              ) {
+                cached.reference_doctypes = refs;
+                cached.references = refs;
+              }
+            });
+          }
+
+          me.refreshTopicReferencesSection();
+
+          frappe.show_alert({
+            message: __("Reference removed"),
+            indicator: "green"
+          });
+        } catch (e) {
+          console.error("Failed to remove topic reference", e);
+          frappe.msgprint({
+            title: __("Error"),
+            message: __("Failed to remove reference."),
+            indicator: "red"
+          });
+        }
+      }
+    );
   }
 
   open_chat_space(channel, channel_name, roome_type = "Group") {

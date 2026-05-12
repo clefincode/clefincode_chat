@@ -163,6 +163,12 @@ export default class ChatSpace {
         );
       }
     }
+
+    if (opts.topic_color && this.chat_topic_space) {
+      this.topicColorMap.set(this.chat_topic_space, opts.topic_color);
+      this.activeMessageTopicColor = opts.topic_color;
+    }
+
     this.messageCache = new Map();
     this.setup();
   }
@@ -272,6 +278,8 @@ async refreshTopicColor(topicName) {
     this.updateActiveTopicButton?.(key);
   }
 
+  this.applyTopicHeaderBorderColor?.(key, color);
+
   if (this.$topicSelectPopup && this.$topicSelectPopup.length) {
     const query = this.$topicSelectPopup.find(".topic-select-search").val() || "";
     this.renderTopicSelectList(query);
@@ -338,6 +346,7 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
         class="topic-open-window-btn topic-separator-open-btn"
         data-topic-name="${safeTopicName}"
         data-topic-subject="${safeSubject}"
+        data-topic-color="${safeColor}"
         title="${__("Open topic in new window")}"
         aria-label="${__("Open topic in new window")}"
       >
@@ -430,7 +439,7 @@ async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this
   );
 }
 
-openTopicChatWindow(topicName, topicSubject = null) {
+openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
   if (!topicName) return;
 
   const chatChannel = this.getCurrentChatChannel();
@@ -448,6 +457,11 @@ openTopicChatWindow(topicName, topicSubject = null) {
   const safeTopicSubject = this.normalizeTopicSubject
     ? this.normalizeTopicSubject(topicSubject, topicKey)
     : String(topicSubject || topicKey);
+
+  const topicColor =
+    opts.topic_color ||
+    this.topicColorMap?.get(topicKey) ||
+    null;
 
   if (check_if_chat_window_open(topicKey, "topic")) {
     $(`.expand-chat-window[data-id|='${topicKey}']`).click();
@@ -480,6 +494,7 @@ openTopicChatWindow(topicName, topicSubject = null) {
     chat_topic_channel: chatChannel,
     chat_topic_subject: safeTopicSubject,
     alternative_subject: safeTopicSubject,
+    topic_color: topicColor,
 
     topic_write_mode: true,
 
@@ -2301,6 +2316,8 @@ async fetch_single_message(messageName) {
 
 
     this.$chat_space.append(header_html);
+
+    this.applyTopicHeaderBorderColor?.();
   
             const $search = this.$chat_space.find(".chat-search");
             $search.hide();
@@ -2601,6 +2618,7 @@ async fetch_single_message(messageName) {
     if (topic_info[0].topic_color) {
       this.topicColorMap.set(this.chat_topic, topic_info[0].topic_color);
       this.activeMessageTopicColor = topic_info[0].topic_color;
+      this.applyTopicHeaderBorderColor?.(this.chat_topic, topic_info[0].topic_color);
     }
     this.updateActiveTopicButton(this.chat_topic);
     this.chat_topic_subject = topic_info[0].chat_topic_subject;
@@ -2663,6 +2681,7 @@ async fetch_single_message(messageName) {
       if (details.topic_color) {
         this.topicColorMap?.set(topicName, details.topic_color);
         this.activeMessageTopicColor = details.topic_color;
+        this.applyTopicHeaderBorderColor?.(topicName, details.topic_color);
       }
 
       return {
@@ -3158,7 +3177,15 @@ async handleBulkDelete() {
           ? me.normalizeTopicSubject(rawSubject, topicName)
           : String(rawSubject || topicName);
 
-        me.openTopicChatWindow(topicName, safeSubject);
+        const topicColor = $(this).attr("data-topic-color") || null;
+
+        if (topicColor) {
+          me.topicColorMap?.set(topicName, topicColor);
+        }
+
+        me.openTopicChatWindow(topicName, safeSubject, {
+          topic_color: topicColor
+        });
       });
 
 // ===== Message action menu =====
@@ -3817,6 +3844,16 @@ if (app && app.is_webview) {
 
         me.toggle_voice_clip_icon();
 
+        if (me.isDedicatedTopicContext?.()) {
+          const textVal = $(this).find(".ql-editor").text();
+          if (textVal.trim()) {
+            const docMentions = me.extractDoctypeMentionsFromComposer();
+            me.showTopicMentionReferenceHint(docMentions);
+          } else {
+            me.clearTopicMentionReferenceHint?.();
+          }
+        }
+
         if (contains_arabic($(this).find(".ql-editor").find("p").text())) {
           $(this).find(".ql-editor").css({
             direction: "rtl",
@@ -4387,6 +4424,7 @@ async setup_messages(messages_list) {
         class="topic-open-window-btn"
         data-topic-name="${safeTopicName}"
         data-topic-subject="${title}"
+        data-topic-color="${color}"
         title="${__("Open topic in new window")}"
       >
         Open
@@ -4438,28 +4476,269 @@ async setup_messages(messages_list) {
     }
 
 getOutgoingTopicInfo() {
-  const topicName =
-    this.chat_topic_space ||
-    this.activeMessageTopic ||
-    null;
+  const isTopicWindow = this.is_topic_window || this.profile.room_type === "Topic";
+
+  const topicName = isTopicWindow
+    ? this.chat_topic_space || this.profile.chat_topic || this.chat_topic
+    : this.activeMessageTopic || null;
 
   if (!topicName) return null;
 
-  const topicSubject =
-    this.chat_topic_space_subject ||
-    this.activeMessageTopicSubject ||
-    topicName;
+  const topicSubject = isTopicWindow
+    ? this.chat_topic_space_subject || this.profile.chat_topic_subject || topicName
+    : this.activeMessageTopicSubject || topicName;
 
-  const topicColor =
-    this.activeMessageTopicColor ||
-    this.topicColorMap.get(topicName) ||
-    this.getTopicColor(topicName);
+  const topicColor = isTopicWindow
+    ? this.topicColorMap.get(topicName) || this.activeMessageTopicColor || this.getTopicColor(topicName)
+    : this.activeMessageTopicColor || this.topicColorMap.get(topicName) || this.getTopicColor(topicName);
 
   return {
     chat_topic: topicName,
     chat_topic_subject: topicSubject,
     topic_color: topicColor
   };
+}
+
+getIncomingMessageTopic(payload = {}) {
+  const msg = payload.message || payload.data || payload;
+  return (
+    msg.chat_topic ||
+    msg.topic ||
+    msg.topic_name ||
+    payload.chat_topic ||
+    payload.topic ||
+    null
+  );
+}
+
+getIncomingMessageChannel(payload = {}) {
+  const msg = payload.message || payload.data || payload;
+  return (
+    msg.chat_channel ||
+    msg.room ||
+    msg.channel ||
+    payload.chat_channel ||
+    payload.room ||
+    payload.channel ||
+    null
+  );
+}
+
+shouldAppendRealtimeMessage(payload = {}) {
+  const incomingTopic = this.getIncomingMessageTopic(payload);
+  const incomingChannel = this.getIncomingMessageChannel(payload);
+
+  const currentTopic = this.chat_topic_space || this.profile.chat_topic || this.chat_topic || null;
+
+  const currentChannel =
+    this.chat_topic_channel ||
+    this.profile.room ||
+    this.profile.parent_channel ||
+    null;
+
+  if (this.is_topic_window || this.profile.room_type === "Topic") {
+    if (!currentTopic) return false;
+
+    if (!incomingTopic) {
+      return false;
+    }
+
+    return String(incomingTopic) === String(currentTopic);
+  }
+
+  if (incomingChannel && currentChannel) {
+    return String(incomingChannel) === String(currentChannel);
+  }
+
+  return true;
+}
+
+getCurrentTopicWindowColor() {
+  const topicName =
+    this.chat_topic_space ||
+    this.chat_topic ||
+    this.profile?.chat_topic ||
+    null;
+
+  if (!topicName) return null;
+
+  return (
+    this.activeMessageTopicColor ||
+    this.topicColorMap?.get(topicName) ||
+    this.getTopicColor?.(topicName) ||
+    null
+  );
+}
+
+applyTopicHeaderBorderColor(topicName = null, topicColor = null) {
+  if (!(this.is_topic_window || this.profile?.room_type === "Topic")) return;
+
+  const key =
+    topicName ||
+    this.chat_topic_space ||
+    this.chat_topic ||
+    this.profile?.chat_topic ||
+    null;
+
+  if (!key) return;
+
+  const color =
+    topicColor ||
+    this.activeMessageTopicColor ||
+    this.topicColorMap?.get(key) ||
+    null;
+
+  if (!color) return;
+
+  this.activeMessageTopicColor = color;
+  this.topicColorMap?.set(key, color);
+
+  this.$chat_space
+    .find(".chat-header")
+    .addClass("topic-chat-header-border")
+    .removeClass("topic-chat-header")
+    .css({
+      "--topic-color": color,
+      background: "",
+      color: "",
+      border: "",
+      borderBottom: `3px solid ${color}`
+    })
+    .attr("data-topic-color", color);
+}
+
+isDedicatedTopicContext() {
+  return Boolean(
+    this.is_topic_window ||
+    this.profile?.room_type === "Topic" ||
+    this.chat_topic_space
+  );
+}
+
+extractDoctypeMentionsFromComposer() {
+  const mentions = [];
+
+  const $editor = this.$chat_actions?.find(".type-message .ql-editor");
+
+  if (!$editor || !$editor.length) return mentions;
+
+  $editor.find("span.mention").each(function () {
+    const $mention = $(this);
+
+    const isDoctype =
+      String($mention.attr("data-is-doctype") || $mention.data("is-doctype") || "") === "1";
+
+    if (!isDoctype) return;
+
+    const doctype =
+      $mention.attr("data-doctype") ||
+      $mention.data("doctype") ||
+      "";
+
+    const docname =
+      $mention.attr("data-id") ||
+      $mention.data("id") ||
+      "";
+
+    if (doctype && docname) {
+      mentions.push({ doctype, docname });
+    }
+  });
+
+  const seen = new Set();
+  return mentions.filter((m) => {
+    const key = `${m.doctype}::${m.docname}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+showTopicMentionReferenceHint(mentions = []) {
+  if (!this.isDedicatedTopicContext?.()) return;
+
+  const $messageSection = this.$chat_actions?.find(".message-section");
+  if (!$messageSection?.length) return;
+
+  this.clearTopicMentionReferenceHint();
+
+  if (!mentions || !mentions.length) return;
+
+  const label =
+    mentions.length === 1
+      ? `${mentions[0].doctype} / ${mentions[0].docname}`
+      : `${mentions.length} ${__("references")}`;
+
+  const html = `
+    <div class="topic-mention-reference-hint">
+      ${__("This mentioned document will be added as a reference to this topic")}:
+      <b>${frappe.utils.escape_html(label)}</b>
+    </div>
+  `;
+
+  $messageSection.append(html);
+}
+
+clearTopicMentionReferenceHint() {
+  this.$chat_actions?.find(".topic-mention-reference-hint").remove();
+}
+
+async addMentionedDoctypesAsTopicReferences(mentions = []) {
+  if (!this.isDedicatedTopicContext?.()) return;
+  if (!mentions || !mentions.length) return;
+
+  const topicName =
+    this.chat_topic_space ||
+    this.chat_topic ||
+    this.profile?.chat_topic;
+
+  if (!topicName) return;
+
+  for (const mention of mentions) {
+    if (!mention.doctype || !mention.docname) continue;
+
+    try {
+      const r = await frappe.call({
+        method: "clefincode_chat.api.api_1_3_3.api.add_chat_topic_reference",
+        args: {
+          chat_topic: topicName,
+          reference_doctype: mention.doctype,
+          reference_docname: mention.docname
+        }
+      });
+
+      const updated = r.message || {};
+      const refs =
+        updated.reference_doctypes ||
+        updated.references ||
+        [];
+
+      if (Array.isArray(refs)) {
+        this.reference_doctypes = refs;
+
+        if (this.messageCache) {
+          this.messageCache.forEach((cachedMsg) => {
+            if (
+              cachedMsg.chat_topic === topicName ||
+              cachedMsg.topic === topicName
+            ) {
+              cachedMsg.reference_doctypes = refs;
+              cachedMsg.references = refs;
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to add mentioned document as topic reference", mention, e);
+    }
+  }
+
+  this.chat_info?.refreshTopicReferencesSection?.();
+
+  frappe.show_alert({
+    message: __("Mentioned document added as topic reference"),
+    indicator: "green"
+  });
 }
 
 applyTopicToRenderedMessage(messageName, topicName, topicSubject = null, topicColor = null) {
@@ -5980,6 +6259,10 @@ if (!is_deleted && type !== "info-message") {
       chat_room = this.profile.room;
     }
 
+    const topicMentionRefs = this.isDedicatedTopicContext?.()
+      ? this.extractDoctypeMentionsFromComposer()
+      : [];
+
     this.$chat_actions.find(".ql-editor").html("");
     this.voice_clip.$voice_clip.css("display", "block");
     this.$chat_actions.find(".message-send-button").css("display", "none");
@@ -6227,6 +6510,8 @@ if (!is_deleted && type !== "info-message") {
           topic_color: this.chat_topic ? this.getTopicColor(this.chat_topic) : null,
         };
 
+        const isDedicatedTopic = this.isDedicatedTopicContext?.();
+
         if (this.chat_topic) {
           await add_reference_doctype(
             mention_doctypes,
@@ -6234,8 +6519,31 @@ if (!is_deleted && type !== "info-message") {
             this.last_active_sub_channel
           );
 
+          mention_doctypes.forEach((m) => {
+            if (
+              !this.reference_doctypes.some(
+                (r) =>
+                  (r.doctype || r.reference_doctype) === m.doctype &&
+                  (r.docname || r.reference_docname) === m.docname
+              )
+            ) {
+              this.reference_doctypes.push({
+                doctype: m.doctype,
+                docname: m.docname
+              });
+            }
+          });
+
+          this.clearTopicMentionReferenceHint?.();
+          this.chat_info?.refreshTopicReferencesSection?.();
+
           this.last_chat_space_message = await send_message(message_info);
           await this.send_add_document_message(mention_doctypes, chat_room);
+        } else if (isDedicatedTopic) {
+          await this.addMentionedDoctypesAsTopicReferences(mention_doctypes);
+          this.clearTopicMentionReferenceHint?.();
+
+          this.last_chat_space_message = await send_message(message_info);
         } else {
           let results = await create_chat_topic(
             mention_doctypes,
@@ -6297,9 +6605,9 @@ if (!is_deleted && type !== "info-message") {
       is_document: this.is_document,
       is_voice_clip: this.is_voice_clip,
       file_id: file_id,
-      chat_topic: this.chat_topic || messageChatTopic,
-      chat_topic_subject: this.chat_topic ? null : messageChatTopicSubject,
-      topic_color: outgoingTopic && outgoingTopic.topic_color,
+      chat_topic: outgoingTopic ? outgoingTopic.chat_topic : (this.chat_topic || messageChatTopic),
+      chat_topic_subject: outgoingTopic ? outgoingTopic.chat_topic_subject : null,
+      topic_color: outgoingTopic ? outgoingTopic.topic_color : null,
       is_screenshot: is_screenshot,
       reply_to_message_name: this.reply_to_message_name,
     };
@@ -6315,6 +6623,11 @@ if (!is_deleted && type !== "info-message") {
           outgoingTopic.topic_color
         );
       }, 150);
+    }
+
+    if (topicMentionRefs?.length) {
+      await this.addMentionedDoctypesAsTopicReferences(topicMentionRefs);
+      this.clearTopicMentionReferenceHint?.();
     }
 
     this.reply_to_message_name = null;
@@ -6898,7 +7211,7 @@ async fetchTemplateSuggestions(textValue) {
 
         
       });
-      const topicNameForRealtime = res.chat_topic || res.topic || this.activeMessageTopic || null;
+      const topicNameForRealtime = res.chat_topic || res.topic || null;
       const topicColorForRealtime = res.topic_color || (topicNameForRealtime ? this.getTopicColor(topicNameForRealtime) : null);
 
       if (topicNameForRealtime && topicColorForRealtime) {
@@ -6914,7 +7227,7 @@ async fetchTemplateSuggestions(textValue) {
         message_name: res.message_name,
         message_template_type: res.message_template_type,
         chat_topic: topicNameForRealtime,
-        chat_topic_subject: res.chat_topic_subject || res.topic_subject || res.chat_topic_title || null,
+        chat_topic_subject: res.chat_topic_subject || res.topic_subject || res.chat_topic_title || topicNameForRealtime,
         topic_color: topicColorForRealtime,
         send_date: res.send_date,
         reply_to_message:res.reply_to_message ,
@@ -7246,6 +7559,9 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
           )
         ) {
           mark_messsages_as_read(me.profile.user_email, me.profile.room);
+        }
+        if (!me.shouldAppendRealtimeMessage(res)) {
+          return;
         }
         me.receive_message(res, get_time(res.send_date, me.profile.time_zone));
       } else if (res.realtime_type == "add_group_member") {
