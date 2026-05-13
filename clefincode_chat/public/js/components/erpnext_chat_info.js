@@ -675,6 +675,19 @@ save_all_contacts(dialog) {
         this.chat_space.getTopicColor?.(topicName) ||
         "#7c3aed";
 
+      const topicIsPrivate =
+        this.chat_space.is_private ??
+        this.chat_space.profile?.is_private ??
+        0;
+
+      const topicVisibilityLabel = topicIsPrivate ? __("Private") : __("Public");
+
+      const topicStatus =
+        this.chat_space.topic_status ||
+        this.chat_space.chat_topic_status ||
+        this.chat_space.profile?.topic_status ||
+        "Open";
+
       let topic_title_section = `
         <div class="p-4 chat-info-section topic-info-editor-section">
           <div class="d-flex justify-content-between align-items-center">
@@ -709,6 +722,20 @@ save_all_contacts(dialog) {
               "
             ></span>
             <span class="small text-muted">${frappe.utils.escape_html(topicColor || "")}</span>
+          </div>
+
+          <div class="d-flex align-items-center mt-2">
+            <span style="margin-right:8px;">👁</span>
+            <span class="small text-muted topic-info-visibility">
+              ${frappe.utils.escape_html(topicVisibilityLabel)}
+            </span>
+          </div>
+
+          <div class="d-flex align-items-center mt-2">
+            <span class="small text-muted" style="margin-right:8px;">${__("Status")}:</span>
+            <span class="small text-muted topic-info-status">
+              ${frappe.utils.escape_html(topicStatus)}
+            </span>
           </div>
         </div>
       `;
@@ -1549,7 +1576,8 @@ save_all_contacts(dialog) {
 
     const topicName =
       this.chat_space.chat_topic_space ||
-      this.chat_space.chat_topic;
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
 
     if (!topicName) {
       frappe.msgprint({
@@ -1572,6 +1600,17 @@ save_all_contacts(dialog) {
       this.chat_space.getTopicColor?.(topicName) ||
       "#7c3aed";
 
+    const currentIsPrivate =
+      this.chat_space.is_private ??
+      this.chat_space.profile?.is_private ??
+      0;
+
+    const currentStatus =
+      this.chat_space.topic_status ||
+      this.chat_space.chat_topic_status ||
+      this.chat_space.profile?.topic_status ||
+      "Open";
+
     const d = new frappe.ui.Dialog({
       title: __("Edit Topic"),
       fields: [
@@ -1589,16 +1628,18 @@ save_all_contacts(dialog) {
           default: currentColor
         },
         {
-          label: __("Add Reference DocType"),
-          fieldname: "new_reference_doctype",
-          fieldtype: "Link",
-          options: "DocType"
+          label: __("Private"),
+          fieldname: "is_private",
+          fieldtype: "Check",
+          default: currentIsPrivate ? 1 : 0,
+          description: __("Checked = Private, unchecked = Public")
         },
         {
-          label: __("Add Reference Document"),
-          fieldname: "new_reference_docname",
-          fieldtype: "Dynamic Link",
-          options: "new_reference_doctype"
+          label: __("Status"),
+          fieldname: "topic_status",
+          fieldtype: "Select",
+          options: ["Open", "Closed"],
+          default: currentStatus
         }
       ],
       primary_action_label: __("Save"),
@@ -1622,7 +1663,9 @@ save_all_contacts(dialog) {
             args: {
               chat_topic: topicName,
               subject: values.subject,
-              topic_color: values.topic_color
+              topic_color: values.topic_color,
+              is_private: values.is_private ? 1 : 0,
+              topic_status: values.topic_status
             }
           });
 
@@ -1638,6 +1681,16 @@ save_all_contacts(dialog) {
             values.topic_color ||
             currentColor;
 
+          const newIsPrivate =
+            updated.is_private !== undefined
+              ? updated.is_private
+              : values.is_private ? 1 : 0;
+
+          const newStatus =
+            updated.topic_status ||
+            values.topic_status ||
+            currentStatus;
+
           if (
             Array.isArray(updated.reference_doctypes) &&
             updated.reference_doctypes.length
@@ -1648,7 +1701,13 @@ save_all_contacts(dialog) {
           }
 
           const oldSubject = currentSubject;
-          me.applyUpdatedTopicInfo(topicName, newSubject, newColor);
+          me.applyUpdatedTopicInfo(
+            topicName,
+            newSubject,
+            newColor,
+            newIsPrivate,
+            newStatus
+          );
 
           if (me.chat_space.fetchTopicDetails) {
             const details = await me.chat_space.fetchTopicDetails(topicName);
@@ -1656,29 +1715,6 @@ save_all_contacts(dialog) {
             if (details?.references?.length) {
               me.chat_space.reference_doctypes = details.references;
             }
-          }
-
-          if (values.new_reference_doctype && values.new_reference_docname) {
-            const refRes = await frappe.call({
-              method: "clefincode_chat.api.api_1_3_3.api.add_chat_topic_reference",
-              args: {
-                chat_topic: topicName,
-                reference_doctype: values.new_reference_doctype,
-                reference_docname: values.new_reference_docname
-              }
-            });
-
-            const refUpdated = refRes.message || {};
-            const refs =
-              refUpdated.reference_doctypes ||
-              refUpdated.references ||
-              [];
-
-            if (Array.isArray(refs)) {
-              me.chat_space.reference_doctypes = refs;
-            }
-
-            me.refreshTopicReferencesSection?.();
           }
 
           if (newSubject !== oldSubject && me.chat_space.send_rename_topic_message) {
@@ -1709,8 +1745,14 @@ save_all_contacts(dialog) {
     d.show();
   }
 
-  applyUpdatedTopicInfo(topicName, subject, color) {
+  applyUpdatedTopicInfo(topicName, subject, color, isPrivate = 0, status = "Open") {
     if (!topicName) return;
+
+    const normalizedIsPrivate =
+      isPrivate === 1 ||
+      isPrivate === true ||
+      isPrivate === "1" ||
+      isPrivate === "true";
 
     const existingReferences = Array.isArray(this.chat_space.reference_doctypes)
       ? [...this.chat_space.reference_doctypes]
@@ -1737,6 +1779,15 @@ save_all_contacts(dialog) {
       this.chat_space.profile.chat_topic_subject = safeSubject;
     }
 
+    this.chat_space.is_private = normalizedIsPrivate ? 1 : 0;
+    this.chat_space.topic_status = status;
+    this.chat_space.chat_topic_status = status;
+
+    if (this.chat_space.profile) {
+      this.chat_space.profile.is_private = normalizedIsPrivate ? 1 : 0;
+      this.chat_space.profile.topic_status = status;
+    }
+
     if (color) {
       this.chat_space.activeMessageTopicColor = color;
 
@@ -1761,6 +1812,14 @@ save_all_contacts(dialog) {
     if ($colorText.length) {
       $colorText.text(color || "");
     }
+
+    this.$chat_info
+      .find(".topic-info-visibility")
+      .html(normalizedIsPrivate ? __("Private") : __("Public"));
+
+    this.$chat_info
+      .find(".topic-info-status")
+      .text(status || "");
 
     const shortTitle =
       safeSubject.length > 25

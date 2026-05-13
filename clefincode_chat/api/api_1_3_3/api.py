@@ -8629,44 +8629,6 @@ def get_channel_topics(chat_channel, topic_status=None):
 
 
 
-@frappe.whitelist()
-def add_reference_to_topic(topic_name, reference_doctype, reference_docname):
-    
-    if not topic_name:
-        frappe.throw(_("topic_name is required"))
-
-    if not reference_doctype or not reference_docname:
-        frappe.throw(_("reference_doctype and reference_docname are required"))
-
-    doc = frappe.get_doc("ClefinCode Chat Topic", topic_name)
-
-    already_exists = False
-    for row in (doc.references or []):
-        parsed = _normalize_reference_row(row)
-        if not parsed:
-            continue
-
-        if (
-            parsed["doctype"] == reference_doctype
-            and parsed["docname"] == reference_docname
-        ):
-            already_exists = True
-            break
-
-    if not already_exists:
-        doc.append("references", {
-            "doctype_link": reference_doctype,
-            "docname": reference_docname,
-            "active": 1,
-        })
-        doc.save()
-        frappe.db.commit()
-
-    return {
-        "message": _("Reference added successfully") if not already_exists else _("Reference already exists"),
-        "already_exists": already_exists,
-        "topic": _normalize_topic_doc(doc),
-    }
 
 
 
@@ -8889,7 +8851,7 @@ def get_chat_topic_color(chat_topic):
     }
 
 @frappe.whitelist()
-def update_chat_topic_info(chat_topic, subject=None, topic_color=None):
+def update_chat_topic_info(chat_topic, subject=None, topic_color=None, is_private=None, topic_status=None):
     if not chat_topic:
         frappe.throw("chat_topic is required")
 
@@ -8900,6 +8862,12 @@ def update_chat_topic_info(chat_topic, subject=None, topic_color=None):
 
     if topic_color is not None:
         topic.topic_color = topic_color
+
+    if is_private is not None:
+        topic.is_private = int(is_private) if is_private else 0
+
+    if topic_status is not None:
+        topic.topic_status = topic_status
 
     topic.save(ignore_permissions=True)
     frappe.db.commit()
@@ -8917,6 +8885,8 @@ def update_chat_topic_info(chat_topic, subject=None, topic_color=None):
         "chat_topic_subject": topic.subject,
         "subject": topic.subject,
         "topic_color": topic.topic_color,
+        "is_private": topic.is_private,
+        "topic_status": topic.topic_status,
         "chat_channel": topic.chat_channel,
         "reference_doctypes": references,
     }
@@ -9010,7 +8980,7 @@ def remove_chat_topic_reference(chat_topic, reference_doctype, reference_docname
         "reference_doctypes": references,
         "references": references,
     }
-
+@frappe.whitelist()
 def add_chat_topic_reference(chat_topic, reference_doctype, reference_docname):
     if not chat_topic:
         frappe.throw("chat_topic is required")
