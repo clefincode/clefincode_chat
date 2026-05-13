@@ -3042,6 +3042,7 @@ def approve_access_request(sender ,reciever, chat_topic , notification_log, chat
     'document_type': reference_doctype,
     'document_name': reference_docname,
     'email_content': chat_topic,
+    'chat_topic': 1,
     }
     enqueue_create_notification(reciever, notification_doc)
     chat_topic_doc = frappe.get_doc("ClefinCode Chat Topic" , chat_topic)

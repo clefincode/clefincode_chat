@@ -3,11 +3,13 @@ import ChatContactList from "./components/erpnext_chat_contact_list";
 import ChatWindow from "./components/erpnext_chat_window";
 import ChatSpace from "./components/erpnext_chat_space";
 import { check_if_chat_window_open } from "./components/erpnext_chat_utils";
+import { open_topic_chat_window_from_context } from "./components/topic_open_helper";
 
 window.CCChatContactList = ChatContactList;
 window.CCChatWindow = ChatWindow;
 window.CCChatSpace = ChatSpace;
 window.CCCheckIfChatWindowOpen = check_if_chat_window_open;
+window.CiCOpenTopicChatWindowFromContext = open_topic_chat_window_from_context;
 window.CiCOpenTopicFromTimeline = async function (opts = {}) {
   const chat_topic = opts.chat_topic || opts.topic || opts.name;
   const message_name = opts.message_name || null;
@@ -26,6 +28,9 @@ window.CiCOpenTopicFromTimeline = async function (opts = {}) {
   });
 
   const ctx = r.message || {};
+
+  const canWrite = Boolean(ctx.can_write) && String(ctx.topic_status || "").toLowerCase() !== "closed";
+
   const app = window.erpnext_chat_app;
 
   const baseProfile = {
@@ -65,8 +70,11 @@ window.CiCOpenTopicFromTimeline = async function (opts = {}) {
 
     is_private_topic: ctx.is_private_topic || 0,
 
-    topic_write_mode: !!ctx.can_write,
+    topic_write_mode: canWrite,
 
+    topic_read_only: String(ctx.topic_status || "").toLowerCase() === "closed" || !canWrite,
+    topic_can_reopen: Boolean(ctx.can_reopen),
+    chat_topic_status: ctx.topic_status,
     original_room_type: ctx.room_type || "Group",
     chat_status: ctx.chat_status,
   });

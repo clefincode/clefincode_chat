@@ -34,11 +34,43 @@ frappe.provide("frappe.ui");
 			notifications_view.get_dropdown_item_html = (notification_log) => {
 				const item_html = original_get_dropdown_item_html(notification_log);
 
-				const is_chat_topic_notification =
+				const is_topic_access_request =
 					cint(notification_log.chat_topic) === 1 &&
-					cint(notification_log.approved) === 0;
+					cint(notification_log.approved) === 0 &&
+					(!notification_log.subject ||
+						!notification_log.subject.includes(
+							"approved your request access to topic"
+						));
+			
+				const is_topic_approval_notification =
+					notification_log.type === "Alert" &&
+					cint(notification_log.chat_topic) === 1 &&
+					typeof notification_log.subject === "string" &&
+					notification_log.subject.includes(
+						"approved your request access to topic"
+					) &&
+					notification_log.email_content;
+		
+				if (is_topic_approval_notification) {
+					const chatTopic = notification_log.email_content;
 
-				if (!is_chat_topic_notification) {
+					item_html.on("click", function (e) {
+						e.preventDefault();
+				
+						const openFn =
+							window.CiCOpenTopicChatWindowFromContext;
+						if (typeof openFn === "function") {
+							setTimeout(function () {
+								openFn({
+									chat_topic: chatTopic,
+									chat_topic_subject: null,
+								});
+							}, 100);
+						}
+					});
+				}
+
+				if (!is_topic_access_request) {
 					return item_html;
 				}
 
@@ -100,7 +132,7 @@ frappe.provide("frappe.ui");
 		reference_docname
 	) {
 		return frappe.call({
-			method: "clefincode_chat.api.api_1_2_1.api.approve_access_request",
+			method: "clefincode_chat.api.api_1_3_3.api.approve_access_request",
 			args: {
 				sender,
 				reciever,
