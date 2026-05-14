@@ -662,46 +662,120 @@ save_all_contacts(dialog) {
       direct_chat_sections += refernce_doctypes_section;
       this.$chat_info.append(direct_chat_sections);
     } else if (this.roomtype == "Topic") {
-      let topic_title_section = ``;
-      topic_title_section += `<div class="p-4 chat-info-section"><div class="pb-2 font-weight-bold">Topic Subject</div>`;
-      topic_title_section += this.chat_space.chat_topic_space_subject
-        ? this.chat_space.chat_topic_space_subject.replace(/"/g, "")
-        : this.chat_space.alternative_subject;
+      const topicName = this.chat_space.chat_topic_space || this.chat_space.chat_topic || this.chat_space.profile?.chat_topic || null;
+      const topicSubject =
+        this.chat_space.chat_topic_space_subject ||
+        this.chat_space.chat_topic_subject ||
+        this.chat_space.alternative_subject ||
+        topicName;
+
+      const topicColor =
+        this.chat_space.activeMessageTopicColor ||
+        this.chat_space.topicColorMap?.get(topicName) ||
+        this.chat_space.getTopicColor?.(topicName) ||
+        "#7c3aed";
+
+      const topicIsPrivate =
+        this.chat_space.is_private ??
+        this.chat_space.profile?.is_private ??
+        0;
+
+      const topicVisibilityLabel = topicIsPrivate ? __("Private") : __("Public");
+
+      const topicStatus =
+        this.chat_space.topic_status ||
+        this.chat_space.chat_topic_status ||
+        this.chat_space.profile?.topic_status ||
+        "Open";
+
+      let topic_title_section = `
+        <div class="p-4 chat-info-section topic-info-editor-section">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <div class="pb-2 font-weight-bold">${__("Topic")}</div>
+              <div class="topic-info-subject" title="${frappe.utils.escape_html(topicName || "")}">
+                ${frappe.utils.escape_html(topicSubject || topicName || "")}
+              </div>
+              ${
+                topicName && topicSubject !== topicName
+                  ? `<div class="small text-muted topic-info-name">${frappe.utils.escape_html(topicName)}</div>`
+                  : ``
+              }
+            </div>
+
+            <button type="button" class="btn btn-xs btn-secondary edit-topic-info">
+              ${frappe.utils.icon("edit", "sm")}
+            </button>
+          </div>
+
+          <div class="d-flex align-items-center mt-2">
+            <span
+              class="topic-info-color-dot"
+              style="
+                width:14px;
+                height:14px;
+                border-radius:50%;
+                display:inline-block;
+                background:${frappe.utils.escape_html(topicColor)};
+                margin-right:8px;
+                border:1px solid rgba(0,0,0,.12);
+              "
+            ></span>
+            <span class="small text-muted">${frappe.utils.escape_html(topicColor || "")}</span>
+          </div>
+
+          <div class="d-flex align-items-center mt-2">
+            <span style="margin-right:8px;">👁</span>
+            <span class="small text-muted topic-info-visibility">
+              ${frappe.utils.escape_html(topicVisibilityLabel)}
+            </span>
+          </div>
+
+          <div class="d-flex align-items-center mt-2">
+            <span class="small text-muted" style="margin-right:8px;">${__("Status")}:</span>
+            <span class="small text-muted topic-info-status">
+              ${frappe.utils.escape_html(topicStatus)}
+            </span>
+          </div>
+        </div>
+      `;
+
       this.$chat_info.append(topic_title_section);
 
-      let member_section = ``;
-      let chat_members = await get_chat_members(
-        this.chat_space.chat_topic_channel
-      );
-      member_section += `<div class="p-4 chat-info-section members-section"><div class="pb-2 font-weight-bold">Members</div>`;
-      chat_members.map((member) => {
-        member_section += `
-      <div class="d-flex flex-row justify-content-between pb-2">
-        <div>
-          <div>${member.name == frappe.session.user ? "You" : member.name}</div>
-          <div class="small">${member.email}</div>
-        </div>
-      </div>`;
-      });
-      this.$chat_info.append(member_section);
+      this.$chat_info.append(this.renderTopicReferencesSection());
 
-      let topic_contributors = await get_topic_contributors(
-        this.chat_space.chat_topic_space
-      );
-      if (topic_contributors.length > 0) {
-        let contributors_section = ``;
-        contributors_section += `<div class="p-4 chat-info-section"><div class="pb-2 font-weight-bold">Contributors</div>`;
-        topic_contributors.map((c) => {
-          contributors_section += `
-        <div class="d-flex flex-row justify-content-between pb-2">
-          <div>
-            <div>${c.email == frappe.session.user ? "You" : c.name}</div>
-            <div class="small">${c.email}</div>
-          </div>
-        </div>`;
-        });
-        this.$chat_info.append(contributors_section);
+      const hasRefs =
+        Array.isArray(this.chat_space.reference_doctypes) &&
+        this.chat_space.reference_doctypes.length;
+
+      if (!hasRefs && topicName && this.chat_space.fetchTopicDetails) {
+        this.chat_space.fetchTopicDetails(topicName)
+          .then((details) => {
+            if (details?.references?.length) {
+              this.chat_space.reference_doctypes = details.references;
+              this.refreshTopicReferencesSection();
+            }
+          })
+          .catch((e) => {
+            console.warn("[ChatInfo] Failed to refresh topic references", e);
+          });
       }
+
+      this.$chat_info.append(`
+        <div class="p-4 chat-info-section members-section topic-members-section">
+          <div class="pb-2 font-weight-bold">${__("Members")}</div>
+          <div class="small text-muted topic-members-loading">${__("Loading...")}</div>
+        </div>
+      `);
+      this.loadTopicMembersSection?.();
+
+      this.$chat_info.append(`
+        <div class="p-4 chat-info-section topic-contributors-section">
+          <div class="pb-2 font-weight-bold">${__("Contributors")}</div>
+          <div class="small text-muted topic-contributors-loading">${__("Loading...")}</div>
+        </div>
+      `);
+      this.loadTopicContributorsSection?.();
     } else if (this.roomtype == "Guest") {
         let guest_sections = ``;
 
@@ -1472,9 +1546,686 @@ save_all_contacts(dialog) {
         }
       }
     });
+
+    this.$chat_info.find(".edit-topic-info").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      me.openEditTopicInfoDialog();
+    });
+
+    this.$chat_info.find(".add-topic-reference").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      me.openAddTopicReferenceDialog();
+    });
+
+    this.$chat_info.find(".remove-topic-reference").on("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $btn = $(this);
+      const referenceDoctype = $btn.attr("data-reference-doctype");
+      const referenceDocname = $btn.attr("data-reference-docname");
+
+      me.removeTopicReference(referenceDoctype, referenceDocname);
+    });
   } // end of setup_events
 
+  openEditTopicInfoDialog() {
+    const me = this;
 
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    if (!topicName) {
+      frappe.msgprint({
+        title: __("Error"),
+        message: __("No topic found."),
+        indicator: "red"
+      });
+      return;
+    }
+
+    const currentSubject =
+      this.chat_space.chat_topic_space_subject ||
+      this.chat_space.chat_topic_subject ||
+      this.chat_space.alternative_subject ||
+      topicName;
+
+    const currentColor =
+      this.chat_space.activeMessageTopicColor ||
+      this.chat_space.topicColorMap?.get(topicName) ||
+      this.chat_space.getTopicColor?.(topicName) ||
+      "#7c3aed";
+
+    const currentIsPrivate =
+      this.chat_space.is_private ??
+      this.chat_space.profile?.is_private ??
+      0;
+
+    const currentStatus =
+      this.chat_space.topic_status ||
+      this.chat_space.chat_topic_status ||
+      this.chat_space.profile?.topic_status ||
+      "Open";
+
+    const d = new frappe.ui.Dialog({
+      title: __("Edit Topic"),
+      fields: [
+        {
+          label: __("Subject"),
+          fieldname: "subject",
+          fieldtype: "Data",
+          reqd: 1,
+          default: currentSubject
+        },
+        {
+          label: __("Color"),
+          fieldname: "topic_color",
+          fieldtype: "Color",
+          default: currentColor
+        },
+        {
+          label: __("Private"),
+          fieldname: "is_private",
+          fieldtype: "Check",
+          default: currentIsPrivate ? 1 : 0,
+          description: __("Checked = Private, unchecked = Public")
+        },
+        {
+          label: __("Status"),
+          fieldname: "topic_status",
+          fieldtype: "Select",
+          options: ["Open", "Closed"],
+          default: currentStatus
+        }
+      ],
+      primary_action_label: __("Save"),
+      async primary_action(values) {
+        if (!values.subject) {
+          frappe.msgprint({
+            title: __("Missing Subject"),
+            message: __("Please enter a topic subject."),
+            indicator: "orange"
+          });
+          return;
+        }
+
+        const existingReferences = Array.isArray(me.chat_space.reference_doctypes)
+          ? [...me.chat_space.reference_doctypes]
+          : [];
+
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_3_3.api.update_chat_topic_info",
+            args: {
+              chat_topic: topicName,
+              subject: values.subject,
+              topic_color: values.topic_color,
+              is_private: values.is_private ? 1 : 0,
+              topic_status: values.topic_status
+            }
+          });
+
+          const updated = r.message || {};
+          const newSubject =
+            updated.chat_topic_subject ||
+            updated.subject ||
+            values.subject ||
+            topicName;
+
+          const newColor =
+            updated.topic_color ||
+            values.topic_color ||
+            currentColor;
+
+          const newIsPrivate =
+            updated.is_private !== undefined
+              ? updated.is_private
+              : values.is_private ? 1 : 0;
+
+          const newStatus =
+            updated.topic_status ||
+            values.topic_status ||
+            currentStatus;
+
+          if (
+            Array.isArray(updated.reference_doctypes) &&
+            updated.reference_doctypes.length
+          ) {
+            me.chat_space.reference_doctypes = updated.reference_doctypes;
+          } else if (existingReferences.length) {
+            me.chat_space.reference_doctypes = existingReferences;
+          }
+
+          const oldSubject = currentSubject;
+          me.applyUpdatedTopicInfo(
+            topicName,
+            newSubject,
+            newColor,
+            newIsPrivate,
+            newStatus
+          );
+
+          if (me.chat_space.fetchTopicDetails) {
+            const details = await me.chat_space.fetchTopicDetails(topicName);
+
+            if (details?.references?.length) {
+              me.chat_space.reference_doctypes = details.references;
+            }
+          }
+
+          if (newSubject !== oldSubject && me.chat_space.send_rename_topic_message) {
+            const chatChannel =
+              me.chat_space.chat_topic_channel ||
+              me.chat_space.profile.room;
+
+            await me.chat_space.send_rename_topic_message(newSubject, chatChannel);
+          }
+
+          frappe.show_alert({
+            message: __("Topic updated"),
+            indicator: "green"
+          });
+
+          d.hide();
+        } catch (e) {
+          console.error("Failed to update topic", e);
+          frappe.msgprint({
+            title: __("Error"),
+            message: __("Failed to update topic."),
+            indicator: "red"
+          });
+        }
+      }
+    });
+
+    d.show();
+  }
+
+  applyUpdatedTopicInfo(topicName, subject, color, isPrivate = 0, status = "Open") {
+    if (!topicName) return;
+
+    const normalizedIsPrivate =
+      isPrivate === 1 ||
+      isPrivate === true ||
+      isPrivate === "1" ||
+      isPrivate === "true";
+
+    const existingReferences = Array.isArray(this.chat_space.reference_doctypes)
+      ? [...this.chat_space.reference_doctypes]
+      : [];
+
+    const safeSubject =
+      typeof subject === "object"
+        ? String(
+            subject.chat_topic_subject ||
+            subject.subject ||
+            subject.topic_subject ||
+            subject.name ||
+            topicName ||
+            ""
+          )
+        : String(subject || topicName || "");
+
+    this.chat_space.chat_topic_space_subject = safeSubject;
+    this.chat_space.chat_topic_subject = safeSubject;
+    this.chat_space.alternative_subject = safeSubject;
+
+    if (this.chat_space.profile) {
+      this.chat_space.profile.room_name = safeSubject;
+      this.chat_space.profile.chat_topic_subject = safeSubject;
+    }
+
+    this.chat_space.is_private = normalizedIsPrivate ? 1 : 0;
+    this.chat_space.topic_status = status;
+    this.chat_space.chat_topic_status = status;
+
+    if (this.chat_space.profile) {
+      this.chat_space.profile.is_private = normalizedIsPrivate ? 1 : 0;
+      this.chat_space.profile.topic_status = status;
+    }
+
+    if (color) {
+      this.chat_space.activeMessageTopicColor = color;
+
+      if (this.chat_space.topicColorMap) {
+        this.chat_space.topicColorMap.set(topicName, color);
+      }
+    }
+
+    if (
+      (!Array.isArray(this.chat_space.reference_doctypes) ||
+        !this.chat_space.reference_doctypes.length) &&
+      existingReferences.length
+    ) {
+      this.chat_space.reference_doctypes = existingReferences;
+    }
+
+    this.$chat_info.find(".topic-info-subject").text(safeSubject);
+    this.$chat_info.find(".topic-info-subject").attr("title", topicName);
+    this.$chat_info.find(".topic-info-color-dot").css("background", color);
+
+    const $colorText = this.$chat_info.find(".topic-info-color-dot").next(".small");
+    if ($colorText.length) {
+      $colorText.text(color || "");
+    }
+
+    this.$chat_info
+      .find(".topic-info-visibility")
+      .html(normalizedIsPrivate ? __("Private") : __("Public"));
+
+    this.$chat_info
+      .find(".topic-info-status")
+      .text(status || "");
+
+    const shortTitle =
+      safeSubject.length > 25
+        ? safeSubject.substring(0, 25) + "..."
+        : safeSubject;
+
+    this.chat_space.$chat_space
+      .find(".chat-profile-name")
+      .text(shortTitle)
+      .attr("title", safeSubject);
+
+    if (color && this.chat_space.refreshTopicColor) {
+      this.chat_space.refreshTopicColor(topicName);
+    } else {
+      this.updateTopicColorInDom(topicName, color);
+    }
+
+    if (color) {
+      this.chat_space.applyTopicHeaderBorderColor?.(topicName, color);
+    }
+
+    this.updateTopicSubjectInDom(topicName, safeSubject);
+
+    this.chat_space.buildTopicMetaMap?.();
+    this.chat_space.refreshTopicNavBar?.();
+    this.chat_space.normalizeTopicSeparators?.();
+    this.chat_space.applyTopicVisibility?.();
+  }
+
+  updateTopicSubjectInDom(topicName, subject) {
+    if (!topicName || !this.chat_space?.$chat_space) return;
+
+    const safe = this.chat_space.escapeSelectorValue
+      ? this.chat_space.escapeSelectorValue(topicName)
+      : String(topicName).replace(/"/g, '\\"');
+
+    this.chat_space.$chat_space
+      .find(`[data-topic-name="${safe}"]`)
+      .attr("data-topic-subject", subject);
+
+    this.chat_space.$chat_space
+      .find(`.chat-topic-separator[data-topic-name="${safe}"] .topic-separator-title`)
+      .text(`${__("Topic")}: ${subject}`);
+
+    this.chat_space.$chat_space
+      .find(`.message-bubble[data-topic-name="${safe}"]`)
+      .attr("title", `${__("Topic")}: ${subject}`);
+
+    this.chat_space.$chat_space
+      .find(`.topic-select-main[data-topic-name="${safe}"]`)
+      .attr("data-topic-subject", subject)
+      .find(".topic-select-title")
+      .text(subject);
+  }
+
+  updateTopicColorInDom(topicName, color) {
+    if (!topicName || !color || !this.chat_space?.$chat_space) return;
+
+    const safe = this.chat_space.escapeSelectorValue
+      ? this.chat_space.escapeSelectorValue(topicName)
+      : String(topicName).replace(/"/g, '\\"');
+
+    this.chat_space.$chat_space
+      .find(`[data-topic-name="${safe}"]`)
+      .attr("data-topic-color", color)
+      .css("--topic-color", color);
+
+    this.chat_space.$chat_space
+      .find(`[data-topic-name="${safe}"] .message-topic-bar`)
+      .css("background", color);
+
+    this.chat_space.$chat_space
+      .find(`.topic-select-main[data-topic-name="${safe}"]`)
+      .attr("data-topic-color", color);
+
+    this.chat_space.$chat_space
+      .find(`.topic-select-row[data-topic-name="${safe}"] .topic-dot`)
+      .css("background", color);
+  }
+
+  async loadTopicMembersSection() {
+    const topicChannel =
+      this.chat_space.chat_topic_channel ||
+      this.chat_space.profile?.room ||
+      this.room;
+
+    const $section = this.$chat_info.find(".topic-members-section");
+
+    if (!$section.length) return;
+
+    if (!topicChannel) {
+      $section.find(".topic-members-loading").text(__("No channel found"));
+      return;
+    }
+
+    try {
+      const chat_members = await get_chat_members(topicChannel);
+
+      const rows = chat_members.length
+        ? chat_members.map((member) => `
+            <div class="d-flex flex-row justify-content-between pb-2">
+              <div>
+                <div>${frappe.utils.escape_html(member.name == frappe.session.user ? "You" : member.name)}</div>
+                <div class="small">${frappe.utils.escape_html(member.email || "")}</div>
+              </div>
+            </div>
+          `).join("")
+        : `<div class="small text-muted">${__("No members")}</div>`;
+
+      $section.find(".topic-members-loading").replaceWith(rows);
+    } catch (e) {
+      console.warn("[ChatInfo] Failed to load topic members", e);
+      $section.find(".topic-members-loading").text(__("Failed to load members"));
+    }
+  }
+
+  async loadTopicContributorsSection() {
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    const $section = this.$chat_info.find(".topic-contributors-section");
+
+    if (!$section.length) return;
+
+    if (!topicName) {
+      $section.remove();
+      return;
+    }
+
+    try {
+      const contributors = await get_topic_contributors(topicName);
+
+      if (!contributors || !contributors.length) {
+        $section.remove();
+        return;
+      }
+
+      const rows = contributors.map((c) => `
+        <div class="d-flex flex-row justify-content-between pb-2">
+          <div>
+            <div>${frappe.utils.escape_html(c.email == frappe.session.user ? "You" : c.name)}</div>
+            <div class="small">${frappe.utils.escape_html(c.email || "")}</div>
+          </div>
+        </div>
+      `).join("");
+
+      $section.find(".topic-contributors-loading").replaceWith(rows);
+    } catch (e) {
+      console.warn("[ChatInfo] Failed to load topic contributors", e);
+      $section.remove();
+    }
+  }
+
+  renderTopicReferencesSection() {
+    const refs = Array.isArray(this.chat_space.reference_doctypes)
+      ? this.chat_space.reference_doctypes
+      : [];
+
+    const rows = refs.length
+      ? refs.map((ref) => {
+          const doctype = ref.doctype || ref.reference_doctype || "";
+          const docname = ref.docname || ref.reference_docname || "";
+
+          const safeDoctype = frappe.utils.escape_html(doctype);
+          const safeDocname = frappe.utils.escape_html(docname);
+
+          return `
+            <div class="topic-reference-row d-flex flex-row justify-content-between align-items-center pb-2"
+                 data-reference-doctype="${safeDoctype}"
+                 data-reference-docname="${safeDocname}">
+              <div>
+                <div>${safeDoctype}</div>
+                <div class="small">${safeDocname}</div>
+              </div>
+
+              <button
+                type="button"
+                class="btn btn-xs remove-topic-reference topic-reference-delete-btn"
+                data-reference-doctype="${safeDoctype}"
+                data-reference-docname="${safeDocname}"
+                title="${__("Remove Reference")}"
+              >
+                ${frappe.utils.icon("delete-active", "sm")}
+              </button>
+            </div>
+          `;
+        }).join("")
+      : `<div class="small text-muted">${__("No references")}</div>`;
+
+    return `
+      <div class="p-4 chat-info-section topic-references-section">
+        <div class="d-flex justify-content-between align-items-center pb-2">
+          <div class="font-weight-bold">${__("References")}</div>
+          <button type="button" class="btn btn-xs btn-secondary add-topic-reference">
+            ${__("Add")}
+          </button>
+        </div>
+        ${rows}
+      </div>
+    `;
+  }
+
+  refreshTopicReferencesSection() {
+    const $old = this.$chat_info.find(".topic-references-section");
+    const html = this.renderTopicReferencesSection();
+
+    if ($old.length) {
+      $old.replaceWith(html);
+    } else {
+      this.$chat_info.append(html);
+    }
+
+    this.$chat_info.find(".add-topic-reference").off("click").on("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.openAddTopicReferenceDialog();
+    });
+
+    this.$chat_info.find(".remove-topic-reference").off("click").on("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $btn = $(e.currentTarget);
+      const referenceDoctype = $btn.attr("data-reference-doctype");
+      const referenceDocname = $btn.attr("data-reference-docname");
+
+      this.removeTopicReference(referenceDoctype, referenceDocname);
+    });
+  }
+
+  openAddTopicReferenceDialog() {
+    const me = this;
+
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    if (!topicName) {
+      frappe.msgprint({
+        title: __("Error"),
+        message: __("No topic found."),
+        indicator: "red"
+      });
+      return;
+    }
+
+    const d = new frappe.ui.Dialog({
+      title: __("Add Topic Reference"),
+      fields: [
+        {
+          label: __("DocType"),
+          fieldname: "reference_doctype",
+          fieldtype: "Link",
+          options: "DocType",
+          reqd: 1
+        },
+        {
+          label: __("Document"),
+          fieldname: "reference_docname",
+          fieldtype: "Dynamic Link",
+          options: "reference_doctype",
+          reqd: 1
+        }
+      ],
+      primary_action_label: __("Add"),
+      async primary_action(values) {
+        if (!values.reference_doctype || !values.reference_docname) {
+          frappe.msgprint({
+            title: __("Missing values"),
+            message: __("Please select DocType and Document."),
+            indicator: "orange"
+          });
+          return;
+        }
+
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_3_3.api.add_chat_topic_reference",
+            args: {
+              chat_topic: topicName,
+              reference_doctype: values.reference_doctype,
+              reference_docname: values.reference_docname
+            }
+          });
+
+          const updated = r.message || {};
+          const refs =
+            updated.reference_doctypes ||
+            updated.references ||
+            [];
+
+          if (Array.isArray(refs)) {
+            me.chat_space.reference_doctypes = refs;
+          }
+
+          if (me.chat_space.messageCache) {
+            me.chat_space.messageCache.forEach((cached) => {
+              if (
+                cached.chat_topic === topicName ||
+                cached.topic === topicName
+              ) {
+                cached.reference_doctypes = refs;
+                cached.references = refs;
+              }
+            });
+          }
+
+          me.refreshTopicReferencesSection();
+
+          frappe.show_alert({
+            message: __("Reference added"),
+            indicator: "green"
+          });
+
+          d.hide();
+        } catch (e) {
+          console.error("Failed to add topic reference", e);
+          frappe.msgprint({
+            title: __("Error"),
+            message: __("Failed to add reference."),
+            indicator: "red"
+          });
+        }
+      }
+    });
+
+    d.show();
+  }
+
+  removeTopicReference(referenceDoctype, referenceDocname) {
+    const me = this;
+
+    const topicName =
+      this.chat_space.chat_topic_space ||
+      this.chat_space.chat_topic ||
+      this.chat_space.profile?.chat_topic;
+
+    if (!topicName || !referenceDoctype || !referenceDocname) {
+      frappe.msgprint({
+        title: __("Error"),
+        message: __("Missing topic or reference."),
+        indicator: "red"
+      });
+      return;
+    }
+
+    frappe.confirm(
+      __("Remove this reference?"),
+      async () => {
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_3_3.api.remove_chat_topic_reference",
+            args: {
+              chat_topic: topicName,
+              reference_doctype: referenceDoctype,
+              reference_docname: referenceDocname
+            }
+          });
+
+          const updated = r.message || {};
+          const refs =
+            updated.reference_doctypes ||
+            updated.references ||
+            [];
+
+          me.chat_space.reference_doctypes = Array.isArray(refs) ? refs : [];
+
+          if (me.chat_space.topicDetailsCache?.has(topicName)) {
+            const cached = me.chat_space.topicDetailsCache.get(topicName) || {};
+            cached.references = refs;
+            cached.reference_doctypes = refs;
+            me.chat_space.topicDetailsCache.set(topicName, cached);
+          }
+
+          if (me.chat_space.messageCache) {
+            me.chat_space.messageCache.forEach((cached) => {
+              if (
+                cached.chat_topic === topicName ||
+                cached.topic === topicName
+              ) {
+                cached.reference_doctypes = refs;
+                cached.references = refs;
+              }
+            });
+          }
+
+          me.refreshTopicReferencesSection();
+
+          frappe.show_alert({
+            message: __("Reference removed"),
+            indicator: "green"
+          });
+        } catch (e) {
+          console.error("Failed to remove topic reference", e);
+          frappe.msgprint({
+            title: __("Error"),
+            message: __("Failed to remove reference."),
+            indicator: "red"
+          });
+        }
+      }
+    );
+  }
 
   open_chat_space(channel, channel_name, roome_type = "Group") {
     if (check_if_chat_window_open(channel, "room")) {
