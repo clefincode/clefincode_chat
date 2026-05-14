@@ -330,7 +330,10 @@ isRealTopicTimelineMessage(message = {}) {
   if (
     templateType === "set topic" ||
     templateType === "set-topic" ||
-    templateType === "settopic"
+    templateType === "settopic" ||
+    templateType === "remove topic" ||
+    templateType === "remove-topic" ||
+    templateType === "removetopic"
   ) return false;
   return true;
 }
@@ -378,6 +381,49 @@ dedupeAdjacentTopicSeparators() {
     }
   });
 }
+
+  makeTopicSystemSeparatorHtml({
+    messageName = "",
+    topicName = "",
+    topicSubject = null,
+    topicColor = null,
+    templateType = "Set Topic",
+    sendDate = null,
+    action = "set"
+  } = {}) {
+    if (!topicName) return "";
+    if (this.isDedicatedTopicContext?.()) return "";
+
+    const html = this.makeTopicStartSeparatorHtml(
+      topicName,
+      topicSubject || topicName,
+      topicColor
+    );
+
+    if (!html) return "";
+
+    const $separator = $(html);
+
+    $separator
+      .addClass("topic-system-separator")
+      .attr("data-message-name", messageName || "")
+      .attr("data-message-type", "topic-separator")
+      .attr("data-message-template-type", templateType || "")
+      .attr("data-send-date", sendDate || "");
+
+    if (messageName) {
+      $separator.attr("id", `msg-${messageName}`);
+    }
+
+    if (action === "remove") {
+      const label = topicSubject || topicName;
+      $separator.find(".topic-separator-title").text(
+        label ? `${__("Topic removed")}: ${label}` : __("Topic removed")
+      );
+    }
+
+    return $separator.prop("outerHTML");
+  }
 
   getCurrentChatChannel() {
   return this.profile.room_type === "Contributor"
@@ -4641,6 +4687,20 @@ async setup_messages(messages_list) {
     );
   }
 
+  isRemoveTopicInfoMessage(params = {}) {
+    const template = String(params.message_template_type || "").toLowerCase();
+    const contentText = this.stripHtml(params.content || "").toLowerCase();
+
+    return (
+      template === "remove topic" ||
+      template === "remove-topic" ||
+      template === "removetopic" ||
+      contentText.includes("removed topic") ||
+      contentText.includes("you removed topic") ||
+      contentText.includes("topic removed")
+    );
+  }
+
   makeTopicSeparatorHtml(topicName, topicSubject) {
   if (!topicName) return "";
   if (this.isDedicatedTopicContext?.()) return "";
@@ -5244,9 +5304,16 @@ normalizeTopicSeparators() {
 
   const $container = this.$chat_space_container;
 
-  $container.find(".chat-topic-separator").remove();
+  $container.find(".chat-topic-separator:not(.topic-system-separator)").remove();
 
   const seenTopics = new Set();
+
+  $container.find(".topic-system-separator[data-topic-name]").each((_, el) => {
+    const topicName = $(el).attr("data-topic-name");
+    if (topicName) {
+      seenTopics.add(topicName);
+    }
+  });
 
   $container.find(".topic-message-item[data-topic-name]").each((_, el) => {
     const $msg = $(el);
@@ -5859,6 +5926,64 @@ async getFirstRealTopicMessageName(topicName) {
 
        
         const topicNameForMessage = element.chat_topic || element.topic || null;
+
+        const isSetTopicInfo = this.isSetTopicInfoMessage({
+          content: element.content,
+          message_template_type: element.message_template_type
+        });
+
+        const isRemoveTopicInfo = this.isRemoveTopicInfoMessage({
+          content: element.content,
+          message_template_type: element.message_template_type
+        });
+
+        if (isSetTopicInfo || isRemoveTopicInfo) {
+          const topicNameForSystemMessage =
+            element.chat_topic ||
+            element.topic ||
+            element.topic_name ||
+            element.old_chat_topic ||
+            element.removed_topic ||
+            element.previous_chat_topic ||
+            null;
+
+          const topicSubjectForSystemMessage =
+            element.chat_topic_subject ||
+            element.topic_subject ||
+            element.chat_topic_title ||
+            element.old_chat_topic_subject ||
+            element.removed_topic_subject ||
+            element.previous_chat_topic_subject ||
+            topicNameForSystemMessage ||
+            null;
+
+          const topicColorForSystemMessage = topicNameForSystemMessage
+            ? this.getTopicColor(
+                topicNameForSystemMessage,
+                element.topic_color || element.chat_topic_color || null
+              )
+            : null;
+
+          if (topicNameForSystemMessage && topicColorForSystemMessage) {
+            this.topicColorMap.set(topicNameForSystemMessage, topicColorForSystemMessage);
+          }
+
+          const separatorHtml = this.makeTopicSystemSeparatorHtml({
+            messageName: element.message_name,
+            topicName: topicNameForSystemMessage,
+            topicSubject: topicSubjectForSystemMessage,
+            topicColor: topicColorForSystemMessage,
+            templateType: element.message_template_type,
+            sendDate: element.send_date,
+            action: isRemoveTopicInfo ? "remove" : "set"
+          });
+
+          if (separatorHtml) {
+            this.message_html += separatorHtml;
+          }
+
+          continue;
+        }
 
         const message_content = await this.make_message({
           content: element.content,
@@ -7598,6 +7723,85 @@ async fetchTemplateSuggestions(textValue) {
       if (topicNameForRealtime && topicColorForRealtime) {
         this.topicColorMap.set(topicNameForRealtime, topicColorForRealtime);
       }
+
+      const isSetTopicInfoRealtime = this.isSetTopicInfoMessage({
+        content: res.content,
+        message_template_type: res.message_template_type
+      });
+
+      const isRemoveTopicInfoRealtime = this.isRemoveTopicInfoMessage({
+        content: res.content,
+        message_template_type: res.message_template_type
+      });
+
+      if (isSetTopicInfoRealtime || isRemoveTopicInfoRealtime) {
+        const topicNameForSystemMessage =
+          res.chat_topic ||
+          res.topic ||
+          res.topic_name ||
+          res.old_chat_topic ||
+          res.removed_topic ||
+          res.previous_chat_topic ||
+          null;
+
+        const topicSubjectForSystemMessage =
+          res.chat_topic_subject ||
+          res.topic_subject ||
+          res.chat_topic_title ||
+          res.old_chat_topic_subject ||
+          res.removed_topic_subject ||
+          res.previous_chat_topic_subject ||
+          topicNameForSystemMessage ||
+          null;
+
+        const topicColorForSystemMessage = topicNameForSystemMessage
+          ? this.getTopicColor(
+              topicNameForSystemMessage,
+              res.topic_color || res.chat_topic_color || null
+            )
+          : null;
+
+        if (topicNameForSystemMessage && topicColorForSystemMessage) {
+          this.topicColorMap.set(topicNameForSystemMessage, topicColorForSystemMessage);
+        }
+
+        const separatorHtml = this.makeTopicSystemSeparatorHtml({
+          messageName: res.message_name,
+          topicName: topicNameForSystemMessage,
+          topicSubject: topicSubjectForSystemMessage,
+          topicColor: topicColorForSystemMessage,
+          templateType: res.message_template_type,
+          sendDate: res.send_date,
+          action: isRemoveTopicInfoRealtime ? "remove" : "set"
+        });
+
+        if (separatorHtml) {
+          const $separator = $(separatorHtml);
+          const shouldAutoScroll =
+            res.sender_email === this.profile.user_email || this.isNearBottom();
+
+          this.$chat_space_container.append($separator);
+
+          this.normalizeTopicSeparators?.();
+
+          if (!this.chat_topic_space) {
+            this.buildTopicMetaMap?.();
+            this.applyTopicVisibility?.();
+          }
+
+          if (shouldAutoScroll) {
+            scroll_to_bottom(this.$chat_space_container);
+            this.resetUnreadBadge?.();
+          } else {
+            this.unseenMessagesCount += 1;
+            this.updateUnreadBadge?.();
+          }
+        }
+
+        this.prevMessage = res;
+        return;
+      }
+
       let message_content = await this.make_message({
         content: res.content,
         original_content: res.original_content || null,
