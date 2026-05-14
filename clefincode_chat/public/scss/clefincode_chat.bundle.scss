@@ -3413,6 +3413,50 @@ html[data-theme-mode="dark"] .message-topic-badge {
   fill: currentColor;
 }
 
+.message-action-menu .relink-topic-menu-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 0;
+}
+
+.message-action-menu .relink-topic-menu-main,
+.message-action-menu .relink-topic-menu-open {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+}
+
+.message-action-menu .relink-topic-menu-main {
+  flex: 1;
+  gap: 8px;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.message-action-menu .relink-topic-menu-open {
+  width: 38px;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.message-action-menu .relink-topic-menu-main:hover,
+.message-action-menu .relink-topic-menu-open:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.message-action-menu .relink-topic-menu-open:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.message-action-menu .relink-topic-menu-row.no-linked-topic .relink-topic-menu-main {
+  width: 100%;
+}
+
 .message-action-menu .menu-item:hover .menu-icon {
   color: var(--message-action-icon-hover-color);
 }

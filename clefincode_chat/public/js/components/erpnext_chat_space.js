@@ -96,13 +96,7 @@ export default class ChatSpace {
     this.searchQuery = null;
     this.searchActive = false;
 
-    this.longPress = {
-      timer: null,
-      startX: 0,
-      startY: 0,
-      fired: false,
-      targetMessage: null,
-    };
+    this.realtimeHandlers = new Map();
     this.$emojiMenu = null;
     this.selectionMode = false;
     this.selectedMessages = new Set();
@@ -2801,24 +2795,76 @@ async fetch_single_message(messageName) {
     }
   }
 
+  getRealtimeHandlerKey(channel) {
+    const roomOrTopic =
+      this.chat_topic_space ||
+      this.chat_topic ||
+      this.profile?.room ||
+      this.profile?.parent_channel ||
+      "unknown";
+
+    return `${String(channel || "")}::${String(roomOrTopic)}::${Math.random().toString(36).slice(2)}`;
+  }
+
+  bindRealtimeChannel(channel, handler) {
+    if (!channel || typeof handler !== "function") return;
+
+    if (!this.realtimeHandlers) {
+      this.realtimeHandlers = new Map();
+    }
+
+    this.unbindRealtimeChannel(channel);
+
+    frappe.realtime.on(channel, handler);
+    this.realtimeHandlers.set(channel, handler);
+  }
+
+  unbindRealtimeChannel(channel) {
+    if (!channel || !this.realtimeHandlers) return;
+
+    const handler = this.realtimeHandlers.get(channel);
+    if (!handler) return;
+
+    try {
+      if (frappe.realtime.off.length >= 2) {
+        frappe.realtime.off(channel, handler);
+      }
+    } catch (e) {
+      console.warn("[ChatSpace] Failed to unbind realtime handler safely", channel, e);
+    }
+
+    this.realtimeHandlers.delete(channel);
+  }
+
+  unbindAllRealtimeChannels() {
+    if (!this.realtimeHandlers) return;
+
+    [...this.realtimeHandlers.keys()].forEach((channel) => {
+      this.unbindRealtimeChannel(channel);
+    });
+  }
+
   setup_socketio() {
     const me = this;
-    frappe.realtime.on("update_last_active", function (res) {
+
+    const updateLastActiveHandler = function (res) {
       if (
         res.sender_email == me.profile.contact &&
         me.profile.room_type == "Direct"
       ) {
         me.set_online();
       }
-    });
+    };
 
-    
+    this.bindRealtimeChannel("update_last_active", updateLastActiveHandler);
+
     if (!this.profile.room) return;
 
     const target_channel =
       me.profile.room_type === "Contributor" && me.last_active_sub_channel
         ? me.last_active_sub_channel
         : me.profile.room;
+
     this.set_channel_realtime(target_channel);
   }
 
@@ -3436,11 +3482,6 @@ this.$chat_space.on("click", ".message-bubble", function (e) {
     return;
   }
 
-  if (me.longPress && me.longPress.fired) {
-    me.longPress.fired = false;
-    return;
-  }
-
   me.closeMessageActionMenu();
   me.hideAllReactButtons();
   me.showReactButtonForMessage(messageName);
@@ -3453,6 +3494,33 @@ this.$wrapper.off("click.chatMenuActions", ".relink-action")
 
     const messageName = $(this).data("message-name");
     me.startBulkSelection("relink", messageName);
+  });
+this.$wrapper.off("click.chatMenuActions", ".message-topic-open-action")
+  .on("click.chatMenuActions", ".message-topic-open-action", async function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const $btn = $(this);
+
+    const topicName = $btn.attr("data-topic-name");
+    const rawSubject = $btn.attr("data-topic-subject") || topicName;
+    const topicColor = $btn.attr("data-topic-color") || null;
+
+    if (!topicName) return;
+
+    me.closeMessageActionMenu();
+
+    const topicSubject = me.normalizeTopicSubject
+      ? me.normalizeTopicSubject(rawSubject, topicName)
+      : String(rawSubject || topicName);
+
+    if (topicColor) {
+      me.topicColorMap?.set(topicName, topicColor);
+    }
+
+    await me.openTopicChatWindow(topicName, topicSubject, {
+      topic_color: topicColor
+    });
   });
 this.$wrapper.off("click.chatMenuActions", ".message-info-action")
   .on("click.chatMenuActions", ".message-info-action", async function (e) {
@@ -3799,52 +3867,6 @@ this.$chat_space.on("click", ".reply-link", async function () {
             messageName
           });
         });
-    this.$chat_space.on("pointerdown", ".message-bubble", (e) => {
-  if (e.pointerType === "mouse" && e.button !== 0) return;
-
-  this.longPress.fired = false;
-  this.longPress.targetMessage = $(e.currentTarget)
-    .closest("[data-message-name]")
-    .data("message-name");
-
-  this.longPress.startX = e.clientX;
-  this.longPress.startY = e.clientY;
-
-  clearTimeout(this.longPress.timer);
-
-  this.longPress.timer = setTimeout(() => {
-    this.longPress.fired = true;
-    this.closeMessageActionMenu();
-    this.closeEmojiMenu();
-    
-
-    if (!this.selectionMode) {
-      this.enterSelectionMode(this.longPress.targetMessage);
-    } else {
-      this.toggleMessageSelection(this.longPress.targetMessage);
-    }
-  }, LONG_PRESS_MS);
-});
-
-    
-    this.$chat_space.on("pointermove", ".message-bubble", (e) => {
-      if (!this.longPress.timer) return;
-
-      const dx = Math.abs(e.clientX - this.longPress.startX);
-      const dy = Math.abs(e.clientY - this.longPress.startY);
-
-      if (dx > MOVE_CANCEL_PX || dy > MOVE_CANCEL_PX) {
-        clearTimeout(this.longPress.timer);
-        this.longPress.timer = null;
-      }
-    });
-
-    // pointerup/cancel
-    this.$chat_space.on("pointerup pointercancel", ".message-bubble", () => {
-      clearTimeout(this.longPress.timer);
-      this.longPress.timer = null;
-    });
-
     this.$chat_space
       .find(".topic-request-access")
       .on("click", async function () {
@@ -3878,9 +3900,7 @@ this.$chat_space.on("click", ".reply-link", async function () {
       me.audiodict = [];
 
       me.is_open = 0;
-      frappe.realtime.off(me.profile.room);
-      frappe.realtime.off(me.last_active_sub_channel);
-      frappe.realtime.off("update_last_active");
+      me.unbindAllRealtimeChannels();
       if (me.profile.room_type == "Contributor") {
         frappe.ErpnextChat.settings.open_chat_space_rooms =
           frappe.ErpnextChat.settings.open_chat_space_rooms.filter(
@@ -7755,11 +7775,63 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
     label: "Forward"
   }));
 
-  items.push(item({
-    actionClass: "relink-action",
-    iconName: "relink",
-    label: "ReLink Topic"
-  }));
+  const cachedForMenu = this.messageCache.get(messageName) || {};
+
+  const menuTopicName =
+    cachedForMenu.chat_topic ||
+    cachedForMenu.topic ||
+    cachedForMenu.topic_name ||
+    "";
+
+  const menuTopicSubject =
+    cachedForMenu.chat_topic_subject ||
+    cachedForMenu.topic_subject ||
+    cachedForMenu.chat_topic_title ||
+    cachedForMenu.subject ||
+    menuTopicName;
+
+  const menuTopicColor =
+    cachedForMenu.topic_color ||
+    cachedForMenu.chat_topic_color ||
+    this.topicColorMap?.get(menuTopicName) ||
+    "";
+
+  const safeMenuTopicName = frappe.utils.escape_html(String(menuTopicName || ""));
+  const safeMenuTopicSubject = frappe.utils.escape_html(String(menuTopicSubject || menuTopicName || ""));
+  const safeMenuTopicColor = frappe.utils.escape_html(String(menuTopicColor || ""));
+
+  const openTopicButtonHtml = menuTopicName
+    ? `
+    <button
+      type="button"
+      class="relink-topic-menu-open topic-open-window-btn message-topic-open-action"
+      data-message-name="${safeMessageName}"
+      data-topic-name="${safeMenuTopicName}"
+      data-topic-subject="${safeMenuTopicSubject}"
+      data-topic-color="${safeMenuTopicColor}"
+      title="${__("Open topic in new window")}"
+      aria-label="${__("Open topic in new window")}"
+    >
+      ↗
+    </button>
+  `
+    : "";
+
+  items.push(`
+    <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
+      <button
+        type="button"
+        class="relink-topic-menu-main relink-action"
+        data-message-name="${safeMessageName}"
+        title="${__("ReLink Topic")}"
+      >
+        ${icon("relink")}
+        <span class="menu-label">${__("ReLink")}</span>
+      </button>
+
+      ${openTopicButtonHtml}
+    </div>
+  `);
 
   if (isMyMessage) {
     items.push(item({
@@ -7850,7 +7922,10 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
 
   async set_channel_realtime(targetChannel) {
     const me = this;
-    frappe.realtime.on(targetChannel, async function (res) {
+
+    if (!targetChannel) return;
+
+    const realtimeHandler = async function (res) {
       if (res.realtime_type == "create_sub_channel") {
         const last_active_sub_channel_before_realtime =
           me.last_active_sub_channel;
@@ -7867,7 +7942,7 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
             me.$chat_actions.remove();
             me.$chat_actions = null;
           } else {
-            frappe.realtime.off(last_active_sub_channel_before_realtime);
+            me.unbindRealtimeChannel(last_active_sub_channel_before_realtime);
             me.set_channel_realtime(me.last_active_sub_channel);
             me.contributors = await get_sub_channel_members(
               me.last_active_sub_channel,
@@ -8049,7 +8124,7 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
         });
       } else if (res.realtime_type == "set_topic_status") {
         me.chat_topic_status = res.chat_topic_status;
-      } else if (res.realtime_type == "delete_message") {
+    } else if (res.realtime_type == "delete_message") {
 
   const $msg = me.$chat_space.find(`#msg-${res.message_name}`);
   if ($msg.length) {
@@ -8060,21 +8135,13 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
       </div>
     `);
     
-  
+   
     const cached = me.messageCache.get(res.message_name);
     if (cached) {
       cached.is_deleted = 1;
       cached.content = '<div style="font-style:italic; opacity:0.6;">This message was deleted</div>';
-      me.messageCache.set(res.message_name, cached);
-    }
-    
-  
-    me.$chat_space.find(`.reply-link[data-jump="${res.message_name}"]`).each(function() {
-      const $link = $(this);
-      $link.find(".reply-text").text("This message was deleted");
-     
-      $link.find(".reply-thumb-wrap").remove();  
-    });
+        me.messageCache.set(res.message_name, cached);
+    };
   }
       } else if (res.realtime_type == "update_message") {
 
@@ -8104,10 +8171,15 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
           }
         }]);
         me.messageCache.set(res.message_name, cached);
-}
+      }
+    };
 
+    // If Frappe's realtime.off() does not support handler-specific unbind
+    // (off.length < 2), unbindRealtimeChannel skips global off() to avoid
+    // breaking other ChatSpace instances. Old handlers remain but are tracked
+    // per-instance so unbindAllRealtimeChannels can still clean up safely.
 
-    });
+    this.bindRealtimeChannel(targetChannel, realtimeHandler);
   }
 async handleMessageEdit(res) {
   const { message_name, content, original_content } = res;
