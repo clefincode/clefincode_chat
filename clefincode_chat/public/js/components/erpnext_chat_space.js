@@ -343,7 +343,10 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
   if (this.isDedicatedTopicContext?.()) return "";
   const color = topicColor || this.getTopicColor(topicName);
   const safeTopicName = frappe.utils.escape_html(String(topicName));
-  const safeSubject = frappe.utils.escape_html(topicSubject || topicName || __("Topic"));
+  const displaySubject = this.formatTopicSeparatorSubject
+    ? this.formatTopicSeparatorSubject(topicSubject, topicName)
+    : String(topicSubject || topicName || __("Topic")).replace(/^topic\s*:\s*/i, "").trim();
+  const safeSubject = frappe.utils.escape_html(displaySubject || topicName || __("Topic"));
   const safeColor = frappe.utils.escape_html(color || "");
   return `
     <div
@@ -4707,7 +4710,10 @@ async setup_messages(messages_list) {
 
   const color = this.getTopicColor(topicName);
   const safeTopicName = frappe.utils.escape_html(String(topicName));
-  const title = frappe.utils.escape_html(topicSubject || topicName || __("Topic"));
+  const displaySubject = this.formatTopicSeparatorSubject
+    ? this.formatTopicSeparatorSubject(topicSubject, topicName)
+    : String(topicSubject || topicName || __("Topic")).replace(/^topic\s*:\s*/i, "").trim();
+  const title = frappe.utils.escape_html(displaySubject || topicName || __("Topic"));
 
   return `
     <div
@@ -5371,6 +5377,12 @@ normalizeTopicSubject(value, fallback = "") {
   }
 
   return String(value || fallback || "").replace(/"/g, "");
+}
+
+formatTopicSeparatorSubject(topicSubject, topicName = "") {
+  let subject = String(topicSubject || topicName || "").trim();
+  subject = subject.replace(/^topic\s*:\s*/i, "").trim();
+  return subject || String(topicName || "").trim();
 }
 
 // ================= Topic Helpers =================

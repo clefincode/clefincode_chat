@@ -2521,9 +2521,11 @@ body.cc-chat-webview .chat_right_section {
 
 /* Main chat area */
 body.cc-chat-webview .chat_left_section {
-  display: block !important; 
+  display: flex !important;
+  flex-direction: column !important;
   flex: 1 1 auto;
   height: 100%;
+  min-width: 0;
   overflow: hidden;
   background: var(--body-bg, #f7f7f7);
 }
@@ -2581,6 +2583,7 @@ body.cc-chat-webview .chat-window {
   margin: 0 !important;           
   border-radius: 0 !important;
   box-shadow: none !important;
+  width: 100% !important;
 }
 
 
@@ -2596,6 +2599,7 @@ body.cc-chat-webview .chatbot-space {
   display: flex !important;
   flex-direction: column !important;
   height: 100% !important;
+  width: 100% !important;
 }
 
 
