@@ -2,9 +2,7 @@
 // MIT License. See license.txt
 import BaseTimeline from "./base_timeline";
 import { get_version_timeline_content } from "./version_timeline_content_builder";
-import { check_if_chat_window_open } from "../../../components/erpnext_chat_utils";
-import ChatWindow from "../../../components/erpnext_chat_window";
-import ChatSpace from "../../../components/erpnext_chat_space";
+import { open_topic_chat_window_from_context } from "../../../components/topic_open_helper";
 
 class FormTimeline extends BaseTimeline {
   make() {
@@ -113,38 +111,53 @@ class FormTimeline extends BaseTimeline {
     }
   }
 
-  setup_topic_click_event() {
-    this.timeline_items_wrapper.find(`.topic-card`).on("click", function () {
-      const chat_topic = $(this).data("topic");
-      if (check_if_chat_window_open(chat_topic, "topic")) {
+setup_topic_click_event() {
+  this.timeline_items_wrapper
+    .off("click.cc-chat-topic", ".topic-link, .topic-card")
+    .on("click.cc-chat-topic", ".topic-link, .topic-card", async function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $el = $(this);
+      const $timeline_content = $el.closest(".timeline-content");
+
+      const timeline_id = $timeline_content.attr("id") || "";
+
+      const chat_topic =
+        $el.data("topic") ||
+        $el.data("chat-topic") ||
+        $timeline_content.data("topic") ||
+        $timeline_content.data("chat-topic") ||
+        timeline_id.replace(/^chat-topic-/, "");
+
+      const chat_topic_subject =
+        $el.data("subject") ||
+        $timeline_content.data("subject") ||
+        $el.attr("title") ||
+        $el.text().trim();
+
+      if (!chat_topic || chat_topic === timeline_id) {
+        console.warn("[ClefinCode Chat] Missing topic name", {
+          element: $el.prop("outerHTML"),
+          timeline_content: $timeline_content.prop("outerHTML"),
+          timeline_id,
+        });
         return;
       }
-      const chat_window = new ChatWindow({
-        profile: {
-          chat_topic: chat_topic,
-        },
-      });
 
-      new ChatSpace({
-        $wrapper: chat_window.$chat_window,
-        chat_topic: chat_topic,
-        chat_topic_subject: $(this).data("subject"),
-        chat_topic_channel: $(this).data("channel"),
-        is_private_topic: $(this).data("is-private"),
-        alternative_subject: $(this).data("alternative-subject"),
-        profile: {
-          is_admin: true,
-          user_email: frappe.session.user,
-        },
+      await open_topic_chat_window_from_context({
+        chat_topic,
+        chat_topic_subject,
       });
     });
-  }
+}
 
   render_timeline_items() {
-    super.render_timeline_items();
-    this.set_document_info();
-    frappe.utils.bind_actions_with_object(this.timeline_items_wrapper, this);
-  }
+  super.render_timeline_items();
+  this.set_document_info();
+  frappe.utils.bind_actions_with_object(this.timeline_items_wrapper, this);
+  this.setup_topic_click_event();
+}
 
   set_document_info() {
     // TODO: handle creation via automation

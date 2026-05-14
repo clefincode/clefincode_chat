@@ -37,12 +37,16 @@ from frappe.utils import cint
 from frappe.utils import get_files_path, get_url
 from frappe.utils.file_manager import save_file
 from frappe.utils.pdf import get_pdf
+from frappe.utils import now_datetime
 import shutil
 from collections import Counter
 import threading
 import time
+from frappe.auth import LoginManager
+from frappe.utils.password import check_password, update_password
+from frappe.sessions import clear_sessions
 
-from frappe.utils import now_datetime
+
 
 
 
@@ -81,42 +85,69 @@ def get_clean_timezone(user_timezone):
 #############################################################################################
 ######################################## Users Accounts #####################################
 #############################################################################################
-@frappe.whitelist(allow_guest = True)
-def login(email , password): 
-    user = frappe.db.get("User", {"email": email}) 
-    if user:
-        if not user.enabled:          
-            return [{"status":0,"description":"User Account is disabled","data":None}]
-        result =(
-            frappe.qb.from_(Auth)
-            .select(Auth.name, Auth.password)
-            .where(
-                (Auth.doctype == "User")
-                & (Auth.name == user.email)
-                & (Auth.fieldname == "password")
-                & (Auth.encrypted == 0)
-            )
-            .limit(1)
-            .run(as_dict=True)
-        )
 
-        if not result or not passlibctx.verify(password, result[0].password):
-            return [{"status":0,"description":"Incorrect email or password","data":None}]
-            
-        else:
-            user = frappe.get_doc('User' , email)
-            api_secret = frappe.generate_hash(length=15)
-            # if api key is not set generate api key
-            if not user.api_key:
-                api_key = frappe.generate_hash(length=15)
-                user.api_key = api_key
-            user.api_secret = api_secret
-            user.save(ignore_permissions=True)
-            frappe.db.commit()               
-            return [{'status':1,"description":"Done successfully","data":[{"api_key":user.api_key,"api_secret":api_secret,'full_name':user.full_name}]}]
-            
-    else:    
-        return [{"status":0,"description":"User doesn't exist","data":None}]
+@frappe.whitelist(allow_guest=True)
+def login(email=None, password=None):
+    if not email or not password:
+        return [{
+            "status": 0,
+            "description": "Email and password are required",
+            "data": None
+        }]
+
+    user = frappe.db.get_value(
+        "User",
+        {"email": email},
+        ["name", "email", "enabled", "full_name", "user_image"],
+        as_dict=True
+    )
+
+    if not user:
+        return [{
+            "status": 0,
+            "description": "User doesn't exist",
+            "data": None
+        }]
+
+    if not user.enabled:
+        return [{
+            "status": 0,
+            "description": "User Account is disabled",
+            "data": None
+        }]
+
+    try:
+        lm = LoginManager()
+        lm.authenticate(user=user.name, pwd=password)
+        lm.post_login()
+
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "login_failure")
+        return [{
+            "status": 0,
+            "description": "Incorrect email or password",
+            "data": None
+        }]
+
+    sid = getattr(frappe.session, "sid", None)
+
+    if not sid and getattr(frappe.local, "session", None):
+        sid = getattr(frappe.local.session, "sid", None)
+
+    if not sid and getattr(frappe.local, "session", None):
+        sid = frappe.local.session.data.get("sid")
+
+    return [{
+        "status": 1,
+        "description": "Done successfully",
+        "data": [{
+            "sid": sid,
+            "full_name": user.full_name,
+            "email": user.email,
+            "user_image": user.user_image
+        }]
+    }]
+
 # ==========================================================================================
 @frappe.whitelist()
 def get_versions():   
@@ -851,6 +882,7 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
     
 
     # Post-processing
+    lang = get_app_language(user_email)
     if paged:
         for room in paged:
             if not room.get('channel_name'):
@@ -874,8 +906,12 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
                     room.update({
                         'sender_email': last_message_info['sender_email'],
                         'last_message_type': last_message_info['message_type'],
-                        # 'last_message': last_message_info.get('content', '')
+                        'last_message': get_app_last_message_preview(last_message_info, lang)
                     })
+                else:
+                    prev = room.get("last_message")
+                    if prev is not None:
+                        room['last_message'] = parse_channel_last_message_for_app(prev, user_email)
             else:
                 # If channel_name exists, it's a normal channel
                 room['room_name'] = room['channel_name']
@@ -883,10 +919,14 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
                     last_message_info = get_last_message_info(user_email, room['room'])
                     if last_message_info:
                         room.update({
-                            'last_message': last_message_info['content'],
+                            'last_message': get_app_last_message_preview(last_message_info, lang),
                             'sender_email': last_message_info['sender_email'],
                             'last_message_type': last_message_info['message_type']
                         })
+                    else:
+                        prev = room.get("last_message")
+                        if prev is not None:
+                            room['last_message'] = parse_channel_last_message_for_app(prev, user_email)
 
             # Determine the platform
             if room.get("other_user_platform"):
@@ -926,7 +966,17 @@ def get_channels_list(user_email, limit=10, offset=0, query=None, type=None):
         "num_of_results": total_count
     }
 # ==========================================================================================
-def get_last_sub_channel(room):    
+def get_last_sub_channel(room):
+    last_sub_channel = frappe.db.sql(f"""
+    SELECT name
+    FROM `tabClefinCode Chat Channel`
+    WHERE parent_channel = '{room}'
+    ORDER BY creation_date DESC
+    LIMIT 1
+    """ , as_dict = True)
+    return last_sub_channel[0].name if len(last_sub_channel) == 1 else ""
+# ==========================================================================================
+def get_last_sub_channel_for_user(parent_channel , user_email):
     last_sub_channel = frappe.db.sql(f"""
     SELECT name
     FROM `tabClefinCode Chat Channel`
@@ -950,7 +1000,8 @@ def get_last_sub_channel_for_user(parent_channel , user_email):
         return ''
 
     last_sub_channel_message = frappe.db.sql(f"""
-    SELECT name , content , send_date , modified , message_type , sender_email
+    SELECT name , content , send_date , modified , message_type , sender_email,
+           message_template_type, file_type, is_voice_clip, is_media, is_document
     FROM `tabClefinCode Chat Message`
     WHERE sub_channel = '{last_sub_channel[0].name}'
     AND chat_channel = '{parent_channel}'
@@ -958,7 +1009,8 @@ def get_last_sub_channel_for_user(parent_channel , user_email):
     
     UNION
 
-    SELECT name , content , send_date , modified , message_type , sender_email
+    SELECT name , content , send_date , modified , message_type , sender_email,
+           message_template_type, file_type, is_voice_clip, is_media, is_document
     FROM `tabClefinCode Chat Message`
     WHERE sub_channel = '{last_sub_channel[0].name}'
     AND chat_channel = '{parent_channel}'
@@ -1585,6 +1637,7 @@ def get_latest_channels_updates(user_email, last_message_date):
     """This API provides a solution for iOS devices to view new messages through notifications while using another app."""
     user_email_param = frappe.db.escape(user_email)
     last_message_date_param = frappe.db.escape(last_message_date)
+    lang = get_app_language(user_email)
 
     results = frappe.db.sql(
         f"""
@@ -1682,7 +1735,7 @@ def get_latest_channels_updates(user_email, last_message_date):
                     room.update({
                         'sender_email': last_message_info['sender_email'],
                         'last_message_type': last_message_info['message_type'],
-                        'last_message': last_message_info.get('content', '')
+                        'last_message': get_app_last_message_preview(last_message_info, lang)
                     })
             else:
                 room['room_name'] = room['channel_name']
@@ -1690,19 +1743,23 @@ def get_latest_channels_updates(user_email, last_message_date):
                     last_message_info = get_last_message_info(user_email, room['room'])
                     if last_message_info:
                         room.update({
-                            'last_message': last_message_info['content'],
+                            'last_message': get_app_last_message_preview(last_message_info, lang),
                             'sender_email': last_message_info['sender_email'],
                             'last_message_type': last_message_info['message_type']
                         })
+                    else:
+                        prev = room.get("last_message")
+                        if prev is not None:
+                            room['last_message'] = parse_channel_last_message_for_app(prev, user_email)
 
             # Handle removed rooms
             if room.get('is_removed') == 1:
                 last_message_info = get_last_message_info(user_email, room['room'], room['remove_date'])
                 if last_message_info:
                     room.update({
-                        'last_message': last_message_info['content'],
                         'sender_email': last_message_info['sender_email'],
                         'last_message_type': last_message_info['message_type'],
+                        'last_message': get_app_last_message_preview(last_message_info, lang),
                         'send_date': room['remove_date']
                     })
 
@@ -1789,7 +1846,8 @@ def update_sub_channel_for_last_message(user , user_email , mentioned_users_emai
 # ==========================================================================================
 def get_last_message_info(user_email, channel, remove_date=None):
     query = """
-        SELECT content, send_date, message_type, sender_email
+        SELECT content, send_date, message_type, sender_email,
+               message_template_type, file_type, is_voice_clip, is_media, is_document
         FROM `tabClefinCode Chat Message`
         WHERE chat_channel = %(channel)s
         AND (only_receive_by IS NULL OR only_receive_by = '' OR only_receive_by = %(user_email)s)
@@ -1798,7 +1856,7 @@ def get_last_message_info(user_email, channel, remove_date=None):
         "channel": channel,
         "user_email": user_email
     }
-    
+
     if remove_date:
         query += " AND send_date <= %(remove_date)s"
         filters["remove_date"] = remove_date
@@ -1807,10 +1865,46 @@ def get_last_message_info(user_email, channel, remove_date=None):
 
     try:
         result = frappe.db.sql(query, filters, as_dict=True)
-        return result[0] if result else None
+        message_info = result[0] if result else None
     except Exception as e:
         frappe.log_error(message=str(e), title="Error fetching last message info")
+        message_info = None
+
+    if not message_info:
         return None
+
+    lang = get_app_language(user_email)
+
+    message_info["raw_content"] = message_info.get("content", "")
+
+    channel_last_message = None
+    if not remove_date:
+        try:
+            channel_last_message = frappe.db.get_value(
+                "ClefinCode Chat Channel", channel, "last_message"
+            )
+        except Exception:
+            pass
+
+    localized = get_localized_last_message_content(
+        channel_last_message=channel_last_message,
+        message_info=message_info,
+        lang=lang
+    )
+    if localized:
+        message_info["last_message"] = localized
+        message_info["content"] = localized
+    else:
+        if message_info.get("raw_content"):
+            soup = BeautifulSoup(str(message_info["raw_content"]), "html.parser")
+            stripped = soup.get_text().strip()
+            message_info["last_message"] = stripped
+            message_info["content"] = stripped
+        else:
+            message_info["last_message"] = ""
+            message_info["content"] = ""
+
+    return message_info
 
 # ==========================================================================================
 @frappe.whitelist()
@@ -2948,6 +3042,7 @@ def approve_access_request(sender ,reciever, chat_topic , notification_log, chat
     'document_type': reference_doctype,
     'document_name': reference_docname,
     'email_content': chat_topic,
+    'chat_topic': 1,
     }
     enqueue_create_notification(reciever, notification_doc)
     chat_topic_doc = frappe.get_doc("ClefinCode Chat Topic" , chat_topic)
@@ -3213,6 +3308,260 @@ def get_profile_id(user_email):
             title="get_profile_id",
             message=f"No profile found for email: {user_email} via ERPNext, Instagram, Messenger or Telegram."
         )
+# ==========================================================================================
+def get_app_language(user_email):
+    try:
+        profile_id = get_profile_id(user_email)
+        if profile_id:
+            lang = frappe.db.get_value("ClefinCode Chat Profile", profile_id, "app_language")
+            if lang and (lang.startswith("ar") or lang in ("Arabic", "العربية")):
+                return "ar"
+        return "en"
+    except Exception:
+        return "en"
+
+
+def app_text(key, lang="en"):
+    translations = {
+        "chat_notifications": {
+            "en": "Chat Notifications",
+            "ar": "إشعارات المحادثات"
+        },
+        "new_message": {
+            "en": "New Message",
+            "ar": "رسالة جديدة"
+        },
+        "voice_message": {
+            "en": "\U0001F3A4 Voice message",
+            "ar": "\U0001F3A4 رسالة صوتية"
+        },
+        "photo": {
+            "en": "\U0001F4F7 Photo",
+            "ar": "\U0001F4F7 صورة"
+        },
+        "video": {
+            "en": "\U0001F4F9 Video",
+            "ar": "\U0001F4F9 فيديو"
+        },
+        "audio": {
+            "en": "\U0001F3A4 Audio",
+            "ar": "\U0001F3A4 ملف صوتي"
+        },
+        "document": {
+            "en": "\U0001F4C4 Document",
+            "ar": "\U0001F4C4 مستند"
+        },
+        "deleted_message": {
+            "en": "This message was deleted",
+            "ar": "تم حذف هذه الرسالة"
+        },
+        "reaction_push": {
+            "en": "You received a new reaction {emoji} on your message.",
+            "ar": "وصلك تفاعل جديد {emoji} على رسالتك."
+        },
+        "reaction_preview": {
+            "en": "{name} reacted {emoji} to {message}",
+            "ar": "{name} تفاعل {emoji} مع {message}"
+        },
+        "reaction_removed_preview": {
+            "en": "{name} removed a reaction from {message}",
+            "ar": "{name} أزال تفاعله من {message}"
+        },
+        "system_notification_title": {
+            "en": "Notification from system",
+            "ar": "إشعار من النظام"
+        },
+        "set_topic_status": {
+            "en": "The topic status has been updated",
+            "ar": "تم تحديث حالة الموضوع"
+        },
+        "rename_topic": {
+            "en": "The topic name has been updated",
+            "ar": "تم تحديث اسم الموضوع"
+        },
+        "rename_group": {
+            "en": "The group name has been updated",
+            "ar": "تم تحديث اسم المجموعة"
+        },
+        "add_group_member": {
+            "en": "A new member has been added to the group",
+            "ar": "تمت إضافة عضو جديد إلى المجموعة"
+        },
+        "remove_group_member": {
+            "en": "One member has been removed from the group",
+            "ar": "تمت إزالة عضو من المجموعة"
+        },
+        "set_topic": {
+            "en": "A new topic has been set",
+            "ar": "تم تعيين موضوع جديد"
+        },
+        "remove_topic": {
+            "en": "The topic has been removed",
+            "ar": "تمت إزالة الموضوع"
+        },
+        "add_doctype": {
+            "en": "A new doctype has been added",
+            "ar": "تمت إضافة مستند جديد"
+        },
+        "contributors_changed": {
+            "en": "The conversation contributors have been updated",
+            "ar": "تم تحديث المساهمين في المحادثة"
+        },
+        "create_sub_channel": {
+            "en": "The conversation contributors have been updated",
+            "ar": "تم تحديث المساهمين في المحادثة"
+        },
+        "remove_doctype": {
+            "en": "A document has been removed from the topic",
+            "ar": "تمت إزالة مستند من الموضوع"
+        },
+        "edit_message": {
+            "en": "A message has been edited",
+            "ar": "تم تعديل رسالة"
+        },
+        "information_message": {
+            "en": "Information message",
+            "ar": "رسالة معلومات"
+        },
+    }
+    entry = translations.get(key, {})
+    return entry.get(lang) or entry.get("en", key)
+
+
+def build_reaction_preview(name, emoji, message, lang="en", removed=False):
+    if removed:
+        template = "reaction_removed_preview"
+        kwargs = {"name": name, "message": message}
+    else:
+        template = "reaction_preview"
+        kwargs = {"name": name, "emoji": emoji, "message": message}
+    return app_text(template, lang).format(**kwargs)
+
+
+def parse_channel_last_message_for_app(last_message, user_email):
+    lang = get_app_language(user_email)
+    if not last_message:
+        return ""
+    try:
+        if isinstance(last_message, str):
+            parsed = json.loads(last_message)
+        else:
+            parsed = last_message
+    except (json.JSONDecodeError, TypeError):
+        soup = BeautifulSoup(str(last_message), "html.parser")
+        return soup.get_text().strip()
+
+    msg_type = parsed.get("type")
+    if msg_type == "reaction":
+        return build_reaction_preview(
+            parsed.get("sender", ""),
+            parsed.get("emoji", ""),
+            parsed.get("message_preview", ""),
+            lang,
+            removed=parsed.get("removed", False)
+        )
+    elif msg_type == "deleted_message":
+        return app_text("deleted_message", lang)
+    return str(last_message)
+
+
+def get_app_last_message_preview(last_message_info, lang="en"):
+    if not last_message_info:
+        return ""
+
+    if last_message_info.get("last_message"):
+        return last_message_info["last_message"]
+
+    message_type = last_message_info.get("message_type")
+
+    if message_type == "information":
+        realtime_type = (
+            last_message_info.get("message_template_type")
+            or last_message_info.get("realtime_type")
+            or ""
+        )
+        return get_body_message_information(realtime_type, lang)
+
+    if cint(last_message_info.get("is_voice_clip")) == 1:
+        return app_text("voice_message", lang)
+
+    file_type = last_message_info.get("file_type")
+    if file_type == "image":
+        return app_text("photo", lang)
+    elif file_type == "video":
+        return app_text("video", lang)
+    elif file_type == "audio":
+        return app_text("audio", lang)
+    elif file_type == "document":
+        return app_text("document", lang)
+
+    content = last_message_info.get("content", "")
+    if content:
+        soup = BeautifulSoup(str(content), "html.parser")
+        return soup.get_text().strip()
+
+    return ""
+
+
+def get_localized_last_message_content(channel_last_message=None, message_info=None, lang="en"):
+    if not channel_last_message and not message_info:
+        return ""
+
+    if channel_last_message:
+        try:
+            parsed = json.loads(channel_last_message) if isinstance(channel_last_message, str) else channel_last_message
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+
+        if isinstance(parsed, dict):
+            msg_type = parsed.get("type")
+            if msg_type == "reaction":
+                return build_reaction_preview(
+                    parsed.get("sender", ""),
+                    parsed.get("emoji", ""),
+                    parsed.get("message_preview", ""),
+                    lang,
+                    removed=cint(parsed.get("removed")) == 1
+                )
+            elif msg_type == "deleted_message":
+                return app_text("deleted_message", lang)
+
+    content = message_info.get("content", "") if message_info else ""
+    if not content and not message_info:
+        return ""
+
+    if message_info:
+        message_type = message_info.get("message_type")
+        if message_type == "information":
+            realtime_type = (
+                message_info.get("message_template_type")
+                or message_info.get("realtime_type")
+                or ""
+            )
+            return get_body_message_information(realtime_type, lang)
+
+        if cint(message_info.get("is_voice_clip")) == 1:
+            return app_text("voice_message", lang)
+        file_type = message_info.get("file_type")
+        if file_type == "image":
+            return app_text("photo", lang)
+        elif file_type == "video":
+            return app_text("video", lang)
+        elif file_type == "audio":
+            return app_text("audio", lang)
+        elif file_type == "document":
+            return app_text("document", lang)
+
+    if content:
+        soup = BeautifulSoup(str(content), "html.parser")
+        body = soup.get_text().strip()
+        if body.lower() in ("this message was deleted", "تم حذف هذه الرسالة"):
+            return app_text("deleted_message", lang)
+        return body
+
+    return content
+
+
 # ==========================================================================================
 @frappe.whitelist() 
 def get_profile_full_name(user_email):
@@ -4369,67 +4718,125 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
                 registration_token = get_registration_token(to_user)   
                 if registration_token:
                     user_platform = get_platform(to_user)
+                    lang = get_app_language(to_user)
                     body = None
                     message_type = None
                     if realtime_type != 'typing':
                         if results.get("file_type"):
                             message_type = results.get("file_type")
                         if to_user == frappe.session.user:
-                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1)
+                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, lang=lang)
                             return                
                         if realtime_type == "send_message" :  
-                            body = get_body_message(results)
+                            body = get_body_message(results, lang)
                         elif realtime_type == "delete_message": 
-                            body=""
+                            body = app_text("deleted_message", lang)
                         elif realtime_type =="reactions_message" :
-                            body=f"You received a new reaction {emoji} on your message."
+                            if results.get("reaction_sender_name") and results.get("reaction_message_preview"):
+                                body = build_reaction_preview(
+                                    results["reaction_sender_name"],
+                                    emoji or "",
+                                    results["reaction_message_preview"],
+                                    lang,
+                                    removed=results.get("reaction_removed", False)
+                                )
+                            else:
+                                body = app_text("reaction_push", lang).format(emoji=emoji or "")
                         else:
-                            body = get_body_message_information(realtime_type)
-                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type)                       
+                            body = get_body_message_information(realtime_type, lang)
+                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, lang=lang)                       
                     else:
-                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type)    
+                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, lang=lang)    
                                                     
     except Exception as e:
         frappe.publish_realtime("console" , message = e)
 #=====================================================================================
-def get_body_message(results):
+def get_body_message(results, lang="en"):
     if results.get("is_voice_clip"):
-        body = u'\U0001F3A4 Voice message'
+        return app_text("voice_message", lang)
     elif results.get("file_type"):
         if results["file_type"]== "image":
-            body = u'\U0001F4F7 Photo'
+            return app_text("photo", lang)
         elif results["file_type"] == "video":
-            body = u'\U0001F4F9 Video'
+            return app_text("video", lang)
         elif results["file_type"] == "audio":
-            body = u'\U0001F3A4 Audio'
+            return app_text("audio", lang)
         elif results["file_type"] == 'document':
-            body = u'\U0001F4C4 Document'
+            return app_text("document", lang)
     else:
         soup = BeautifulSoup(results["content"], 'html.parser')
         body = soup.get_text().lstrip()
-    return body.capitalize()
+        return body
 # ==========================================================================================
-def get_body_message_information(realtime_type):
-    body=None
-    if realtime_type == "set_topic_status":
-        body = 'The topic status has been updated'
-    elif realtime_type == "rename_topic":
-        body = 'The topic name has been updated'
-    elif realtime_type == "rename_group":
-        body = 'The group name has been updated'
-    elif realtime_type == "add_group_member":
-        body = 'A new member has been added to the group'
-    elif realtime_type == "remove_group_member":
-        body = 'One member has been removed from the group'
-    elif realtime_type == "set_topic":
-        body = 'A new topic has been set'
-    elif realtime_type == "remove_topic":
-        body = 'The topic has been removeed'
-    elif realtime_type == "add_doctype":
-        body = 'A new doctype has been added'
-    else:
-        body = 'The contributors have been changed in the conversation'
-    return body
+def normalize_realtime_key(value):
+    if not value:
+        return ""
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+
+    alias_map = {
+        "set_topic": "set_topic",
+        "create_topic": "set_topic",
+        "add_topic": "set_topic",
+        "new_topic": "set_topic",
+
+        "remove_topic": "remove_topic",
+        "close_topic": "remove_topic",
+
+        "rename_topic": "rename_topic",
+        "set_topic_status": "set_topic_status",
+
+        "rename_group": "rename_group",
+
+        "add_group_member": "add_group_member",
+        "add_user": "add_group_member",
+        "add_member": "add_group_member",
+        "add_members": "add_group_member",
+
+        "remove_group_member": "remove_group_member",
+        "remove_user": "remove_group_member",
+        "remove_member": "remove_group_member",
+        "remove_members": "remove_group_member",
+
+        "add_doctype": "add_doctype",
+        "add_document": "add_doctype",
+
+        "remove_doctype": "remove_doctype",
+        "remove_document": "remove_doctype",
+
+        "create_sub_channel": "create_sub_channel",
+        "update_sub_channel_for_last_message": "create_sub_channel",
+        "disable_contributors": "create_sub_channel",
+
+        "contributors_changed": "create_sub_channel",
+
+        "delete_message": "deleted_message",
+        "edit_message": "edit_message",
+    }
+    return alias_map.get(normalized, normalized)
+
+
+def get_body_message_information(realtime_type, lang="en"):
+    key = normalize_realtime_key(realtime_type)
+
+    allowed_keys = {
+        "set_topic_status",
+        "rename_topic",
+        "rename_group",
+        "add_group_member",
+        "remove_group_member",
+        "set_topic",
+        "remove_topic",
+        "add_doctype",
+        "remove_doctype",
+        "create_sub_channel",
+        "deleted_message",
+        "edit_message",
+    }
+
+    if key in allowed_keys:
+        return app_text(key, lang)
+
+    return app_text("information_message", lang)
 # ==========================================================================================
 @frappe.whitelist()
 def are_members(room):
@@ -4583,7 +4990,7 @@ def check_notifications_status():
         return 0
     else: return True
 #=======================================================================================================
-def push_notifications(registration_token, information, realtime_type, platform = None ,title = None, body = None, same_user = None, message_type = None):
+def push_notifications(registration_token, information, realtime_type, platform = None ,title = None, body = None, same_user = None, message_type = None, lang="en"):
     try:
         results = get_notifications_settings()[0]
         if not check_notifications_status():
@@ -4594,8 +5001,8 @@ def push_notifications(registration_token, information, realtime_type, platform 
                 if realtime_type == "typing":
                     return
                 info = ""
-                title = "Chat Notifications"
-                body = "New Message"         
+                title = app_text("chat_notifications", lang)
+                body = app_text("new_message", lang)         
 
             send_notification_via_firebase(registration_token, info, realtime_type, platform, title, body, same_user, message_type = message_type)            
 
@@ -5336,7 +5743,9 @@ def after_insert_notification(doc,method):
             registration_token = get_registration_token(doc.for_user)
             user_platform = get_platform(doc.for_user)
             body=BeautifulSoup(doc.subject, 'html.parser').get_text()
-            send_notification_log_via_firebase(registration_token,user_platform , body = body,title = 'Notification from system')
+            lang = get_app_language(doc.for_user)
+            title = app_text("system_notification_title", lang)
+            send_notification_log_via_firebase(registration_token,user_platform , body = body,title = title)
     except Exception as e:
         frappe.log_error(title="File Registration Error", message=str(e))
 #=========================================================================================
@@ -7301,12 +7710,12 @@ def delete_chat_message(message_name, user_email):
 
     is_last_message = last_message and last_message[0].name == msg.name
     if is_last_message:
-        
+
         frappe.db.set_value(
             "ClefinCode Chat Channel",
             msg.chat_channel,
             "last_message",
-            "This message was deleted"
+            json.dumps({"type": "deleted_message"}, ensure_ascii=False)
         )
         frappe.db.commit()
 
@@ -7577,17 +7986,22 @@ def add_or_update_reaction(message_name, emoji):
 
         reactions = stored_data[0].get("reactions", []) or []
 
-        # ===== toggle / update reaction for same sender =====
+        # ===== determine reaction_removed / reaction_updated BEFORE toggle =====
         existing = next((r for r in reactions if r.get("emoji_sender") == sender_account), None)
+        reaction_removed = 0
+        reaction_updated = 0
 
         now_utc = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
         if existing:
-            if existing.get("emoji") == emoji:
+            old_emoji = existing.get("emoji")
+            if old_emoji == emoji:
                 reactions.remove(existing)  # remove
+                reaction_removed = 1
             else:
                 existing["emoji"] = emoji   # update
                 existing["send_date"] = now_utc
+                reaction_updated = 1
         else:
             reactions.append({
                 "emoji_sender": sender_account,
@@ -7619,16 +8033,29 @@ def add_or_update_reaction(message_name, emoji):
         # same helper you already have
         room_name = get_room_name(channel.name, channel.type, sender_email=sender_account)
 
+        # ===== build clean_content and reacted_name =====
+        soup = BeautifulSoup(doc.content or "", "html.parser")
+        clean_content = soup.get_text() if soup else ""
+        if sender_account == "Guest":
+            reacted_name = room_name
+        else:
+            reacted_name = get_contact_full_name(sender_account) or sender_account
+
         results = {
             "realtime_type": "reactions_message",
             "channel_name": doc.chat_channel,
-            "room": doc.chat_channel,  # handy for client filtering
+            "room": doc.chat_channel,
             "message_name": message_name,
             "reactions_json": doc.reactions_json,
             "reactions": reactions,
             "emoji_counts": emoji_count,
             "emoji": emoji,
             "sender_email": sender_account,
+            "reaction_sender_name": reacted_name,
+            "reaction_message_preview": clean_content[:40],
+            "reaction_removed": reaction_removed,
+            "reaction_updated": reaction_updated,
+            "last_message_type": "reaction",
         }
 
         from packaging import version
@@ -7641,7 +8068,7 @@ def add_or_update_reaction(message_name, emoji):
 
         if channel.type == "Guest" and (channel.chat_profile or "").startswith("Guest"):
             frappe.publish_realtime(
-                event=doc.chat_channel,      # portal listens on room id
+                event=doc.chat_channel,
                 message=results,
                 room=guest_room_name
             )
@@ -7652,35 +8079,41 @@ def add_or_update_reaction(message_name, emoji):
             if not getattr(member, "user", None):
                 continue
 
-      
+       
             if channel.type != "Guest":
                 if getattr(member, "is_removed", 0) == 1:
                     continue
                 if getattr(member, "platform", None) != "Chat":
                     continue
 
-            results["target_user"] = member.user
+            member_results = results.copy()
+            member_results["target_user"] = member.user
+            member_results["last_message"] = build_reaction_preview(
+                reacted_name, emoji, clean_content[:40],
+                get_app_language(member.user),
+                removed=reaction_removed
+            )
             frappe.publish_realtime(
                 event=doc.chat_channel,
-                message=results,
+                message=member_results,
                 user=member.user
             )
 
-            send_notification(member.user, results, "reactions_message", room_name)
+            if member.user != sender_account:
+                send_notification(member.user, member_results, "reactions_message", room_name)
 
-
-        soup = BeautifulSoup(doc.content or "", "html.parser")
-        clean_content = soup.get_text() if soup else ""
-        if sender_account == "Guest":
-            reacted_name = room_name
-        else:
-            reacted_name = get_contact_full_name(sender_account) or sender_account
-
+        # ===== store JSON in last_message instead of HTML =====
         frappe.db.set_value(
             "ClefinCode Chat Channel",
             doc.chat_channel,
             "last_message",
-            f"<p>{reacted_name} Reacted {emoji} to {clean_content[:40]}</p>"
+            json.dumps({
+                "type": "reaction",
+                "sender": reacted_name,
+                "emoji": emoji,
+                "message_preview": clean_content[:40],
+                "removed": int(reaction_removed or 0)
+            }, ensure_ascii=False)
         )
         frappe.db.commit()
 
@@ -7748,7 +8181,7 @@ def get_reactions_for_message(message_name):
     }
 
 
-from packaging import version
+
 
 @frappe.whitelist()
 def edit_chat_message(message_name, new_content):
@@ -8336,6 +8769,7 @@ def get_channels_by_name(user_email, channel_name, limit=10, offset=0):
     
 
     # Post-processing
+    lang = get_app_language(user_email)
     if paged:
         for room in paged:
             if not room.get('channel_name'):
@@ -8359,8 +8793,12 @@ def get_channels_by_name(user_email, channel_name, limit=10, offset=0):
                     room.update({
                         'sender_email': last_message_info['sender_email'],
                         'last_message_type': last_message_info['message_type'],
-                        # 'last_message': last_message_info.get('content', '')
+                        'last_message': get_app_last_message_preview(last_message_info, lang)
                     })
+                else:
+                    prev = room.get("last_message")
+                    if prev is not None:
+                        room['last_message'] = parse_channel_last_message_for_app(prev, user_email)
             else:
                 # If channel_name exists, it's a normal channel
                 room['room_name'] = room['channel_name']
@@ -8368,10 +8806,14 @@ def get_channels_by_name(user_email, channel_name, limit=10, offset=0):
                     last_message_info = get_last_message_info(user_email, room['room'])
                     if last_message_info:
                         room.update({
-                            'last_message': last_message_info['content'],
+                            'last_message': get_app_last_message_preview(last_message_info, lang),
                             'sender_email': last_message_info['sender_email'],
                             'last_message_type': last_message_info['message_type']
                         })
+                    else:
+                        prev = room.get("last_message")
+                        if prev is not None:
+                            room['last_message'] = parse_channel_last_message_for_app(prev, user_email)
 
             # Determine the platform
             if room.get("other_user_platform"):
@@ -8673,3 +9115,76 @@ def get_global_incremental_messages(
         "next_cursor": next_cursor,
     }
 #=============================================================================
+@frappe.whitelist(allow_guest=False)
+def update_app_language(language: str):
+    """
+    Update the application language for the currently logged-in user.
+    The user_email is automatically taken from frappe.session.user.
+    """
+    if not language:
+        return {
+            "status": 0,
+            "description": "Language is required",
+            "data": None
+        }
+
+    try:
+        # Get current logged-in user from Frappe session
+        user_email = frappe.session.user
+
+        # Prevent Guest users from updating language
+        if user_email == "Guest":
+            return {
+                "status": 0,
+                "description": "Guest users cannot update language",
+                "data": None
+            }
+
+        # Get the user's Chat Profile
+        profile_name = get_profile_id(user_email)
+        if not profile_name:
+            return {
+                "status": 0,
+                "description": "Profile not found for this user",
+                "data": None
+            }
+
+        # Validate that the language exists in Frappe
+        if not frappe.db.exists("Language", language):
+            return {
+                "status": 0,
+                "description": f"Language code '{language}' does not exist",
+                "data": None
+            }
+
+        # Update the language in the profile
+        frappe.db.set_value(
+            "ClefinCode Chat Profile",
+            profile_name,
+            "app_language",
+            language
+        )
+
+        frappe.db.commit()
+
+        # Fetch updated profile data
+        updated_profile = frappe.db.get_value(
+            "ClefinCode Chat Profile",
+            profile_name,
+            ["name", "full_name", "app_language"],
+            as_dict=True
+        )
+
+        return {
+            "status": 1,
+            "description": "App language updated successfully",
+            "data": updated_profile
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "update_app_language Error")
+        return {
+            "status": 0,
+            "description": "Failed to update language",
+            "data": str(e)
+        }
