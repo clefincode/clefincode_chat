@@ -369,7 +369,8 @@ async function link_doc_to_selected_target(frm, target) {
 		room_type: target.type === "contact" ? "Direct" : (target.room_type || "Group"),
 		contact: target.type === "contact" ? (target.name || target.email) : null,
 		is_first_message: 0,
-		platform: target.raw?.platform || "Chat"
+		platform: target.raw?.platform || "Chat",
+		chat_topic: result.chat_topic || null
 	});
 	frappe.show_alert({
 		message: messages[result.mode] || __("Done"),
@@ -613,9 +614,18 @@ function open_chat_room(profile, chat_status = null) {
 		profile: { room: profile.room }
 	});
 
-	new window.CCChatSpace({
+	const chatSpaceOpts = {
 		$wrapper: chat_window.$chat_window,
 		profile: profile,
 		chat_status: chat_status
-	});
+	};
+
+	if (profile.chat_topic) {
+		chatSpaceOpts.chat_topic = profile.chat_topic;
+		chatSpaceOpts.chat_topic_channel = profile.room;
+		chatSpaceOpts.chat_topic_subject = profile.chat_topic_subject || null;
+		chatSpaceOpts.topic_write_mode = true;
+	}
+
+	new window.CCChatSpace(chatSpaceOpts);
 }
