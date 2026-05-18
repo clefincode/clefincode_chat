@@ -3805,14 +3805,21 @@ html[data-theme-mode="dark"] .message-action-menu {
 }
 
 .chat-plus-menu {
+  --chat-plus-menu-bg: #fff;
+  --chat-plus-menu-border: #ddd;
+  --chat-plus-menu-shadow: rgba(0,0,0,0.16);
+  --chat-plus-btn-bg: #fff;
+  --chat-plus-btn-color: #111b21;
+  --chat-plus-btn-hover-bg: #f1f5f9;
+
   display: none;
   position: absolute;
   bottom: 54px;
   left: 8px;
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--chat-plus-menu-bg);
+  border: 1px solid var(--chat-plus-menu-border);
   border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.16);
+  box-shadow: 0 8px 20px var(--chat-plus-menu-shadow);
   overflow: hidden;
   z-index: 50;
 }
@@ -3822,14 +3829,25 @@ html[data-theme-mode="dark"] .message-action-menu {
   width: 190px;
   padding: 9px;
   border: 0;
-  background: #fff;
+  background: var(--chat-plus-btn-bg);
+  color: var(--chat-plus-btn-color);
   cursor: pointer;
   text-align: left;
   font-size: 13px;
 }
 
 .chat-plus-menu button:hover {
-  background: #f1f5f9;
+  background: var(--chat-plus-btn-hover-bg);
+}
+
+html[data-theme="dark"] .chat-plus-menu,
+html[data-theme-mode="dark"] .chat-plus-menu {
+  --chat-plus-menu-bg: #1f2329;
+  --chat-plus-menu-border: #3a4048;
+  --chat-plus-menu-shadow: rgba(0,0,0,0.45);
+  --chat-plus-btn-bg: #1f2329;
+  --chat-plus-btn-color: #f1f3f5;
+  --chat-plus-btn-hover-bg: #2b3138;
 }
 
 .chat-plus-add-topic {

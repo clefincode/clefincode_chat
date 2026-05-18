@@ -1454,7 +1454,7 @@ function can_create_dt(doctype) {
 async function get_contacts(user_email, limit = 10, offset = 0, search_text = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_3.api.get_contacts_for_website",
+    method: "clefincode_chat.api.api_1_3_4.api.get_contacts_for_website",
     args: { user_email, limit, offset, search_text  },
   });
   return res.message.results[0]; // {contacts, total, has_more, next_offset}
@@ -1473,7 +1473,7 @@ async function get_contacts_for_new_group(user_email) {
 async function get_channels_list_for_forward(email, limit, offset, query = "") {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_3.api.get_channels_list",
+    method: "clefincode_chat.api.api_1_3_4.api.get_channels_list",
     args: {
       user_email: email,
       limit,
@@ -1503,7 +1503,7 @@ async function get_contacts_for_adding_to_group(
 ) {
   const res = await frappe.call({
     method:
-      "clefincode_chat.api.api_1_3_3.api.get_contacts_for_adding_to_group",
+      "clefincode_chat.api.api_1_3_4.api.get_contacts_for_adding_to_group",
     args: {
       user_email: user_email,
       existing_members: existing_members,
