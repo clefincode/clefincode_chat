@@ -560,7 +560,7 @@ frappe.ui.form.on("Clefincode Notification", {
 	setup(frm) {
 		frm.fields_dict.clefincode_notification_recipient_list.grid.get_field('fixed_chat_profile').get_query = function (doc, cdt, cdn) {
 			return {
-				query: 'clefincode_chat.api.api_1_3_3.api.get_chat_profiles_by_channel',
+				query: 'clefincode_chat.api.api_1_3_4.api.get_chat_profiles_by_channel',
 				filters: {
 					channel: doc.channel
 				}

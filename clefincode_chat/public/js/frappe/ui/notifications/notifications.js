@@ -132,7 +132,7 @@ frappe.provide("frappe.ui");
 		reference_docname
 	) {
 		return frappe.call({
-			method: "clefincode_chat.api.api_1_3_3.api.approve_access_request",
+			method: "clefincode_chat.api.api_1_3_4.api.approve_access_request",
 			args: {
 				sender,
 				reciever,

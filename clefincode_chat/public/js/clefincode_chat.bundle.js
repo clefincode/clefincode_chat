@@ -20,7 +20,7 @@ window.CiCOpenTopicFromTimeline = async function (opts = {}) {
   }
 
   const r = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.get_topic_open_context",
+    method: "clefincode_chat.api.api_1_3_4.api.get_topic_open_context",
     args: {
       chat_topic,
       message_name,

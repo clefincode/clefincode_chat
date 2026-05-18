@@ -8,7 +8,7 @@ frappe.ui.form.on("ClefinCode Chat Message", {
     frm.add_custom_button(__("Open Chat"), async () => {
       try {
         const r = await frappe.call({
-          method: "clefincode_chat.api.api_1_3_3.api.get_message_open_context",
+          method: "clefincode_chat.api.api_1_3_4.api.get_message_open_context",
           args: { message_name: frm.doc.name },
         });
 

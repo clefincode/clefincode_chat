@@ -473,13 +473,13 @@ $menu.on("click", ".emoji-item", async (e) => {
 }
 async saveReaction(messageName, emoji) {
   return frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.chat_portal.add_or_update_reaction",
+    method: "clefincode_chat.api.api_1_3_4.chat_portal.add_or_update_reaction",
     args: { message_name: messageName, emoji }
   });
 }
 async getReactions(messageName) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.get_reactions_for_message",
+    method: "clefincode_chat.api.api_1_3_4.api.get_reactions_for_message",
     args: { message_name: messageName }
   });
 
@@ -887,7 +887,7 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
       const formattedContent = me.plainTextToParagraphs(text);
 
       await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.chat_portal.edit_guest_chat_message", //
+        method: "clefincode_chat.api.api_1_3_4.chat_portal.edit_guest_chat_message", //
         args: {
           message_name: messageName,
           new_content: formattedContent
@@ -1082,7 +1082,7 @@ me.$chatbot_container.on("click.portal", ".delete-btn", async function (e) {
 
   frappe.confirm("Delete this message?", async () => {
      await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.chat_portal.delete_guest_chat_message",
+        method: "clefincode_chat.api.api_1_3_4.chat_portal.delete_guest_chat_message",
         args: {
       message_name: messageName,
    
@@ -1654,7 +1654,7 @@ async function send_message(params) {
   const { content, room, sender, sender_email, send_date, respondent_user,reply_to_message_name } =
     params;
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.chat_portal.send",
+    method: "clefincode_chat.api.api_1_3_4.chat_portal.send",
     args: {
       content: content,
       room: room,
@@ -1670,7 +1670,7 @@ async function send_message(params) {
 
 async function get_messages(room) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.chat_portal.get_messages",
+    method: "clefincode_chat.api.api_1_3_4.chat_portal.get_messages",
     args: {
       room: room,
     },
@@ -1680,7 +1680,7 @@ async function get_messages(room) {
 
 async function get_respondent_user(room) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.chat_portal.get_respondent_user",
+    method: "clefincode_chat.api.api_1_3_4.chat_portal.get_respondent_user",
     args: {
       room: room,
     },

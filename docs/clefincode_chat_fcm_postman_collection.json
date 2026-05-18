@@ -1,0 +1,327 @@
+{
+  "info": {
+    "name": "ClefinCode Chat - FCM Multi-Device API",
+    "description": "Postman collection for testing multi-device Firebase push notification support.\n\nBase URL: {{base_url}} (e.g. https://your-site.com)\n\nPre-requisite: Set {{base_url}} and optionally {{sid}} (session cookie) as collection variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Set Registration Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1', function() {",
+              "    pm.expect(res.results[0].status).to.eql(1);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"registration_token\": \"fcm_token_device_1\",\n    \"device_id\": \"device_uuid_1\",\n    \"platform\": \"android\",\n    \"app_version\": \"1.0.0\",\n    \"device_name\": \"Samsung Galaxy S24\"\n}"
+        },
+        "description": "Register or update an FCM device token for a user.\n- If device_id matches an existing row, that row is updated.\n- Otherwise a new row is appended.\n- Falls back to registration_token as device_id if device_id is omitted.\n- Also writes to the parent registration_token/platform fields for backward compatibility."
+      }
+    },
+    {
+      "name": "2. Set Registration Token (Minimal)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1', function() {",
+              "    pm.expect(res.results[0].status).to.eql(1);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"registration_token\": \"fcm_token_device_2\"\n}"
+        },
+        "description": "Minimal call (backward compatible). Omits device_id — registration_token is used as device_id fallback."
+      }
+    },
+    {
+      "name": "3. Set Registration Token (Second Device)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1', function() {",
+              "    pm.expect(res.results[0].status).to.eql(1);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"registration_token\": \"fcm_token_device_2\",\n    \"device_id\": \"device_uuid_2\",\n    \"platform\": \"ios\",\n    \"app_version\": \"1.0.1\",\n    \"device_name\": \"iPhone 15\"\n}"
+        },
+        "description": "Register a second device for the same user. Both devices will now receive notifications."
+      }
+    },
+    {
+      "name": "4. Check Registration Token (by token only)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1 or 0', function() {",
+              "    pm.expect(res.results[0].status).to.be.oneOf([0, 1]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.check_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.check_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"registration_token\": \"fcm_token_device_1\"\n}"
+        },
+        "description": "Check if a registration token is valid. Returns {status: 1} if found."
+      }
+    },
+    {
+      "name": "5. Check Registration Token (by device_id + token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1 or 0', function() {",
+              "    pm.expect(res.results[0].status).to.be.oneOf([0, 1]);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.check_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.check_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"registration_token\": \"fcm_token_device_2\",\n    \"device_id\": \"device_uuid_2\"\n}"
+        },
+        "description": "Check registration token scoped to a specific device_id. Only returns 1 if both device_id and token match."
+      }
+    },
+    {
+      "name": "6. Remove / Logout Device (by device_id)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1', function() {",
+              "    pm.expect(res.results[0].status).to.eql(1);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.remove_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.remove_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"device_id\": \"device_uuid_1\"\n}"
+        },
+        "description": "Deactivate a specific device by device_id. Only that device stops receiving notifications; other devices remain active."
+      }
+    },
+    {
+      "name": "7. Remove / Logout Device (by registration_token)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "var res = pm.response.json();",
+              "pm.test('Status is 1', function() {",
+              "    pm.expect(res.results[0].status).to.eql(1);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.remove_registration_token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.remove_registration_token"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"registration_token\": \"fcm_token_device_2\"\n}"
+        },
+        "description": "Deactivate a device by registration_token (when device_id is not available)."
+      }
+    },
+    {
+      "name": "8. Set Platform",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_platform",
+          "host": ["{{base_url}}"],
+          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_platform"]
+        },
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Cookie",
+            "value": "sid={{sid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"user_email\": \"user@example.com\",\n    \"platform\": \"android\"\n}"
+        },
+        "description": "Existing endpoint — kept for backward compatibility. Writes to parent platform field."
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://your-site.com",
+      "type": "string"
+    },
+    {
+      "key": "sid",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

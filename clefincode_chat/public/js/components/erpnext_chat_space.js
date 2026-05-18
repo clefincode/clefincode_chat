@@ -177,7 +177,7 @@ export default class ChatSpace {
 
   try {
     const r = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.get_chat_topic_color",
+      method: "clefincode_chat.api.api_1_3_4.api.get_chat_topic_color",
       args: {
         chat_topic: topicName
       }
@@ -507,7 +507,7 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
   let ctx = {};
   try {
     const r = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.get_topic_open_context",
+      method: "clefincode_chat.api.api_1_3_4.api.get_topic_open_context",
       args: { chat_topic: topicKey }
     });
     ctx = r.message || {};
@@ -680,7 +680,7 @@ async relinkMessagesToTopic(topicName, messageNames = []) {
   }
 
   await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.relink_messages_to_topic",
+    method: "clefincode_chat.api.api_1_3_4.api.relink_messages_to_topic",
     args: {
       chat_channel: chatChannel,
       topic_name: topicName,
@@ -757,7 +757,7 @@ async openRelinkTopicsDialog(messageNames = []) {
 
     try {
       const r = await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.api.get_channel_topics",
+        method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
         args: {
           chat_channel: chatChannel,
           topic_status: "All"
@@ -909,7 +909,7 @@ async openRelinkTopicsDialog(messageNames = []) {
     if (!topicName) return;
 
     await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.relink_messages_to_topic",
+      method: "clefincode_chat.api.api_1_3_4.api.relink_messages_to_topic",
       args: {
         topic_name: topicName,
         message_names: JSON.stringify(messageNames)
@@ -1056,7 +1056,7 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
           : JSON.stringify([]);
 
         const r = await frappe.call({
-          method: "clefincode_chat.api.api_1_3_3.api.create_chat_topic",
+          method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic",
           args: {
             mention_doctypes,
             chat_channel: chatChannel,
@@ -1515,7 +1515,7 @@ if (this.profile.room_type === "Topic" || this.is_topic_window) {
     }
 
     const r = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.get_channel_topics",
+      method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
       args: {
         chat_channel: chatChannel,
         topic_status: "All"
@@ -1917,7 +1917,7 @@ async performSearch(query) {
   this.searchActive = true;
 
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.search_in_message_contents",
+    method: "clefincode_chat.api.api_1_3_4.api.search_in_message_contents",
     args: {
       channel: this.profile.room,
       query: query,
@@ -2157,7 +2157,7 @@ async saveReaction(messageName, emoji) {
 }
 async getReactions(messageName) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.get_reactions_for_message",
+    method: "clefincode_chat.api.api_1_3_4.api.get_reactions_for_message",
     args: { message_name: messageName }
   });
 
@@ -2266,7 +2266,7 @@ async fetch_single_message(messageName) {
   }
 
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.get_single_message",
+    method: "clefincode_chat.api.api_1_3_4.api.get_single_message",
     args
   });
 
@@ -2535,12 +2535,19 @@ async fetch_single_message(messageName) {
                       return;
                     }
 
-                    if (key === "escape") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                      closeSearch();
-                    }
+                  if (key === "escape") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+                          const $visibleSearch = $(".chat-space:visible").last().find(".chat-search");
+
+                          if ($visibleSearch.length && $visibleSearch.is(":visible")) {
+                            closeSearch();
+                          } else {
+                            $(".chat-space:visible").last().find(".close-chat-window").trigger("click");
+                          }
+                        }
                   },
                   true
                 );
@@ -2793,7 +2800,7 @@ async fetch_single_message(messageName) {
 
     try {
       const r = await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.api.get_chat_topic_details",
+        method: "clefincode_chat.api.api_1_3_4.api.get_chat_topic_details",
         args: {
           chat_topic: topicName
         }
@@ -3105,9 +3112,9 @@ async fetch_single_message(messageName) {
     const topicMenuItems = isDedicatedTopicWindow
       ? ``
       : `
-            <button type="button" class="chat-plus-topics">🏷 ${__("Select Topic")}</button>
-            <button type="button" class="chat-plus-add-topic">＋ ${__("Add New Topic")}</button>
-            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">🚫 ${__("Remove Topic")}</button>
+            <button type="button" class="chat-plus-topics">${frappe.utils.icon("tag", "sm")} ${__("Select Topic")}</button>
+            <button type="button" class="chat-plus-add-topic">${frappe.utils.icon("small-add", "sm")} ${__("Add New Topic")}</button>
+            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">${frappe.utils.icon("remove", "sm")} ${__("Remove Topic")}</button>
           `;
 
     const plus_btn = `<span class="open-chat-plus-menu plus-btn">＋</span>`;
@@ -3390,7 +3397,7 @@ async handleBulkDelete() {
     async () => {
       for (const messageName of selected) {
         await frappe.call({
-          method: "clefincode_chat.api.api_1_3_3.api.delete_chat_message",
+          method: "clefincode_chat.api.api_1_3_4.api.delete_chat_message",
           args: {
             message_name: messageName,
             user_email: this.profile.user_email
@@ -3474,7 +3481,7 @@ this.$chat_space.off("click.reopenTopic", ".reopen-topic-btn")
 
     try {
       const r = await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.api.reopen_chat_topic",
+        method: "clefincode_chat.api.api_1_3_4.api.reopen_chat_topic",
         args: {
           chat_topic: topicName,
           chat_channel: chatChannel
@@ -3644,7 +3651,7 @@ this.$wrapper.off("click.chatMenuActions", ".edit-action")
         formattedContent = me.check_if_content_has_link(formattedContent);
 
         await frappe.call({
-          method: "clefincode_chat.api.api_1_3_3.api.edit_chat_message",
+          method: "clefincode_chat.api.api_1_3_4.api.edit_chat_message",
           args: {
             message_name: messageName,
             new_content: formattedContent
@@ -5116,7 +5123,7 @@ async addMentionedDoctypesAsTopicReferences(mentions = []) {
 
     try {
       const r = await frappe.call({
-        method: "clefincode_chat.api.api_1_3_3.api.add_chat_topic_reference",
+        method: "clefincode_chat.api.api_1_3_4.api.add_chat_topic_reference",
         args: {
           chat_topic: topicName,
           reference_doctype: mention.doctype,
@@ -5625,7 +5632,7 @@ async loadChannelTopicsForSelect() {
 
   try {
     const r = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.get_channel_topics",
+      method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
       args: {
         chat_channel: chatChannel,
         topic_status: "All"
@@ -5833,7 +5840,7 @@ async getFirstRealTopicMessageName(topicName) {
 
   try {
     const r = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.get_first_real_topic_message",
+      method: "clefincode_chat.api.api_1_3_4.api.get_first_real_topic_message",
       args: {
         chat_channel: chatChannel,
         chat_topic: topicName,
@@ -7281,7 +7288,7 @@ async fetchTemplateSuggestions(textValue) {
 
   try {
     const res = await frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.get_template_suggestions",
+      method: "clefincode_chat.api.api_1_3_4.api.get_template_suggestions",
       args: {
         user: this.profile.user_email,
         platform: this.profile.platform || "Chat",
@@ -8216,6 +8223,12 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
           return;
         }
         me.receive_message(res, get_time(res.send_date, me.profile.time_zone));
+
+        const incomingTopic = res.chat_topic || res.topic || null;
+        if (incomingTopic && !me.chat_topic_space && !me.is_topic_window && me.profile.room_type !== "Topic") {
+          me.setActiveMessageTopic(incomingTopic, res.chat_topic_subject || null);
+          me.expandTopicMessages(incomingTopic);
+        }
       } else if (res.realtime_type == "add_group_member") {
         if (
           res.added_user_email.some(
@@ -8786,7 +8799,7 @@ async setupTypingIndicator(textValue) {
   callSetTypingAPI(user, room, isTyping,textValue) {
    
     frappe.call({
-      method: "clefincode_chat.api.api_1_3_3.api.set_typing",
+      method: "clefincode_chat.api.api_1_3_4.api.set_typing",
       args: {
         user: user,
         room: room,
@@ -9223,7 +9236,7 @@ async function get_messages(
   offset
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.get_messages",
+    method: "clefincode_chat.api.api_1_3_4.api.get_messages",
     args: {
       room: room,
       user_email: user_email,
@@ -9345,7 +9358,7 @@ async function add_reference_doctype(
 
 async function get_topic_info(chat_channel) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.get_topic_info",
+    method: "clefincode_chat.api.api_1_3_4.api.get_topic_info",
     args: {
       chat_channel: chat_channel,
     },
@@ -9359,7 +9372,7 @@ async function create_chat_topic(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.create_chat_topic",
+    method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic",
     args: {
       mention_doctypes: mention_doctypes,
       chat_channel: chat_channel,
@@ -9449,7 +9462,7 @@ async function create_website_support_group(website_user_email, content) {
 
 async function check_reference_doctype_empty(docname,template_type) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_3_3.api.is_reference_doctype_Template_empty",
+    method: "clefincode_chat.api.api_1_3_4.api.is_reference_doctype_Template_empty",
     args: { docname,template_type },
   });
   
