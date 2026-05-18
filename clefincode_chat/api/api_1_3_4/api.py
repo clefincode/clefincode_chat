@@ -1433,12 +1433,15 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                     else:
                         # support user has only profile id
                         user_email = frappe.db.get_all("ClefinCode Chat Profile Contact Details" , {"parent" : member.profile_id , "type" : "Chat"} , "contact_info")
-                        firebase_token = frappe.db.get_all("Chat App Device", {"chat_profile" : member.profile_id}, "firebase_token")
-                        user_platform = frappe.db.get_all("Chat App Device", {"chat_profile" : member.profile_id}, "platform")
                         if user_email:
                             results["target_user"] = user_email[0].contact_info                        
                             notification_body = BeautifulSoup(content, 'html.parser').get_text()
-                            push_notifications(firebase_token[0].firebase_token, results, "send_message" , user_platform[0].platform.lower() ,"ClefinCode Support" , notification_body)
+                            device_names = frappe.db.get_all("Chat App Device", {"chat_profile": member.profile_id}, "name")
+                            for d in device_names:
+                                device_doc = frappe.get_doc("Chat App Device", d.name)
+                                for token_row in device_doc.get("fcm_tokens", []):
+                                    if token_row.is_active and token_row.registration_token:
+                                        push_notifications(token_row.registration_token, results, "send_message", token_row.platform.lower() if token_row.platform else None, "ClefinCode Support", notification_body)
         
         else:
             
