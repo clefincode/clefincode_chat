@@ -45,7 +45,26 @@ import time
 from frappe.auth import LoginManager
 from frappe.utils.password import check_password, update_password
 from frappe.sessions import clear_sessions
+from frappe.desk.search import validate_and_sanitize_search_inputs
 
+
+
+
+TOPIC_COLOR_PALETTE = [
+    "#7c3aed",
+    "#059669",
+    "#dc2626",
+    "#2563eb",
+    "#ea580c",
+    "#0891b2",
+    "#be123c",
+    "#4f46e5",
+    "#16a34a",
+    "#9333ea",
+]
+
+def get_random_topic_color():
+    return random.choice(TOPIC_COLOR_PALETTE)
 
 
 
@@ -189,35 +208,136 @@ def get_user_theme_mode(email):
 ######################################## Settings ###########################################
 #############################################################################################
 @frappe.whitelist()
-def set_registration_token(user_email, registration_token):
+def set_registration_token(user_email, registration_token, device_id=None, platform=None, app_version=None, device_name=None):
     try:
         user_profile = get_profile_id(user_email)
-        if user_profile:
-            old_token = get_registration_token(user_email)            
-            if old_token != registration_token:
-                frappe.db.set_value("ClefinCode Chat Profile" , user_profile , "registration_token" , registration_token)
-                # send_notification(user_email , {"realtime_type" : "session_expired" , "old_token" : old_token}, "session_expired")
-                return {"results" : [{"status" : 1}]}
-            else:
-                return {"results" : [{"status" : 1}]}
-        else:
+        if not user_profile:
             return {"results" : [{"status" : "User not found"}]}
+
+        profile_doc = frappe.get_doc("ClefinCode Chat Profile", user_profile)
+
+        effective_device_id = device_id or registration_token
+
+        existing_device = None
+        for row in profile_doc.get("fcm_devices", []):
+            if row.device_id == effective_device_id:
+                existing_device = row
+                break
+
+        if existing_device:
+            existing_device.registration_token = registration_token
+            if platform:
+                existing_device.platform = platform
+            if app_version:
+                existing_device.app_version = app_version
+            if device_name:
+                existing_device.device_name = device_name
+            existing_device.is_active = 1
+            existing_device.last_seen = now_datetime()
+        else:
+            profile_doc.append("fcm_devices", {
+                "device_id": effective_device_id,
+                "registration_token": registration_token,
+                "platform": platform or "",
+                "app_version": app_version or "",
+                "device_name": device_name or "",
+                "is_active": 1,
+                "last_seen": now_datetime()
+            })
+
+        profile_doc.save(ignore_permissions=True)
+
+        frappe.db.set_value("ClefinCode Chat Profile" , user_profile , "registration_token" , registration_token)
+        if platform:
+            frappe.db.set_value("ClefinCode Chat Profile" , user_profile , "platform" , platform)
+
+        return {"results" : [{"status" : 1}]}
     except Exception as e:
-        return {"results" : [{"status" : e}]}
+        return {"results" : [{"status" : str(e)}]}
 # ==========================================================================================
 @frappe.whitelist()
-def check_registration_token(user_email, registration_token):    
-    old_token = get_registration_token(user_email)
-    if old_token != registration_token:
+def check_registration_token(user_email, registration_token, device_id=None):
+    user_profile = get_profile_id(user_email)
+    if not user_profile:
         return {"results" : [{"status" : 0}]}
-    else:
+
+    profile_doc = frappe.get_doc("ClefinCode Chat Profile", user_profile)
+    for row in profile_doc.get("fcm_devices", []):
+        if row.is_active:
+            if device_id:
+                if row.device_id == device_id and row.registration_token == registration_token:
+                    return {"results" : [{"status" : 1}]}
+            else:
+                if row.registration_token == registration_token:
+                    return {"results" : [{"status" : 1}]}
+
+    old_token = frappe.db.get_value("ClefinCode Chat Profile" , user_profile , "registration_token")
+    if old_token == registration_token:
         return {"results" : [{"status" : 1}]}
+
+    return {"results" : [{"status" : 0}]}
 # ==========================================================================================
+@frappe.whitelist()
+def remove_registration_token(user_email, device_id=None, registration_token=None):
+    try:
+        user_profile = get_profile_id(user_email)
+        if not user_profile:
+            return {"results" : [{"status" : "User not found"}]}
+
+        profile_doc = frappe.get_doc("ClefinCode Chat Profile", user_profile)
+        found = False
+        for row in profile_doc.get("fcm_devices", []):
+            if device_id:
+                if row.device_id == device_id:
+                    row.is_active = 0
+                    row.last_seen = now_datetime()
+                    found = True
+                    break
+            elif registration_token:
+                if row.registration_token == registration_token:
+                    row.is_active = 0
+                    row.last_seen = now_datetime()
+                    found = True
+                    break
+
+        if found:
+            profile_doc.save(ignore_permissions=True)
+            return {"results" : [{"status" : 1, "description" : "Device deactivated"}]}
+        else:
+            return {"results" : [{"status" : 0, "description" : "No matching device found"}]}
+    except Exception as e:
+        return {"results" : [{"status" : str(e)}]}
+# ==========================================================================================
+def get_registration_tokens(user_email):
+    tokens = []
+    user_profile = get_profile_id(user_email)
+    if not user_profile:
+        return tokens
+
+    profile_doc = frappe.get_doc("ClefinCode Chat Profile", user_profile)
+    seen_tokens = set()
+    for row in profile_doc.get("fcm_devices", []):
+        if row.is_active and row.registration_token:
+            if row.registration_token not in seen_tokens:
+                seen_tokens.add(row.registration_token)
+                tokens.append({
+                    "device_id": row.device_id,
+                    "registration_token": row.registration_token,
+                    "platform": row.platform
+                })
+    frappe.log_error('tokens',tokens)
+    return tokens
+
 def get_registration_token(user_email):
+    
+    devices = get_registration_tokens(user_email)
+    if devices:
+        return devices[0]["registration_token"]
     user_profile = get_profile_id(user_email)
     if user_profile:
         registration_token = frappe.db.get_value("ClefinCode Chat Profile" , user_profile , "registration_token")
-        return registration_token    
+        frappe.log_error('registration_token',registration_token)
+        return registration_token
 # ==========================================================================================
 @frappe.whitelist()
 def set_platform(user_email, platform): 
@@ -1154,7 +1274,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                          new_message= reply_video_preview_job(original.name, new_message.name)
                         
                         # frappe.enqueue(
-                        #     "clefincode_chat.api.api_1_3_3.api.reply_video_preview_job",
+                        #     "clefincode_chat.api.api_1_3_4.api.reply_video_preview_job",
                         #     queue="short",
                         #     original_message_name=original.name,
                         #     reply_message_name=new_message.name
@@ -1391,6 +1511,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
 # ==========================================================================================
 
 
+
 @frappe.whitelist()
 def get_messages(room, user_email, room_type, chat_topic=None,
                  remove_date=None, limit=10, offset=0, since_utc=None):
@@ -1464,7 +1585,6 @@ def get_messages(room, user_email, room_type, chat_topic=None,
 
     query = f"""
         SELECT
-            msg.chat_channel,
             msg.content,
             msg.send_date,
             msg.sender_email,
@@ -1488,9 +1608,14 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_text,
             msg.reply_preview_sender_email,
             msg.reactions_json,
+            msg.chat_topic,
+            topic.subject AS chat_topic_subject,
+            topic.topic_color AS topic_color,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
+        LEFT JOIN `tabClefinCode Chat Topic` topic
+            ON topic.name = msg.chat_topic
         LEFT JOIN `tabCiC Backup Chat Message` backup
             ON msg.name = backup.original_message AND backup.change_type = 'Edit'
         WHERE {base_condition}
@@ -1499,7 +1624,6 @@ def get_messages(room, user_email, room_type, chat_topic=None,
         UNION ALL
 
         SELECT
-            msg.chat_channel,
             msg.content,
             msg.send_date,
             msg.sender_email,
@@ -1523,9 +1647,14 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.reply_preview_text,
             msg.reply_preview_sender_email,
             msg.reactions_json,
+            msg.chat_topic,
+            topic.subject AS chat_topic_subject,
+            topic.topic_color AS topic_color,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
+        LEFT JOIN `tabClefinCode Chat Topic` topic
+            ON topic.name = msg.chat_topic
         LEFT JOIN `tabCiC Backup Chat Message` backup
             ON msg.name = backup.original_message
         WHERE {base_condition}
@@ -4715,38 +4844,73 @@ def send_notification(to_user , results, realtime_type, title = None, message_te
         results.pop("emoji", None)
         if check_notifications_status():       
             if to_user:
-                registration_token = get_registration_token(to_user)   
-                if registration_token:
-                    user_platform = get_platform(to_user)
+                devices = get_registration_tokens(to_user)
+                if devices:
                     lang = get_app_language(to_user)
                     body = None
                     message_type = None
-                    if realtime_type != 'typing':
-                        if results.get("file_type"):
-                            message_type = results.get("file_type")
-                        if to_user == frappe.session.user:
-                            push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, lang=lang)
-                            return                
-                        if realtime_type == "send_message" :  
-                            body = get_body_message(results, lang)
-                        elif realtime_type == "delete_message": 
-                            body = app_text("deleted_message", lang)
-                        elif realtime_type =="reactions_message" :
-                            if results.get("reaction_sender_name") and results.get("reaction_message_preview"):
-                                body = build_reaction_preview(
-                                    results["reaction_sender_name"],
-                                    emoji or "",
-                                    results["reaction_message_preview"],
-                                    lang,
-                                    removed=results.get("reaction_removed", False)
-                                )
+                    for device in devices:
+                        registration_token = device["registration_token"]
+                        user_platform = device.get("platform")
+                        if realtime_type != 'typing':
+                            if results.get("file_type"):
+                                message_type = results.get("file_type")
+                            if to_user == frappe.session.user:
+                                push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, lang=lang)
+                                continue
+                            if realtime_type == "send_message" :  
+                                body = get_body_message(results, lang)
+                            elif realtime_type == "delete_message": 
+                                body = app_text("deleted_message", lang)
+                            elif realtime_type =="reactions_message" :
+                                if results.get("reaction_sender_name") and results.get("reaction_message_preview"):
+                                    body = build_reaction_preview(
+                                        results["reaction_sender_name"],
+                                        emoji or "",
+                                        results["reaction_message_preview"],
+                                        lang,
+                                        removed=results.get("reaction_removed", False)
+                                    )
+                                else:
+                                    body = app_text("reaction_push", lang).format(emoji=emoji or "")
                             else:
-                                body = app_text("reaction_push", lang).format(emoji=emoji or "")
+                                body = get_body_message_information(realtime_type, lang)
+                            push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, lang=lang)                       
                         else:
-                            body = get_body_message_information(realtime_type, lang)
-                        push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, lang=lang)                       
-                    else:
-                        push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, lang=lang)    
+                            push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, lang=lang)
+                else:
+                    registration_token = get_registration_token(to_user)
+                    if registration_token:
+                        user_platform = get_platform(to_user)
+                        lang = get_app_language(to_user)
+                        body = None
+                        message_type = None
+                        if realtime_type != 'typing':
+                            if results.get("file_type"):
+                                message_type = results.get("file_type")
+                            if to_user == frappe.session.user:
+                                push_notifications(registration_token, results, realtime_type, user_platform, None, None, 1, lang=lang)
+                                return                
+                            if realtime_type == "send_message" :  
+                                body = get_body_message(results, lang)
+                            elif realtime_type == "delete_message": 
+                                body = app_text("deleted_message", lang)
+                            elif realtime_type =="reactions_message" :
+                                if results.get("reaction_sender_name") and results.get("reaction_message_preview"):
+                                    body = build_reaction_preview(
+                                        results["reaction_sender_name"],
+                                        emoji or "",
+                                        results["reaction_message_preview"],
+                                        lang,
+                                        removed=results.get("reaction_removed", False)
+                                    )
+                                else:
+                                    body = app_text("reaction_push", lang).format(emoji=emoji or "")
+                            else:
+                                body = get_body_message_information(realtime_type, lang)
+                            push_notifications(registration_token, results, realtime_type, user_platform, title, body, message_type = message_type, lang=lang)                       
+                        else:
+                            push_notifications(registration_token, results, realtime_type, user_platform, message_type = message_type, lang=lang)    
                                                     
     except Exception as e:
         frappe.publish_realtime("console" , message = e)
@@ -8272,7 +8436,7 @@ def edit_chat_message(message_name, new_content):
         "sender_email": msg.sender_email
     }
 
-   
+    from packaging import version
     frappe_version = frappe.__version__
     if version.parse(frappe_version) >= version.parse("15.0.0"):
         guest_room_name = "user:Guest"
@@ -9188,3 +9352,902 @@ def update_app_language(language: str):
             "description": "Failed to update language",
             "data": str(e)
         }
+
+        
+
+
+
+
+
+@frappe.whitelist()
+def relink_messages_to_topic(topic_name, message_names):
+   
+
+    if not topic_name:
+        frappe.throw(_("topic_name is required"))
+
+    if not message_names:
+        frappe.throw(_("message_names is required"))
+
+    if isinstance(message_names, str):
+        try:
+            message_names = json.loads(message_names)
+        except Exception:
+            frappe.throw(_("message_names must be a valid JSON list"))
+
+    if not isinstance(message_names, list) or not message_names:
+        frappe.throw(_("message_names must be a non-empty list"))
+
+    if not frappe.db.exists("ClefinCode Chat Topic", topic_name):
+        frappe.throw(_("Selected topic does not exist"))
+
+    updated = []
+
+    for message_name in message_names:
+        if not frappe.db.exists("ClefinCode Chat Message", message_name):
+            continue
+
+        frappe.db.set_value(
+            "ClefinCode Chat Message",
+            message_name,
+            "chat_topic",
+            topic_name,
+            update_modified=False
+        )
+        updated.append(message_name)
+
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "topic_name": topic_name,
+        "updated_count": len(updated),
+        "updated_messages": updated,
+    }
+
+@frappe.whitelist()
+def get_topic_reference_doctypes(search=None, page_length=20, start=0):
+    search = (search or "").strip()
+    page_length = max(1, min(cint(page_length or 20), 50))
+    start = max(cint(start or 0), 0)
+
+    filters = [
+        ["DocType", "istable", "=", 0],
+        ["DocType", "issingle", "=", 0],
+    ]
+
+    if search:
+        filters.append(["DocType", "name", "like", f"%{search}%"])
+
+    rows = frappe.get_all(
+        "DocType",
+        filters=filters,
+        fields=["name", "module"],
+        order_by="name asc",
+        start=start,
+        page_length=page_length,
+    )
+
+    doctypes = [
+        {
+            "doctype": row.name,
+            "label": row.name,
+            "description": row.module,
+        }
+        for row in rows
+    ]
+
+    return {
+        "count": len(doctypes),
+        "doctypes": doctypes,
+    }
+
+###########################
+def _member_row_is_enabled(row):
+    if not row:
+        return False
+    if cint(row.get("is_removed")):
+        return False
+    if cint(row.get("removed")):
+        return False
+    if cint(row.get("disabled")):
+        return False
+    if cint(row.get("is_disabled")):
+        return False
+    status = row.get("status")
+    if status and str(status).lower() in ("disabled", "inactive", "closed", "removed"):
+        return False
+    return True
+
+def _contributor_row_is_enabled(row):
+    if not row:
+        return False
+    if cint(row.get("is_removed")):
+        return False
+    if cint(row.get("removed")):
+        return False
+    if cint(row.get("disabled")):
+        return False
+    if cint(row.get("is_disabled")):
+        return False
+    if "active" in row and not cint(row.get("active")):
+        return False
+    if "is_active" in row and not cint(row.get("is_active")):
+        return False
+    if "enabled" in row and not cint(row.get("enabled")):
+        return False
+    status = row.get("status") or row.get("contribution_status")
+    if status and str(status).lower() in ("disabled", "inactive", "closed", "removed"):
+        return False
+    return True
+
+@frappe.whitelist()
+def get_topic_open_context(chat_topic, message_name=None):
+    user = frappe.session.user
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    if not topic.chat_channel:
+        return {
+            "can_write": False,
+            "chat_topic": topic.name,
+            "chat_topic_subject": getattr(topic, "subject", None),
+            "chat_channel": None,
+            "message_name": message_name,
+            "read_only_reason": "no_chat_channel",
+            "is_member": False,
+            "is_contributor": False,
+            "is_active_contributor": False,
+        }
+
+    channel = frappe.get_doc("ClefinCode Chat Channel", topic.chat_channel)
+
+    user_email = frappe.db.get_value("User", user, "email") or user
+
+    channel_status = getattr(channel, "chat_status", None) or "Open"
+
+    member_rows = frappe.db.get_all(
+        "ClefinCode Chat Channel User",
+        filters={"parent": topic.chat_channel, "user": user_email},
+        fields=["active", "is_removed", "user"],
+        limit_page_length=1,
+    )
+
+    is_member = any(_member_row_is_enabled(row) for row in member_rows)
+
+    contributor_rows = frappe.db.get_all(
+        "ClefinCode Chat Channel Contributor",
+        filters={"parent": topic.chat_channel, "user": user_email},
+        fields=["active", "user"],
+        limit_page_length=1,
+    )
+
+    contributor_exists = len(contributor_rows) > 0
+    is_active_contributor = any(_contributor_row_is_enabled(row) for row in contributor_rows)
+
+    can_write = False
+    read_only_reason = ""
+   
+    if topic.topic_status != "Open":
+        can_write = False
+        if channel_status == "Closed":
+            read_only_reason = "channel closed"
+        else:
+            read_only_reason = "channel not open"
+    elif is_member:
+        can_write = True
+        read_only_reason = ""
+    elif is_active_contributor:
+        can_write = True
+        read_only_reason = ""
+    elif contributor_exists:
+        can_write = False
+        read_only_reason = "inactive contributor"
+    else:
+        can_write = False
+        read_only_reason = "not member or active contributor"
+
+    room_name = (
+        getattr(channel, "channel_name", None)
+        or getattr(channel, "room_name", None)
+        or getattr(channel, "subject", None)
+        or topic.chat_channel
+    )
+
+    room_type = (
+        getattr(channel, "type", None)
+        or getattr(channel, "room_type", None)
+        or "Group"
+    )
+    frappe.log_error( "can_write", can_write)
+    return {
+        "can_write": can_write,
+        "can_reopen": bool(is_member or is_active_contributor),
+        "chat_topic": topic.name,
+        "chat_topic_subject": getattr(topic, "subject", None),
+        "chat_channel": topic.chat_channel,
+        "room_name": room_name,
+        "room_type": room_type,
+        "chat_status": channel_status,
+        "platform": getattr(channel, "platform", "Chat"),
+        "is_private_topic": cint(getattr(topic, "is_private", 0)),
+        "topic_color": getattr(topic, "topic_color", None),
+        "topic_status": getattr(topic, "topic_status", None),
+        "message_name": message_name,
+        "read_only_reason": read_only_reason,
+        "is_member": bool(is_member),
+        "is_contributor": bool(contributor_exists),
+        "is_active_contributor": bool(is_active_contributor),
+    }
+
+
+@frappe.whitelist()
+def reopen_chat_topic(chat_topic, chat_channel=None):
+    user = frappe.session.user
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    if not topic.chat_channel:
+        frappe.throw(_("Topic has no linked chat channel."))
+
+    channel_name = topic.chat_channel
+    if chat_channel:
+        channel_name = chat_channel
+
+    channel = frappe.get_doc("ClefinCode Chat Channel", channel_name)
+    user_email = frappe.db.get_value("User", user, "email") or user
+
+    member_rows = frappe.db.get_all(
+        "ClefinCode Chat Channel User",
+        filters={"parent": channel_name, "user": user_email},
+        fields=["active", "is_removed", "user"],
+        limit_page_length=1,
+    )
+    is_member = any(_member_row_is_enabled(row) for row in member_rows)
+
+    contributor_rows = frappe.db.get_all(
+        "ClefinCode Chat Channel Contributor",
+        filters={"parent": channel_name, "user": user_email},
+        fields=["active", "user"],
+        limit_page_length=1,
+    )
+    is_active_contributor = any(_contributor_row_is_enabled(row) for row in contributor_rows)
+
+    if not is_member and not is_active_contributor:
+        frappe.throw(_("You do not have permission to reopen this topic."))
+
+    topic.topic_status = "Open"
+    topic.save()
+
+    results = {
+        "realtime_type": "set_topic_status",
+        "chat_topic_status": "Open",
+        "chat_topic": topic.name,
+    }
+
+    for member in channel.members:
+        if member.is_removed == 0 and member.platform == "Chat":
+            results["room"] = channel_name
+            results["target_user"] = member.user
+            frappe.publish_realtime(event=channel_name, message=results, user=member.user)
+
+    for contributor in channel.contributors:
+        if contributor.active == 1 and contributor.platform == "Chat":
+            results["room"] = channel_name
+            results["parent_channel"] = channel_name
+            results["target_user"] = contributor.user
+            frappe.publish_realtime(event=channel_name, message=results, user=contributor.user)
+
+    return {"topic_status": "Open"}
+
+
+@frappe.whitelist()
+def get_first_real_topic_message(chat_channel, chat_topic, user_email=None):
+    if not chat_channel or not chat_topic:
+        return None
+
+    rows = frappe.db.get_all(
+        "ClefinCode Chat Message",
+        filters={
+            "chat_channel": chat_channel,
+            "chat_topic": chat_topic,
+        },
+        fields=[
+            "name as message_name",
+            "send_date",
+            "chat_topic",
+            "message_type",
+            "message_template_type",
+        ],
+        order_by="send_date asc",
+        limit=20,
+    )
+
+    for row in rows:
+        message_type = (row.get("message_type") or "").lower()
+        template = (row.get("message_template_type") or "").lower()
+
+        if message_type == "information":
+            continue
+
+        if template in ["set topic", "set-topic", "settopic"]:
+            continue
+
+        topic_subject = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "subject")
+        return {
+            "message_name": row["message_name"],
+            "send_date": row["send_date"],
+            "chat_topic": row["chat_topic"],
+            "chat_topic_subject": topic_subject,
+        }
+
+    return None
+@frappe.whitelist()
+def get_chat_topic_color(chat_topic):
+    if not chat_topic:
+        return None
+
+    color = frappe.db.get_value(
+        "ClefinCode Chat Topic",
+        chat_topic,
+        "topic_color"
+    )
+
+    return {
+        "chat_topic": chat_topic,
+        "topic_color": color
+    }
+
+@frappe.whitelist()
+def update_chat_topic_info(chat_topic, subject=None, topic_color=None, is_private=None, topic_status=None):
+    if not chat_topic:
+        frappe.throw("chat_topic is required")
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    if subject is not None:
+        topic.subject = subject
+
+    if topic_color is not None:
+        topic.topic_color = topic_color
+
+    if is_private is not None:
+        topic.is_private = int(is_private) if is_private else 0
+
+    if topic_status is not None:
+        topic.topic_status = topic_status
+
+    topic.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    references = []
+    if topic.references:
+        for ref in topic.references:
+            references.append({
+                "doctype": ref.doctype_link,
+                "docname": ref.docname,
+            })
+
+    return {
+        "chat_topic": topic.name,
+        "chat_topic_subject": topic.subject,
+        "subject": topic.subject,
+        "topic_color": topic.topic_color,
+        "is_private": topic.is_private,
+        "topic_status": topic.topic_status,
+        "chat_channel": topic.chat_channel,
+        "reference_doctypes": references,
+    }
+
+@frappe.whitelist()
+def get_chat_topic_details(chat_topic):
+    if not chat_topic:
+        return None
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    references = []
+    for ref in topic.get("references") or []:
+        references.append({
+            "doctype": getattr(ref, "doctype_link", None) or getattr(ref, "doctype", None),
+            "docname": getattr(ref, "docname", None),
+        })
+
+    return {
+        "chat_topic": topic.name,
+        "name": topic.name,
+        "chat_topic_subject": topic.subject,
+        "subject": topic.subject,
+        "topic_status": topic.topic_status,
+        "topic_color": topic.topic_color,
+        "chat_channel": topic.chat_channel,
+        "reference_doctypes": references,
+        "references": references,
+    }
+
+@frappe.whitelist()
+def remove_chat_topic_reference(chat_topic, reference_doctype, reference_docname):
+    if not chat_topic:
+        frappe.throw("chat_topic is required")
+
+    if not reference_doctype or not reference_docname:
+        frappe.throw("Reference DocType and Document are required")
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    kept_rows = []
+
+    for ref in topic.get("references") or []:
+        ref_doctype = (
+            getattr(ref, "reference_doctype", None)
+            or getattr(ref, "doctype_link", None)
+            or getattr(ref, "doctype", None)
+        )
+        ref_docname = (
+            getattr(ref, "reference_docname", None)
+            or getattr(ref, "docname", None)
+        )
+
+        if str(ref_doctype) == str(reference_doctype) and str(ref_docname) == str(reference_docname):
+            continue
+
+        kept_rows.append(ref)
+
+    topic.set("references", [])
+
+    for ref in kept_rows:
+        topic.append("references", {
+            "doctype_link": (
+                getattr(ref, "reference_doctype", None)
+                or getattr(ref, "doctype_link", None)
+                or getattr(ref, "doctype", None)
+            ),
+            "docname": (
+                getattr(ref, "reference_docname", None)
+                or getattr(ref, "docname", None)
+            ),
+        })
+
+    topic.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    references = []
+
+    for ref in topic.get("references") or []:
+        references.append({
+            "doctype": getattr(ref, "doctype_link", None) or getattr(ref, "doctype", None),
+            "docname": getattr(ref, "docname", None),
+        })
+
+    return {
+        "chat_topic": topic.name,
+        "chat_topic_subject": topic.subject,
+        "subject": topic.subject,
+        "topic_color": topic.topic_color,
+        "chat_channel": topic.chat_channel,
+        "reference_doctypes": references,
+        "references": references,
+    }
+@frappe.whitelist()
+def add_chat_topic_reference(chat_topic, reference_doctype, reference_docname):
+    if not chat_topic:
+        frappe.throw("chat_topic is required")
+
+    if not reference_doctype or not reference_docname:
+        frappe.throw("Reference DocType and Document are required")
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+
+    exists = False
+
+    for ref in topic.get("references") or []:
+        existing_doctype = getattr(ref, "doctype_link", None) or getattr(ref, "reference_doctype", None) or getattr(ref, "doctype", None)
+        existing_docname = getattr(ref, "docname", None) or getattr(ref, "reference_docname", None)
+
+        if existing_doctype == reference_doctype and existing_docname == reference_docname:
+            exists = True
+            break
+
+    if not exists:
+        topic.append("references", {
+            "doctype_link": reference_doctype,
+            "docname": reference_docname,
+            "active": 1,
+        })
+        topic.save(ignore_permissions=True)
+        frappe.db.commit()
+    else:
+        for ref in topic.get("references") or []:
+            existing_doctype = getattr(ref, "doctype_link", None) or getattr(ref, "reference_doctype", None) or getattr(ref, "doctype", None)
+            existing_docname = getattr(ref, "docname", None) or getattr(ref, "reference_docname", None)
+            if existing_doctype == reference_doctype and existing_docname == reference_docname:
+                if not ref.active:
+                    ref.active = 1
+                    topic.save(ignore_permissions=True)
+                    frappe.db.commit()
+                break
+
+    references = []
+
+    for ref in topic.get("references") or []:
+        references.append({
+            "doctype": getattr(ref, "doctype_link", None) or getattr(ref, "doctype", None),
+            "docname": getattr(ref, "docname", None),
+        })
+
+    return {
+        "chat_topic": topic.name,
+        "chat_topic_subject": topic.subject,
+        "subject": topic.subject,
+        "topic_color": topic.topic_color,
+        "chat_channel": topic.chat_channel,
+        "reference_doctypes": references,
+        "references": references,
+    }
+
+
+@frappe.whitelist()
+def get_channel_open_context(chat_channel):
+    user = frappe.session.user
+
+    channel = frappe.get_doc("ClefinCode Chat Channel", chat_channel)
+    user_email = frappe.db.get_value("User", user, "email") or user
+
+    user_candidates = list(dict.fromkeys([user, user_email]))
+
+    base = {
+        "chat_channel": chat_channel,
+        "room": chat_channel,
+        "room_name": getattr(channel, "channel_name", None) or chat_channel,
+        "room_type": getattr(channel, "type", None) or "Group",
+        "platform": getattr(channel, "platform", None) or "Chat",
+        "chat_status": getattr(channel, "chat_status", None) or "Open",
+    }
+
+    member_rows = frappe.db.get_all(
+        "ClefinCode Chat Channel User",
+        filters={"parent": chat_channel, "user": ["in", user_candidates]},
+        fields=["active", "is_removed", "user"],
+        limit_page_length=1,
+    )
+
+    member_exists = len(member_rows) > 0
+    is_member = any(_member_row_is_enabled(row) for row in member_rows)
+
+    contributor_rows = frappe.db.get_all(
+        "ClefinCode Chat Channel Contributor",
+        filters={"parent": chat_channel, "user": ["in", user_candidates]},
+        fields=["active", "user"],
+        limit_page_length=1,
+    )
+
+    contributor_exists = len(contributor_rows) > 0
+    is_active_contributor = any(_contributor_row_is_enabled(row) for row in contributor_rows)
+
+    can_open = False
+    reason = ""
+
+    if is_member:
+        can_open = True
+    elif member_exists:
+        reason = "removed member"
+    elif is_active_contributor:
+        can_open = True
+    elif contributor_exists:
+        reason = "inactive contributor"
+    else:
+        reason = "not member or active contributor"
+
+    return {
+        **base,
+        "can_open": can_open,
+        "reason": reason,
+        "is_member": bool(is_member),
+        "is_contributor": bool(contributor_exists),
+        "is_active_contributor": bool(is_active_contributor),
+    }
+
+
+@frappe.whitelist()
+def get_message_open_context(message_name):
+    message = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+    if not message.chat_channel:
+        return {
+            "can_open": False,
+            "reason": "missing_chat_channel",
+            "message_name": message.name,
+            "chat_channel": None,
+            "sub_channel": None,
+            "chat_topic": None,
+            "send_date": None,
+        }
+
+    ctx = get_channel_open_context(message.chat_channel)
+
+    if not ctx.get("can_open"):
+        return {
+            "can_open": False,
+            "reason": ctx.get("reason", "not_member_or_active_contributor"),
+            "message_name": message.name,
+            "chat_channel": message.chat_channel,
+            "sub_channel": message.sub_channel,
+            "chat_topic": message.chat_topic,
+            "send_date": str(message.send_date) if message.send_date else None,
+        }
+
+    return {
+        "can_open": True,
+        "reason": "",
+        "message_name": message.name,
+        "chat_channel": message.chat_channel,
+        "sub_channel": message.sub_channel,
+        "chat_topic": message.chat_topic,
+        "send_date": str(message.send_date) if message.send_date else None,
+        "room_name": ctx.get("room_name", message.chat_channel),
+        "room_type": ctx.get("room_type", "Group"),
+        "chat_status": ctx.get("chat_status", "Open"),
+        "platform": ctx.get("platform", "Chat"),
+        "is_member": ctx.get("is_member", False),
+        "is_contributor": ctx.get("is_contributor", False),
+        "is_active_contributor": ctx.get("is_active_contributor", False),
+    }
+
+@frappe.whitelist()
+@validate_and_sanitize_search_inputs
+def get_chat_profiles_by_channel(doctype, txt, searchfield, start, page_len, filters):
+    channel = (filters or {}).get("channel")
+
+    contact_type_map = {
+        "Whatsapp": "WhatsApp",
+        "Telegram": "Telegram",
+    }
+
+    contact_type = contact_type_map.get(channel)
+
+    if not contact_type:
+        return []
+
+    return frappe.db.sql(f"""
+        SELECT cp.name
+        FROM `tabClefinCode Chat Profile` cp
+        WHERE EXISTS (
+            SELECT 1
+            FROM `tabClefinCode Chat Profile Contact Details` cd
+            WHERE cd.parent = cp.name
+              AND cd.parenttype = 'ClefinCode Chat Profile'
+              AND cd.parentfield = 'contact_details'
+              AND cd.type = %(contact_type)s
+        )
+        AND cp.`{searchfield}` LIKE %(txt)s
+        ORDER BY cp.name
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "contact_type": contact_type,
+        "txt": f"%{txt}%",
+        "start": start,
+        "page_len": page_len,
+    })
+
+#=====================
+@frappe.whitelist()
+def create_chat_topic_with_message(
+    mention_doctypes,
+    chat_channel,
+    user_email,
+    user_name=None,
+    last_active_sub_channel=None
+):
+    import json
+    from frappe import _
+
+    if isinstance(mention_doctypes, str):
+        mention_doctypes_list = json.loads(mention_doctypes or "[]")
+    else:
+        mention_doctypes_list = mention_doctypes or []
+
+    if not mention_doctypes_list:
+        frappe.throw(_("mention_doctypes is required"))
+
+    # 1) create topic
+    created = create_chat_topic(
+        json.dumps(mention_doctypes_list),
+        chat_channel,
+        last_active_sub_channel
+    )
+
+    chat_topic = None
+    if isinstance(created, dict):
+        results = created.get("results") or []
+        if results:
+            chat_topic = results[0].get("chat_topic")
+
+    if not chat_topic:
+        frappe.throw(_("Failed to create chat topic"))
+
+    # 2) build info message
+    first_ref = mention_doctypes_list[0]
+    ref_doctype = first_ref.get("doctype", "")
+    ref_docname = first_ref.get("docname", "")
+
+    content = f"""
+            <div class="set-topic" data-template="set_topic_template">
+                <span class="sender-user" data-user="{user_email}"></span><span> set topic: "{ref_docname}" </span>
+            </div>
+            """
+
+    # 3) send system/info message into same chat + topic
+    send(
+        content=content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Set Topic",
+        chat_topic=chat_topic
+    )
+
+    return {
+        "results": [{
+            "chat_topic": chat_topic,
+            "chat_channel": chat_channel,
+            "topic_color": frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "topic_color"),
+        }]
+    }
+
+
+#========================
+@frappe.whitelist()
+def add_reference_doctype_with_message(
+    chat_topic,
+    mention_doctypes,
+    chat_channel=None,
+    user_email=None,
+    user_name=None,
+    last_active_sub_channel=None
+):
+    import json
+
+    if not chat_topic:
+        frappe.throw(_("chat_topic is required"))
+
+    if isinstance(mention_doctypes, str):
+        mention_doctypes_list = json.loads(mention_doctypes or "[]")
+    else:
+        mention_doctypes_list = mention_doctypes or []
+
+    if not isinstance(mention_doctypes_list, list) or not mention_doctypes_list:
+        frappe.throw(_("mention_doctypes must be a non-empty list"))
+
+    if not chat_channel:
+        chat_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+  
+    add_reference_doctype(json.dumps(mention_doctypes_list), chat_topic)
+
+
+    first_ref = mention_doctypes_list[0]
+    ref_docname = first_ref.get("docname", "")
+
+    content = f"""
+    <div class="add-doctype" data-template="add_doctype_template">
+        <span class="sender-user" data-user="{user_email}"></span><span> added {ref_docname} </span>
+    </div>
+    """
+
+    send(
+        content=content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Add Doctype",
+        chat_topic=chat_topic
+    )
+
+    return {
+        "results": [{
+            "chat_topic": chat_topic,
+            "chat_channel": chat_channel
+        }]
+    }
+    
+
+
+def _pick_existing_field(doc_or_row, candidates):
+    for fieldname in candidates:
+        if hasattr(doc_or_row, fieldname):
+            value = getattr(doc_or_row, fieldname, None)
+            if value is not None:
+                return fieldname, value
+        if isinstance(doc_or_row, dict) and fieldname in doc_or_row:
+            return fieldname, doc_or_row.get(fieldname)
+    return None, None
+
+
+def _normalize_reference_row(row):
+    _, doctype_value = _pick_existing_field(
+        row,
+        ["doctype_link", "reference_doctype", "doctype"]
+    )
+    _, docname_value = _pick_existing_field(
+        row,
+        ["docname", "reference_name"]
+    )
+    _, active_value = _pick_existing_field(
+        row,
+        ["active", "is_active", "enabled"]
+    )
+
+    if not doctype_value or not docname_value:
+        return None
+
+    return {
+        "doctype": doctype_value,
+        "docname": docname_value,
+        "active": cint(active_value or 0),
+        "label": f"{doctype_value} / {docname_value}",
+    }
+
+
+def _normalize_topic_doc(topic_doc):
+    refs = []
+    for row in (topic_doc.references or []):
+        parsed = _normalize_reference_row(row)
+        if parsed:
+            refs.append(parsed)
+
+    if not topic_doc.topic_color:
+        topic_doc.topic_color = get_random_topic_color()
+        topic_doc.save(ignore_permissions=True)
+
+    return {
+        "name": topic_doc.name,
+        "date":str(topic_doc.creation),
+        "subject": topic_doc.subject,
+        "chat_channel": topic_doc.chat_channel,
+        "topic_status": topic_doc.topic_status,
+        "is_private": cint(topic_doc.is_private),
+        "topic_color": topic_doc.topic_color,
+        "modified": str(topic_doc.modified),
+        "references": refs,
+        "references_count": len(refs),
+        "label": topic_doc.subject or topic_doc.name,
+    }
+
+
+@frappe.whitelist()
+def get_channel_topics(chat_channel, topic_status=None):
+ 
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    filters = {"chat_channel": chat_channel}
+
+    if topic_status and topic_status != "All":
+        filters["topic_status"] = topic_status
+
+    topic_names = frappe.get_all(
+        "ClefinCode Chat Topic",
+        filters=filters,
+        fields=["name"],
+        order_by="modified desc",
+    )
+
+    topics = []
+    for row in topic_names:
+        doc = frappe.get_doc("ClefinCode Chat Topic", row.name)
+        topics.append(_normalize_topic_doc(doc))
+
+    return {
+        "chat_channel": chat_channel,
+        "count": len(topics),
+        "topics": topics,
+    }
+

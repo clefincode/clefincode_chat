@@ -1,1 +1,2 @@
 clefincode_chat.patches.v1_2_1.fill_channel_info
+clefincode_chat.patches.v1_3_4.migrate_fcm_devices

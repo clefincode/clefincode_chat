@@ -5,7 +5,7 @@ import frappe
 import datetime
 from clefincode_chat.utils.utils import choose_user_to_respond
 from clefincode_chat.api.api_1_2_1.api import get_profile_id , convert_utc_to_user_timezone , get_user_timezone , send_notification, share_doctype, get_contact_full_name
-from clefincode_chat.api.api_1_3_3.api import build_reply_preview, get_room_name
+from clefincode_chat.api.api_1_3_4.api import build_reply_preview, get_room_name
 from frappe.utils import now_datetime
 from bs4 import BeautifulSoup
 from packaging import version

@@ -13,7 +13,7 @@ from frappe.utils.safe_exec import get_safe_globals, safe_exec
 from frappe.integrations.utils import make_post_request
 from frappe.desk.form.utils import get_pdf_link
 from frappe.utils import add_to_date, nowdate, datetime
-from clefincode_chat.api.api_1_3_3.api import get_profile_id,create_channel,check_if_contact_has_chat, send
+from clefincode_chat.api.api_1_3_4.api import get_profile_id,create_channel,check_if_contact_has_chat, send
 from frappe.utils.print_format import download_pdf
 import frappe
 from frappe.utils.pdf import get_pdf

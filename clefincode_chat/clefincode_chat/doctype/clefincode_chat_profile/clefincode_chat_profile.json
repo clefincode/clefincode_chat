@@ -17,11 +17,12 @@
   "token",
   "last_active",
   "app_language",
-  "contact_details",
-  "registration_token",
-  "platform",
-  "support_token",
-  "support_channel"
+   "contact_details",
+   "registration_token",
+   "platform",
+   "fcm_devices",
+   "support_token",
+   "support_channel"
  ],
  "fields": [
   {
@@ -85,6 +86,12 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Is Support"
+  },
+  {
+   "fieldname": "fcm_devices",
+   "fieldtype": "Table",
+   "label": "FCM Devices",
+   "options": "ClefinCode Chat Profile FCM Device"
   },
   {
    "fieldname": "support_token",

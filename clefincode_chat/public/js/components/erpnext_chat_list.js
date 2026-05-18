@@ -909,7 +909,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
 async function get_channels_list(email, limit, offset) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_3.api.get_channels_list",
+    method: "clefincode_chat.api.api_1_3_4.api.get_channels_list",
     args: {
       user_email: email,
       limit: limit,
@@ -952,7 +952,7 @@ async function check_if_website_user_has_support_channel(website_user_email) {
 async function search_in_rooms(email, query, limit, offset) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_3_3.api.get_channels_list",
+    method: "clefincode_chat.api.api_1_3_4.api.get_channels_list",
     args: {
       user_email: email,
       query: query,
