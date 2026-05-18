@@ -2535,12 +2535,19 @@ async fetch_single_message(messageName) {
                       return;
                     }
 
-                    if (key === "escape") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-                      closeSearch();
-                    }
+                  if (key === "escape") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+
+                          const $visibleSearch = $(".chat-space:visible").last().find(".chat-search");
+
+                          if ($visibleSearch.length && $visibleSearch.is(":visible")) {
+                            closeSearch();
+                          } else {
+                            $(".chat-space:visible").last().find(".close-chat-window").trigger("click");
+                          }
+                        }
                   },
                   true
                 );
