@@ -985,6 +985,9 @@ async openCreateTopicFromPlusDialog() {
         });
 
         this.selectMessageTopic(topicName, topicSubject, { scroll: false, color, topic_color: color });
+        setTimeout(() => {
+          this.updatePlusTopicButton();
+        }, 50);
 
         frappe.show_alert({
           message: __("Topic selected for new messages"),
@@ -4777,7 +4780,11 @@ async setup_messages(messages_list) {
     }
 
     updatePlusTopicButton() {
-      const $btn = this.$chat_actions?.find(".open-chat-plus-menu, .plus-btn").first();
+      const $btn = (
+        this.$chat_actions?.find(".open-chat-plus-menu, .plus-btn").first()?.length
+          ? this.$chat_actions.find(".open-chat-plus-menu, .plus-btn").first()
+          : this.$chat_space?.find(".open-chat-plus-menu, .plus-btn").first()
+      );
       if (!$btn?.length) return;
 
       if (this.activeMessageTopic) {
@@ -7152,7 +7159,7 @@ if (!is_deleted && type !== "info-message") {
           outgoingTopic.chat_topic_subject,
           outgoingTopic.topic_color
         );
-      }, 150);
+      }, 600);
     }
 
     this.reply_to_message_name = null;
@@ -7875,6 +7882,14 @@ async fetchTemplateSuggestions(textValue) {
 
         this.$chat_space_container.append(message_content);
         this.normalizeTopicSeparators();
+        if (topicNameForRealtime) {
+          this.applyTopicToRenderedMessage(
+            res.message_name,
+            topicNameForRealtime,
+            res.chat_topic_subject || res.topic_subject || topicNameForRealtime,
+            topicColorForRealtime
+          );
+        }
         if (!this.chat_topic_space) {
           this.buildTopicMetaMap();
           this.applyTopicVisibility();
