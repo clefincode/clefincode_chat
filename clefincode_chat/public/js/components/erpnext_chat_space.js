@@ -8055,21 +8055,41 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   `
     : "";
 
-  items.push(`
-    <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
-      <button
-        type="button"
-        class="relink-topic-menu-main relink-action"
-        data-message-name="${safeMessageName}"
-        title="${__("ReLink Topic")}"
-      >
-        ${icon("relink")}
-        <span class="menu-label">${__("ReLink")}</span>
-      </button>
+  if (isMyMessage) {
+    items.push(`
+      <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
+        <button
+          type="button"
+          class="relink-topic-menu-main relink-action"
+          data-message-name="${safeMessageName}"
+          title="${__("ReLink Topic")}"
+        >
+          ${icon("relink")}
+          <span class="menu-label">${__("ReLink")}</span>
+        </button>
 
-      ${openTopicButtonHtml}
-    </div>
-  `);
+        ${openTopicButtonHtml}
+      </div>
+    `);
+  } else if (menuTopicName) {
+    items.push(`
+      <div class="menu-item relink-topic-menu-row" role="group">
+        <button
+          type="button"
+          class="relink-topic-menu-main topic-open-window-btn message-topic-open-action"
+          data-message-name="${safeMessageName}"
+          data-topic-name="${safeMenuTopicName}"
+          data-topic-subject="${safeMenuTopicSubject}"
+          data-topic-color="${safeMenuTopicColor}"
+          title="${__("Open topic in new window")}"
+          aria-label="${__("Open topic in new window")}"
+        >
+          ${icon("relink")}
+          <span class="menu-label">${__("Open Topic")}</span>
+        </button>
+      </div>
+    `);
+  }
 
   if (isMyMessage) {
     items.push(item({

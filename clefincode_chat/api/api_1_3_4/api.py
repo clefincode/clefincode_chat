@@ -1186,8 +1186,9 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 #############################################################################################
 ######################################## Messages ###########################################
 #############################################################################################
+
 @frappe.whitelist()
-def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None):
+def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None,override_variables=None ):
     
     try:
         
@@ -1258,7 +1259,10 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             new_message.file_id = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "name")               
             new_message.save(ignore_permissions = True)
 
-        if attachment: set_attach_message(attachment, new_message.name)
+        if file_id:
+            set_attach_message(file_id=file_id, message_name=new_message.name)
+        elif attachment:
+            set_attach_message(attachment=attachment, message_name=new_message.name)
         if reply_to_message_name:
                 try:
                   
@@ -1370,8 +1374,20 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             "utc_message_date" : send_date,
             "is_forwarded":is_forwarded,
             
-            "platform": platform 
+            "platform": platform ,
+            "chat_channel": room,
+            "chat_topic": chat_topic,
         }
+        
+        if chat_topic:
+            try:
+                topic_info = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, ["topic_subject", "topic_color"], as_dict=True)
+                if topic_info:
+                    results["chat_topic_subject"] = topic_info.topic_subject
+                    results["topic_color"] = topic_info.topic_color
+            except Exception:
+                pass
+        
         
         if reply_to_message_name :
             results.update({"reply_to_message":reply_to_message_name,
@@ -1464,7 +1480,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
-                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded)
+                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded,override_variables )
                     if member.pending_messages >= 1:
                         frappe.db.set_value('ClefinCode Chat Channel User', member.name, 'pending_messages', member.pending_messages +1)
                 elif member.platform == "Instagram" and str(email) != str(member.user) and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
@@ -9695,7 +9711,7 @@ def get_topic_open_context(chat_topic, message_name=None):
         or getattr(channel, "room_type", None)
         or "Group"
     )
-    frappe.log_error( "can_write", can_write)
+   
     return {
         "can_write": can_write,
         "can_reopen": bool(is_member or is_active_contributor),
