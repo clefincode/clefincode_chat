@@ -1862,7 +1862,7 @@ save_all_contacts(dialog) {
 
     this.chat_space.$chat_space
       .find(`.chat-topic-separator[data-topic-name="${safe}"] .topic-separator-title`)
-      .text(`${__("Topic")}: ${subject}`);
+      .text(subject);
 
     this.chat_space.$chat_space
       .find(`.message-bubble[data-topic-name="${safe}"]`)

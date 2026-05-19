@@ -21,16 +21,11 @@ console.log("topic_button.js loaded");
 		return result;
 	};
 
-	function get_email_button(frm) {
-		const wrapper = $(frm.page.wrapper);
-
-		return wrapper.find("button").filter(function () {
-			const txt = $(this).text().trim();
-			return (
-				txt.includes("New Email") 
-				
-			);
-		}).first();
+	function get_action_buttons_container(frm) {
+		if (frm.timeline && frm.timeline.timeline_actions_wrapper) {
+			return frm.timeline.timeline_actions_wrapper.find(".action-buttons");
+		}
+		return $(frm.page.wrapper).find(".timeline-actions .action-buttons").first();
 	}
 
 	function get_chat_profile() {
@@ -47,17 +42,14 @@ console.log("topic_button.js loaded");
 	function add_topic_chat_button(frm) {
 		if (!frm || !frm.page || !frm.doc) return;
 
-		const wrapper = $(frm.page.wrapper);
-		const email_btn = get_email_button(frm);
+		const container = get_action_buttons_container(frm);
+		if (!container.length) return;
 
-		if (!email_btn.length) return;
-
-		wrapper.find(".custom-topic-chat-btn").remove();
+		container.find(".custom-topic-chat-btn").remove();
 
 		const btn = $(`
 			<button type="button" class="btn btn-xs btn-secondary-dark action-btn custom-topic-chat-btn">
-				
-				<span>${__("Link to Chat")}</span>
+				<span>${__("Open Topic")}</span>
 			</button>
 		`);
 
@@ -67,7 +59,7 @@ console.log("topic_button.js loaded");
 			open_forward_like_picker(frm);
 		});
 
-		email_btn.after(btn);
+		container.append(btn);
 	}
 
 	async function open_forward_like_picker(frm) {
@@ -520,7 +512,7 @@ function get_topic_references(topicRow) {
 
 
 	if (Array.isArray(topicRow.reference_doctypes)) {
-		console.log("dsds");
+		
 		return topicRow.reference_doctypes.map((r) => ({
 			doctype: r.doctype,
 			docname: r.docname,

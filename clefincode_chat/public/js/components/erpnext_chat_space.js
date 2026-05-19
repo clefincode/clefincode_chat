@@ -356,7 +356,7 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
       data-topic-color="${safeColor}"
       style="--topic-color:${safeColor};"
     >
-      <span class="topic-separator-title">${__("Topic")}: ${safeSubject}</span>
+      <span class="topic-separator-title">${safeSubject}</span>
 
       <button
         type="button"
@@ -1049,7 +1049,7 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
 
         const finalSubject = hasSubject
           ? subject
-          : `topic :${referenceDoctype}/${referenceDocname}`;
+          : `${referenceDoctype}:${referenceDocname}`;
 
         const mention_doctypes = hasFullReference
           ? JSON.stringify([{ doctype: referenceDoctype, docname: referenceDocname }])
@@ -2397,7 +2397,7 @@ async fetch_single_message(messageName) {
           this.alternative_subject ||
           topicName;
 
-        header_title = this.normalizeTopicSubject(topicSubject, topicName);
+        header_title = "#" + this.normalizeTopicSubject(topicSubject, topicName);
         header_full_name = header_title;
         header_title = header_title.length > 25 ? header_title.substring(0, 25) + "..." : header_title;
     } else {
@@ -4735,7 +4735,7 @@ async setup_messages(messages_list) {
         title="${__("Show / Hide topic messages")}"
       >
         <span class="topic-caret">▾</span>
-        <span class="topic-title">${__("Topic")}: ${title}</span>
+        <span class="topic-title">${title}</span>
         <span class="topic-count"></span>
       </button>
 
