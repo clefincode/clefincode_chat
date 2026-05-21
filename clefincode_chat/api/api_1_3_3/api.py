@@ -48,7 +48,7 @@ from frappe.utils import now_datetime
 from frappe import _
 from frappe.desk.search import validate_and_sanitize_search_inputs
 
-
+from packaging import version
 
 
 TOPIC_COLOR_PALETTE = [
