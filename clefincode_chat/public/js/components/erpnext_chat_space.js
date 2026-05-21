@@ -1919,13 +1919,28 @@ async performSearch(query) {
   this.searchQuery = query;
   this.searchActive = true;
 
+  const chatChannel = this.profile.room_type === "Contributor"
+    ? this.profile.parent_channel
+    : this.profile.room;
+
+  const isContributor = this.profile.room_type === "Contributor";
+
+  const searchArgs = {
+    channel: chatChannel,
+    query: query,
+  };
+
+  if (isContributor) {
+    searchArgs.sub_channel = this.profile.room;
+  }
+
+  if (this.profile.room_type === "Topic" || this.is_topic_window) {
+    searchArgs.chat_topic = this.profile.chat_topic || this.chat_topic_space || this.chat_topic || null;
+  }
+
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_3_4.api.search_in_message_contents",
-    args: {
-      channel: this.profile.room,
-      query: query,
-      sub_channel: this.last_active_sub_channel || null
-    }
+    args: searchArgs
   });
    
   

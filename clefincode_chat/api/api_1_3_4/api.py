@@ -4033,7 +4033,7 @@ def search_in_message_content(user , query):
     return my_messages
 # ==========================================================================================
 @frappe.whitelist()
-def search_in_message_contents(channel, query, sub_channel=None):
+def search_in_message_contents(channel, query, sub_channel=None, chat_topic=None):
 
     if not channel or not query:
         return {"results": []}
@@ -4045,6 +4045,9 @@ def search_in_message_contents(channel, query, sub_channel=None):
 
     if sub_channel:
         filters["sub_channel"] = sub_channel
+
+    if chat_topic:
+        filters["chat_topic"] = chat_topic
 
     results = frappe.get_all(
         "ClefinCode Chat Message",
