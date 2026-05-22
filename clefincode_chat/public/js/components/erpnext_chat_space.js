@@ -356,7 +356,7 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
       data-topic-color="${safeColor}"
       style="--topic-color:${safeColor};"
     >
-      <span class="topic-separator-title">${__("Topic")}: ${safeSubject}</span>
+      <span class="topic-separator-title">${safeSubject}</span>
 
       <button
         type="button"
@@ -985,6 +985,9 @@ async openCreateTopicFromPlusDialog() {
         });
 
         this.selectMessageTopic(topicName, topicSubject, { scroll: false, color, topic_color: color });
+        setTimeout(() => {
+          this.updatePlusTopicButton();
+        }, 50);
 
         frappe.show_alert({
           message: __("Topic selected for new messages"),
@@ -1049,7 +1052,7 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
 
         const finalSubject = hasSubject
           ? subject
-          : `topic :${referenceDoctype}/${referenceDocname}`;
+          : `${referenceDoctype}:${referenceDocname}`;
 
         const mention_doctypes = hasFullReference
           ? JSON.stringify([{ doctype: referenceDoctype, docname: referenceDocname }])
@@ -1916,13 +1919,28 @@ async performSearch(query) {
   this.searchQuery = query;
   this.searchActive = true;
 
+  const chatChannel = this.profile.room_type === "Contributor"
+    ? this.profile.parent_channel
+    : this.profile.room;
+
+  const isContributor = this.profile.room_type === "Contributor";
+
+  const searchArgs = {
+    channel: chatChannel,
+    query: query,
+  };
+
+  if (isContributor) {
+    searchArgs.sub_channel = this.profile.room;
+  }
+
+  if (this.profile.room_type === "Topic" || this.is_topic_window) {
+    searchArgs.chat_topic = this.profile.chat_topic || this.chat_topic_space || this.chat_topic || null;
+  }
+
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_3_4.api.search_in_message_contents",
-    args: {
-      channel: this.profile.room,
-      query: query,
-      sub_channel: this.last_active_sub_channel || null
-    }
+    args: searchArgs
   });
    
   
@@ -2397,7 +2415,7 @@ async fetch_single_message(messageName) {
           this.alternative_subject ||
           topicName;
 
-        header_title = this.normalizeTopicSubject(topicSubject, topicName);
+        header_title = "#" + this.normalizeTopicSubject(topicSubject, topicName);
         header_full_name = header_title;
         header_title = header_title.length > 25 ? header_title.substring(0, 25) + "..." : header_title;
     } else {
@@ -4735,7 +4753,7 @@ async setup_messages(messages_list) {
         title="${__("Show / Hide topic messages")}"
       >
         <span class="topic-caret">▾</span>
-        <span class="topic-title">${__("Topic")}: ${title}</span>
+        <span class="topic-title">${title}</span>
         <span class="topic-count"></span>
       </button>
 
@@ -4777,7 +4795,11 @@ async setup_messages(messages_list) {
     }
 
     updatePlusTopicButton() {
-      const $btn = this.$chat_actions?.find(".open-chat-plus-menu, .plus-btn").first();
+      const $btn = (
+        this.$chat_actions?.find(".open-chat-plus-menu, .plus-btn").first()?.length
+          ? this.$chat_actions.find(".open-chat-plus-menu, .plus-btn").first()
+          : this.$chat_space?.find(".open-chat-plus-menu, .plus-btn").first()
+      );
       if (!$btn?.length) return;
 
       if (this.activeMessageTopic) {
@@ -7152,7 +7174,7 @@ if (!is_deleted && type !== "info-message") {
           outgoingTopic.chat_topic_subject,
           outgoingTopic.topic_color
         );
-      }, 150);
+      }, 600);
     }
 
     this.reply_to_message_name = null;
@@ -7875,6 +7897,14 @@ async fetchTemplateSuggestions(textValue) {
 
         this.$chat_space_container.append(message_content);
         this.normalizeTopicSeparators();
+        if (topicNameForRealtime) {
+          this.applyTopicToRenderedMessage(
+            res.message_name,
+            topicNameForRealtime,
+            res.chat_topic_subject || res.topic_subject || topicNameForRealtime,
+            topicColorForRealtime
+          );
+        }
         if (!this.chat_topic_space) {
           this.buildTopicMetaMap();
           this.applyTopicVisibility();
@@ -8040,21 +8070,41 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   `
     : "";
 
-  items.push(`
-    <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
-      <button
-        type="button"
-        class="relink-topic-menu-main relink-action"
-        data-message-name="${safeMessageName}"
-        title="${__("ReLink Topic")}"
-      >
-        ${icon("relink")}
-        <span class="menu-label">${__("ReLink")}</span>
-      </button>
+  if (isMyMessage) {
+    items.push(`
+      <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
+        <button
+          type="button"
+          class="relink-topic-menu-main relink-action"
+          data-message-name="${safeMessageName}"
+          title="${__("ReLink Topic")}"
+        >
+          ${icon("relink")}
+          <span class="menu-label">${__("ReLink")}</span>
+        </button>
 
-      ${openTopicButtonHtml}
-    </div>
-  `);
+        ${openTopicButtonHtml}
+      </div>
+    `);
+  } else if (menuTopicName) {
+    items.push(`
+      <div class="menu-item relink-topic-menu-row" role="group">
+        <button
+          type="button"
+          class="relink-topic-menu-main topic-open-window-btn message-topic-open-action"
+          data-message-name="${safeMessageName}"
+          data-topic-name="${safeMenuTopicName}"
+          data-topic-subject="${safeMenuTopicSubject}"
+          data-topic-color="${safeMenuTopicColor}"
+          title="${__("Open topic in new window")}"
+          aria-label="${__("Open topic in new window")}"
+        >
+          ${icon("relink")}
+          <span class="menu-label">${__("Open Topic")}</span>
+        </button>
+      </div>
+    `);
+  }
 
   if (isMyMessage) {
     items.push(item({

@@ -23,7 +23,7 @@ export async function open_topic_chat_window_from_context({
     chat_topic,
     chat_topic_subject,
     chat_channel: null,
-    room_name: chat_topic_subject || "Topic",
+    room_name: "#" + (chat_topic_subject || "Topic"),
     room_type: "Group",
     is_private_topic: 0,
   };

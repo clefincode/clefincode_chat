@@ -9,7 +9,10 @@ class ClefinCodeChatProfile(Document):
     def before_save(self):
         if self.is_guest == 1 or self.is_support == 1:
             self.token = frappe.generate_hash()  
-        self.update_contact_from_details() 
+        if getattr(frappe.flags, "skip_migrate_fcm_devices_contact_sync", False):
+            return
+
+        self.update_contact_from_details()
     
     def before_insert(self):
         if self.is_guest == 1:
