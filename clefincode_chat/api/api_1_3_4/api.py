@@ -468,10 +468,31 @@ def get_social_config_for_user(user):
     }
 # ==========================================================================================
 
+DEFAULT_LIMITED_ROLES = [
+    "Customer",
+    "Supplier",
+    "Student",
+    "Instructor",
+    "Sales Partner",
+    "Member",
+    "Shareholder",
+    "Guardian",
+]
 def is_limited_user(user):
-    roles = frappe.get_roles(user)
-    limited_roles = ["Customer", "Supplier", "Student", "Instructor", "Sales Partner", "Member", "Shareholder", "Guardian"]
-    return any(role in roles for role in limited_roles)
+    user_roles = frappe.get_roles(user)
+
+    settings = frappe.get_single("ClefinCode Chat Settings")
+
+    limited_roles = [
+        row.role
+        for row in settings.limited_roles
+        if row.role
+    ]
+
+    if not limited_roles:
+        limited_roles = DEFAULT_LIMITED_ROLES
+
+    return any(role in user_roles for role in limited_roles)
 # ==========================================================================================
 def get_user_type():
     if frappe.session.user == "Guest":
@@ -666,20 +687,12 @@ def create_sub_channel(new_contributors , parent_channel , user , user_email , c
                 frappe.publish_realtime(event= parent_channel, message=results, user= member.user)
         
         results2 = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel", "target_user" : user_to_remove, "chat_topic": chat_topic[0].name if chat_topic else None}
-        # frappe.publish_realtime(event= "receive_message", message= results2, user= user_to_remove)
-        frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        notification_title = get_room_name(parent_channel, "Contributor")
-        send_notification(user_to_remove , results2, "create_sub_channel", notification_title)
         return {"results" : [{"channel" : parent_channel}]}
     else:    
         if user_to_remove:  
             res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel" , "target_user" : user_to_remove, "chat_topic": chat_topic[0].name if chat_topic else None} 
             disable_contributor(parent_channel_doc , user_to_remove)         
             frappe.db.sql(f"""UPDATE  `tabClefinCode Chat Channel User` SET active = 0 WHERE parent = '{last_active_sub_channel}' AND user = '{user_to_remove}'""")            
-            # frappe.publish_realtime(event= "receive_message", message= res, user= user_to_remove)
-            frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-            notification_title = get_room_name(parent_channel, "Contributor")
-            send_notification(user_to_remove , res, "create_sub_channel", notification_title)
         
         if isinstance(new_contributors , str):
             new_contributors = json.loads(new_contributors)
@@ -768,18 +781,11 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
             if member.platform == "Chat":
                 frappe.publish_realtime(event= parent_channel, message=results, user= member.user)
         res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel", "target_user" : user_to_remove}
-        # frappe.publish_realtime(event= "receive_message", message= res, user= user_to_remove)
-        frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        send_notification(user_to_remove , res, "create_sub_channel")
-        
         return {"results" : [{"channel" : parent_channel}]}
     else:    
         res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel" , "target_user" : user_to_remove}
         disable_contributor(parent_channel_doc , user_to_remove)         
         frappe.db.sql(f"""UPDATE  `tabClefinCode Chat Channel User` SET active = 0 WHERE parent = '{last_active_sub_channel}' AND user = '{user_to_remove}'""")            
-        # frappe.publish_realtime(event="receive_message", message= res, user= user_to_remove)
-        frappe.publish_realtime(event=last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        send_notification(user_to_remove , res, "create_sub_channel")
 
         
         sub_channel_doc = frappe.get_doc({
