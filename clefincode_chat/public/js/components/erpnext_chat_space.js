@@ -120,6 +120,16 @@ export default class ChatSpace {
     };
     this.$plusMenu = null;
     this.$topicSelectPopup = null;
+    this.$allTopicsView = null;
+    this._allTopicsState = {
+      topics: [],
+      offset: 0,
+      limit: 20,
+      totalCount: 0,
+      hasMore: true,
+      loading: false,
+      query: ''
+    };
 
     this.topicPalette = [
       "#7c3aed", // purple
@@ -2038,7 +2048,16 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
     original = {
       sender: msg.sender,
       content: msg.content,
-      is_deleted: msg.is_deleted || 0
+      is_deleted: msg.is_deleted || 0,
+
+      chat_topic: msg.chat_topic || msg.topic || msg.topic_name || null,
+      chat_topic_subject:
+        msg.chat_topic_subject ||
+        msg.topic_subject ||
+        msg.chat_topic_title ||
+        msg.subject ||
+        null,
+      topic_color: msg.topic_color || msg.chat_topic_color || null
     };
 
     
@@ -3795,6 +3814,23 @@ this.$wrapper.off("click.chatMenuActions", ".delete-action")
     me.startBulkSelection("delete", messageName);
   });
 
+this.$wrapper.off("click.chatMenuActions", ".remove-message-topic-action")
+  .on("click.chatMenuActions", ".remove-message-topic-action", async function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const messageName = $(this).data("message-name");
+    me.closeMessageActionMenu();
+
+    if (!messageName) return;
+
+    frappe.confirm(
+      __("Remove topic from this message?"),
+      async () => {
+        await me.removeTopicFromMessage(messageName);
+      }
+    );
+  });
 
 this.$wrapper.off("click.chatBubbleActions").on("click.chatBubbleActions", function (e) {
   const insideMenu = $(e.target).closest(".message-action-menu, .message-menu-trigger").length;
@@ -4335,8 +4371,7 @@ if (!me.chat_topic_space) {
   });
 
   me.closeTopicSelectPopup?.();
-
-  // await me.scrollToFirstRealTopicMessage(topicName);
+  me.closeAllTopicsView?.();
 });
 
   me.$chat_space.on("click", ".topic-select-open", async function (e) {
@@ -4349,6 +4384,33 @@ if (!me.chat_topic_space) {
       : String(rawSubject || topicName);
     if (!topicName) return;
     await me.openTopicChatWindow(topicName, safeSubject);
+  });
+
+  me.$chat_space.on("click", ".topic-select-see-more", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    me.closeTopicSelectPopup();
+    me.openAllTopicsView();
+  });
+
+  me.$chat_space.on("click", ".all-topics-back", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    me.closeAllTopicsView();
+  });
+
+  me.$chat_space.on("input", ".all-topics-search", function () {
+    const query = $(this).val() || "";
+    me._allTopicsState.query = query;
+    me.renderAllTopicsList();
+  });
+
+  me.$chat_space.on("scroll", ".all-topics-list", function () {
+    const el = this;
+    if (me._allTopicsState.loading || !me._allTopicsState.hasMore) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+      me.loadMoreAllTopics();
+    }
   });
 }
 
@@ -4841,6 +4903,68 @@ getOutgoingTopicInfo() {
   };
 }
 
+async getReplyMessageTopicInfo() {
+  const replyMessageName = this.reply_to_message_name;
+  if (!replyMessageName) return null;
+
+  let original = this.messageCache.get(replyMessageName);
+
+  if (!original || (!original.chat_topic && !original.topic && !original.topic_name)) {
+    try {
+      const msg = await this.fetch_single_message(replyMessageName);
+      if (msg) {
+        original = {
+          ...(original || {}),
+          ...msg,
+          chat_topic: msg.chat_topic || msg.topic || msg.topic_name || null,
+          chat_topic_subject:
+            msg.chat_topic_subject ||
+            msg.topic_subject ||
+            msg.chat_topic_title ||
+            msg.subject ||
+            null,
+          topic_color: msg.topic_color || msg.chat_topic_color || null
+        };
+
+        this.messageCache.set(replyMessageName, original);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch reply topic info", e);
+    }
+  }
+
+  const topicName =
+    original?.chat_topic ||
+    original?.topic ||
+    original?.topic_name ||
+    null;
+
+  if (!topicName) return null;
+
+  const topicSubject =
+    original.chat_topic_subject ||
+    original.topic_subject ||
+    original.chat_topic_title ||
+    original.subject ||
+    topicName;
+
+  const topicColor =
+    original.topic_color ||
+    original.chat_topic_color ||
+    this.topicColorMap?.get(topicName) ||
+    this.getTopicColor(topicName);
+
+  if (topicColor) {
+    this.topicColorMap?.set(topicName, topicColor);
+  }
+
+  return {
+    chat_topic: topicName,
+    chat_topic_subject: topicSubject,
+    topic_color: topicColor
+  };
+}
+
 getIncomingMessageTopic(payload = {}) {
   const msg = payload.message || payload.data || payload;
   return (
@@ -5230,6 +5354,78 @@ applyTopicToRenderedMessage(messageName, topicName, topicSubject = null, topicCo
   }
 }
 
+async removeTopicFromMessage(messageName) {
+  if (!messageName) return;
+
+  const cached = this.messageCache.get(messageName) || {};
+  const oldTopic =
+    cached.chat_topic ||
+    cached.topic ||
+    cached.topic_name ||
+    null;
+
+  if (!oldTopic) {
+    frappe.show_alert({
+      message: __("This message has no linked topic"),
+      indicator: "orange"
+    });
+    return;
+  }
+
+  try {
+    await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.remove_message_topic",
+      args: {
+        message_name: messageName
+      }
+    });
+
+    cached.chat_topic = null;
+    cached.topic = null;
+    cached.topic_name = null;
+    cached.chat_topic_subject = null;
+    cached.topic_subject = null;
+    cached.chat_topic_title = null;
+    cached.topic_color = null;
+    cached.chat_topic_color = null;
+    this.messageCache.set(messageName, cached);
+
+    const $msg = this.$chat_space.find(`[data-message-name="${messageName}"]`);
+    const $bubble = $msg.find(".message-bubble").first();
+
+    $msg
+      .removeClass("topic-message-item has-message-topic")
+      .removeAttr("data-topic-name")
+      .removeAttr("data-topic-subject")
+      .removeAttr("data-topic-color")
+      .css("--topic-color", "");
+
+    $bubble
+      .removeClass("has-message-topic")
+      .removeAttr("data-topic-name")
+      .removeAttr("title");
+
+    $bubble.find(".message-topic-bar").remove();
+
+    this.normalizeTopicSeparators?.();
+    this.buildTopicMetaMap?.();
+    this.applyTopicVisibility?.();
+    this.refreshTopicNavBar?.();
+
+    frappe.show_alert({
+      message: __("Topic removed from message"),
+      indicator: "green"
+    });
+  } catch (e) {
+    console.error("Failed to remove message topic", e);
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("Failed to remove topic from message."),
+      indicator: "red"
+    });
+  }
+}
+
 applyRelinkedTopicToMessages(messageNames = [], topicName, topicSubject = null, topicColor = null) {
   if (!messageNames || !messageNames.length || !topicName) return;
 
@@ -5583,6 +5779,185 @@ closeTopicSelectPopup() {
   }
 }
 
+// ================= All Topics Full Page View =================
+
+openAllTopicsView() {
+  this.closeAllTopicsView();
+  if (!this.$chat_space || !this.$chat_space.length) return;
+
+  const $existing = this.$chat_space.find(".all-topics-view");
+  if ($existing.length) return;
+
+  this.$allTopicsView = $(`
+    <div class="all-topics-view">
+      <div class="all-topics-header">
+        <button type="button" class="all-topics-back" title="${__("Back")}">
+          ${frappe.utils.icon("arrow-left", "sm") || "←"}
+        </button>
+        <input class="all-topics-search" placeholder="${__("Search all topics...")}" />
+      </div>
+      <div class="all-topics-list"></div>
+      <div class="all-topics-loading" style="display:none;">${__("Loading...")}</div>
+    </div>
+  `);
+
+  this.$chat_space.append(this.$allTopicsView);
+
+  this._allTopicsState = {
+    topics: [],
+    offset: 0,
+    limit: 20,
+    totalCount: 0,
+    hasMore: true,
+    loading: false,
+    query: ''
+  };
+
+  this.loadMoreAllTopics();
+
+  setTimeout(() => {
+    this.$allTopicsView.find(".all-topics-search").focus();
+  }, 0);
+}
+
+closeAllTopicsView() {
+  if (this.$allTopicsView) {
+    this.$allTopicsView.remove();
+    this.$allTopicsView = null;
+  }
+  this._allTopicsState = {
+    topics: [],
+    offset: 0,
+    limit: 20,
+    totalCount: 0,
+    hasMore: true,
+    loading: false,
+    query: ''
+  };
+}
+
+renderAllTopicsList() {
+  if (!this.$allTopicsView) return;
+
+  const $list = this.$allTopicsView.find(".all-topics-list");
+  const $loading = this.$allTopicsView.find(".all-topics-loading");
+  const query = (this._allTopicsState.query || "").toLowerCase();
+
+  let displayTopics = this._allTopicsState.topics;
+  if (query) {
+    displayTopics = displayTopics.filter((topic) => {
+      const name = String(topic.name || "").toLowerCase();
+      const subject = String(topic.subject || "").toLowerCase();
+      return name.includes(query) || subject.includes(query);
+    });
+  }
+
+  if (!displayTopics.length) {
+    $list.html(`<div class="all-topics-empty">${__("No topics found")}</div>`);
+    $loading.hide();
+    return;
+  }
+
+  $list.html(displayTopics.map((topic) => this.makeTopicSelectRowHtml(topic)).join(""));
+  $loading.hide();
+}
+
+async loadMoreAllTopics() {
+  if (this._allTopicsState.loading || !this._allTopicsState.hasMore) return;
+  this._allTopicsState.loading = true;
+
+  const $list = this.$allTopicsView ? this.$allTopicsView.find(".all-topics-list") : null;
+  const $loading = this.$allTopicsView ? this.$allTopicsView.find(".all-topics-loading") : null;
+  if ($loading && $loading.length) $loading.show();
+
+  try {
+    const chatChannel = this.getCurrentChatChannel();
+    if (!chatChannel) {
+      this._allTopicsState.loading = false;
+      if ($loading && $loading.length) $loading.hide();
+      return;
+    }
+
+    const r = await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
+      args: {
+        chat_channel: chatChannel,
+        topic_status: "All",
+        limit: this._allTopicsState.limit,
+        offset: this._allTopicsState.offset
+      }
+    });
+
+    const topics = r.message?.topics || [];
+    const totalCount = r.message?.total_count || 0;
+
+    let newRowsHtml = '';
+    topics.forEach((topic) => {
+      const name = topic.name;
+      if (!name) return;
+      const subject = topic.subject || topic.chat_topic_subject || name;
+      const dbColor = topic.topic_color || topic.color || null;
+      const color = this.getTopicColor(name, dbColor);
+
+      const existing = this.allKnownTopicMetaMap.get(name) || {};
+      this.allKnownTopicMetaMap.set(name, {
+        ...existing,
+        name,
+        subject,
+        color,
+        topic_color: color,
+        count: existing.count || 0,
+        latestIndex: existing.latestIndex ?? -1,
+        latestDate: existing.latestDate || topic.modified || topic.creation || ""
+      });
+
+      if (dbColor) {
+        this.topicColorMap.set(name, dbColor);
+      }
+
+      if (!this._allTopicsState.topics.some(t => t.name === name)) {
+        this._allTopicsState.topics.push({
+          name,
+          subject,
+          color,
+          topic_color: color,
+          count: topic.references_count || 0,
+          latestDate: topic.modified || topic.creation || ""
+        });
+        newRowsHtml += this.makeTopicSelectRowHtml({
+          name, subject, color, topic_color: color,
+          count: topic.references_count || 0
+        });
+      }
+    });
+
+    this._allTopicsState.offset += topics.length;
+    this._allTopicsState.totalCount = totalCount;
+    this._allTopicsState.hasMore = this._allTopicsState.offset < totalCount;
+
+    if ($list && $list.length) {
+      const query = (this._allTopicsState.query || "").toLowerCase();
+      if (query) {
+        this.renderAllTopicsList();
+      } else {
+        if (newRowsHtml) {
+          const $empty = $list.find(".all-topics-empty");
+          if ($empty.length) $empty.replaceWith(newRowsHtml);
+          else $list.append(newRowsHtml);
+        }
+        if (!this._allTopicsState.topics.length) {
+          $list.html(`<div class="all-topics-empty">${__("No topics found")}</div>`);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to load more topics", e);
+  }
+
+  this._allTopicsState.loading = false;
+  if ($loading && $loading.length) $loading.hide();
+}
+
 renderTopicSelectList(query = "") {
   if (!this.$topicSelectPopup) return;
 
@@ -5621,7 +5996,15 @@ renderTopicSelectList(query = "") {
     return;
   }
 
-  $list.html(filtered.map((topic) => this.makeTopicSelectRowHtml(topic)).join(""));
+  const DISPLAY_LIMIT = 6;
+  const displayItems = filtered.slice(0, DISPLAY_LIMIT);
+  const hasMore = filtered.length > DISPLAY_LIMIT;
+
+  let html = displayItems.map((topic) => this.makeTopicSelectRowHtml(topic)).join("");
+  if (hasMore) {
+    html += `<button type="button" class="topic-select-see-more">${__("See more")}</button>`;
+  }
+  $list.html(html);
 }
 
 makeTopicSelectRowHtml(topic) {
@@ -7139,6 +7522,8 @@ if (!is_deleted && type !== "info-message") {
     // ================= End Handling with Mentions ===========================
 
     const outgoingTopic = this.getOutgoingTopicInfo();
+    const replyTopic = outgoingTopic ? null : await this.getReplyMessageTopicInfo();
+    const finalOutgoingTopic = outgoingTopic || replyTopic;
 
     const message_info = {
       content:
@@ -7157,22 +7542,22 @@ if (!is_deleted && type !== "info-message") {
       is_document: this.is_document,
       is_voice_clip: this.is_voice_clip,
       file_id: file_id,
-      chat_topic: outgoingTopic ? outgoingTopic.chat_topic : (this.chat_topic || messageChatTopic),
-      chat_topic_subject: outgoingTopic ? outgoingTopic.chat_topic_subject : null,
-      topic_color: outgoingTopic ? outgoingTopic.topic_color : null,
+      chat_topic: finalOutgoingTopic ? finalOutgoingTopic.chat_topic : (this.chat_topic || messageChatTopic),
+      chat_topic_subject: finalOutgoingTopic ? finalOutgoingTopic.chat_topic_subject : null,
+      topic_color: finalOutgoingTopic ? finalOutgoingTopic.topic_color : null,
       is_screenshot: is_screenshot,
       reply_to_message_name: this.reply_to_message_name,
     };
    
     this.last_chat_space_message = await send_message(message_info);
 
-    if (this.last_chat_space_message && outgoingTopic) {
+    if (this.last_chat_space_message && finalOutgoingTopic) {
       setTimeout(() => {
         this.applyTopicToRenderedMessage(
           this.last_chat_space_message,
-          outgoingTopic.chat_topic,
-          outgoingTopic.chat_topic_subject,
-          outgoingTopic.topic_color
+          finalOutgoingTopic.chat_topic,
+          finalOutgoingTopic.chat_topic_subject,
+          finalOutgoingTopic.topic_color
         );
       }, 600);
     }
@@ -8104,6 +8489,15 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
         </button>
       </div>
     `);
+  }
+
+  if (isMyMessage && menuTopicName) {
+    items.push(item({
+      actionClass: "remove-message-topic-action",
+      iconName: "delete",
+      label: "Remove Topic",
+      danger: true
+    }));
   }
 
   if (isMyMessage) {

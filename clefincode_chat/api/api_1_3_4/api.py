@@ -2579,13 +2579,39 @@ def get_file_view_size(file_id,is_video=None):
         file_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return {"results" : [{'file_size':file_doc.file_size,'data':file_base64,'duration':duration}]}
 # ==========================================================================================
-def set_attach_message(attachment, message):
-    file_doc = frappe.get_doc("File", {"file_url": attachment})
-    file_doc.update({
-        "attached_to_doctype": "ClefinCode Chat Message",
-        "attached_to_name": message
-    })
-    file_doc.save(ignore_permissions = True)
+def set_attach_message(file_id=None, attachment=None, message_name=None):
+    import frappe
+    from urllib.parse import urlparse, unquote
+
+    file_doc = None
+
+    if file_id:
+        file_doc = frappe.get_doc("File", file_id)
+
+    elif attachment:
+        parsed = urlparse(attachment)
+
+        file_url = parsed.path if parsed.scheme and parsed.netloc else attachment
+        file_url = unquote(file_url)
+
+        if not file_url.startswith("/"):
+            file_url = "/" + file_url
+
+        file_name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+
+        if not file_name:
+            frappe.throw(f"File not found yet or wrong file_url: {file_url}")
+
+        file_doc = frappe.get_doc("File", file_name)
+
+    if not file_doc:
+        frappe.throw("No file_id or attachment provided")
+
+    file_doc.attached_to_doctype = "ClefinCode Chat Message"
+    file_doc.attached_to_name = message_name
+    file_doc.save(ignore_permissions=True)
+
+    return file_doc
 # ==========================================================================================
 def get_file_type(file_name):
     ext = os.path.splitext(file_name)[1]  # Get the file extension
@@ -10380,6 +10406,41 @@ def _normalize_topic_doc(topic_doc):
         "label": topic_doc.subject or topic_doc.name,
     }
 
+
+@frappe.whitelist()
+def remove_message_topic(message_name):
+    if not message_name:
+        frappe.throw("Message name is required")
+
+    msg = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+    current_user_email = frappe.session.user
+    is_admin = "System Manager" in frappe.get_roles(frappe.session.user)
+
+    sender_email = getattr(msg, "sender_email", None) or getattr(msg, "email", None)
+
+    if sender_email and sender_email != current_user_email and not is_admin:
+        frappe.throw("You can remove topic only from your own messages")
+
+    old_topic = getattr(msg, "chat_topic", None)
+
+    if hasattr(msg, "chat_topic"):
+        msg.chat_topic = None
+
+    if hasattr(msg, "chat_topic_subject"):
+        msg.chat_topic_subject = None
+
+    if hasattr(msg, "topic_color"):
+        msg.topic_color = None
+
+    msg.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {
+        "ok": True,
+        "message_name": message_name,
+        "old_chat_topic": old_topic
+    }
 
 @frappe.whitelist()
 def get_channel_topics(chat_channel, topic_status=None):
