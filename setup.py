@@ -6,7 +6,7 @@ with open("requirements.txt") as f:
 
 setup(
 	name="clefincode_chat",
-	version='1.3.904',
+	version='1.3.905',
 	description="ERPNext & Frappe Business Chat: A self-hosted communication solution.",
 	author="ClefinCode L.L.C-FZ",
 	author_email="info@clefincode.com",

@@ -468,10 +468,31 @@ def get_social_config_for_user(user):
     }
 # ==========================================================================================
 
+DEFAULT_LIMITED_ROLES = [
+    "Customer",
+    "Supplier",
+    "Student",
+    "Instructor",
+    "Sales Partner",
+    "Member",
+    "Shareholder",
+    "Guardian",
+]
 def is_limited_user(user):
-    roles = frappe.get_roles(user)
-    limited_roles = ["Customer", "Supplier", "Student", "Instructor", "Sales Partner", "Member", "Shareholder", "Guardian"]
-    return any(role in roles for role in limited_roles)
+    user_roles = frappe.get_roles(user)
+
+    settings = frappe.get_single("ClefinCode Chat Settings")
+
+    limited_roles = [
+        row.role
+        for row in settings.limited_roles
+        if row.role
+    ]
+
+    if not limited_roles:
+        limited_roles = DEFAULT_LIMITED_ROLES
+
+    return any(role in user_roles for role in limited_roles)
 # ==========================================================================================
 def get_user_type():
     if frappe.session.user == "Guest":
@@ -666,20 +687,12 @@ def create_sub_channel(new_contributors , parent_channel , user , user_email , c
                 frappe.publish_realtime(event= parent_channel, message=results, user= member.user)
         
         results2 = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel", "target_user" : user_to_remove, "chat_topic": chat_topic[0].name if chat_topic else None}
-        # frappe.publish_realtime(event= "receive_message", message= results2, user= user_to_remove)
-        frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        notification_title = get_room_name(parent_channel, "Contributor")
-        send_notification(user_to_remove , results2, "create_sub_channel", notification_title)
         return {"results" : [{"channel" : parent_channel}]}
     else:    
         if user_to_remove:  
             res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel" , "target_user" : user_to_remove, "chat_topic": chat_topic[0].name if chat_topic else None} 
             disable_contributor(parent_channel_doc , user_to_remove)         
             frappe.db.sql(f"""UPDATE  `tabClefinCode Chat Channel User` SET active = 0 WHERE parent = '{last_active_sub_channel}' AND user = '{user_to_remove}'""")            
-            # frappe.publish_realtime(event= "receive_message", message= res, user= user_to_remove)
-            frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-            notification_title = get_room_name(parent_channel, "Contributor")
-            send_notification(user_to_remove , res, "create_sub_channel", notification_title)
         
         if isinstance(new_contributors , str):
             new_contributors = json.loads(new_contributors)
@@ -768,18 +781,11 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
             if member.platform == "Chat":
                 frappe.publish_realtime(event= parent_channel, message=results, user= member.user)
         res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel", "target_user" : user_to_remove}
-        # frappe.publish_realtime(event= "receive_message", message= res, user= user_to_remove)
-        frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        send_notification(user_to_remove , res, "create_sub_channel")
-        
         return {"results" : [{"channel" : parent_channel}]}
     else:    
         res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel" , "target_user" : user_to_remove}
         disable_contributor(parent_channel_doc , user_to_remove)         
         frappe.db.sql(f"""UPDATE  `tabClefinCode Chat Channel User` SET active = 0 WHERE parent = '{last_active_sub_channel}' AND user = '{user_to_remove}'""")            
-        # frappe.publish_realtime(event="receive_message", message= res, user= user_to_remove)
-        frappe.publish_realtime(event=last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        send_notification(user_to_remove , res, "create_sub_channel")
 
         
         sub_channel_doc = frappe.get_doc({
@@ -2579,13 +2585,39 @@ def get_file_view_size(file_id,is_video=None):
         file_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return {"results" : [{'file_size':file_doc.file_size,'data':file_base64,'duration':duration}]}
 # ==========================================================================================
-def set_attach_message(attachment, message):
-    file_doc = frappe.get_doc("File", {"file_url": attachment})
-    file_doc.update({
-        "attached_to_doctype": "ClefinCode Chat Message",
-        "attached_to_name": message
-    })
-    file_doc.save(ignore_permissions = True)
+def set_attach_message(file_id=None, attachment=None, message_name=None):
+    import frappe
+    from urllib.parse import urlparse, unquote
+
+    file_doc = None
+
+    if file_id:
+        file_doc = frappe.get_doc("File", file_id)
+
+    elif attachment:
+        parsed = urlparse(attachment)
+
+        file_url = parsed.path if parsed.scheme and parsed.netloc else attachment
+        file_url = unquote(file_url)
+
+        if not file_url.startswith("/"):
+            file_url = "/" + file_url
+
+        file_name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+
+        if not file_name:
+            frappe.throw(f"File not found yet or wrong file_url: {file_url}")
+
+        file_doc = frappe.get_doc("File", file_name)
+
+    if not file_doc:
+        frappe.throw("No file_id or attachment provided")
+
+    file_doc.attached_to_doctype = "ClefinCode Chat Message"
+    file_doc.attached_to_name = message_name
+    file_doc.save(ignore_permissions=True)
+
+    return file_doc
 # ==========================================================================================
 def get_file_type(file_name):
     ext = os.path.splitext(file_name)[1]  # Get the file extension
@@ -10380,6 +10412,41 @@ def _normalize_topic_doc(topic_doc):
         "label": topic_doc.subject or topic_doc.name,
     }
 
+
+@frappe.whitelist()
+def remove_message_topic(message_name):
+    if not message_name:
+        frappe.throw("Message name is required")
+
+    msg = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+    current_user_email = frappe.session.user
+    is_admin = "System Manager" in frappe.get_roles(frappe.session.user)
+
+    sender_email = getattr(msg, "sender_email", None) or getattr(msg, "email", None)
+
+    if sender_email and sender_email != current_user_email and not is_admin:
+        frappe.throw("You can remove topic only from your own messages")
+
+    old_topic = getattr(msg, "chat_topic", None)
+
+    if hasattr(msg, "chat_topic"):
+        msg.chat_topic = None
+
+    if hasattr(msg, "chat_topic_subject"):
+        msg.chat_topic_subject = None
+
+    if hasattr(msg, "topic_color"):
+        msg.topic_color = None
+
+    msg.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {
+        "ok": True,
+        "message_name": message_name,
+        "old_chat_topic": old_topic
+    }
 
 @frappe.whitelist()
 def get_channel_topics(chat_channel, topic_status=None):
