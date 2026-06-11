@@ -3158,7 +3158,7 @@ async fetch_single_message(messageName) {
       : `
             <button type="button" class="chat-plus-topics">${frappe.utils.icon("tag", "sm")} ${__("Select Topic")}</button>
             <button type="button" class="chat-plus-add-topic">${frappe.utils.icon("small-add", "sm")} ${__("Add New Topic")}</button>
-            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">${frappe.utils.icon("remove", "sm")} ${__("Close Topic")}</button>
+            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">${frappe.utils.icon("remove", "sm")} ${__("Unselect Topic")}</button>
           `;
 
     const plus_btn = `<span class="open-chat-plus-menu plus-btn">＋</span>`;
@@ -4342,11 +4342,10 @@ if (!me.chat_topic_space) {
   me.$chat_space.on("click", ".chat-plus-remove-topic", async function (e) {
     e.preventDefault();
     e.stopPropagation();
-    const topicToClose = me.activeMessageTopic || me.chat_topic || null;
+    const topicToClear = me.activeMessageTopic || null;
     me.closePlusMenu();
     me.clearMessageTopic(false);
-    await me.clearUserActiveChatTopic(topicToClose);
-    await me.closeTopicForConversation(topicToClose);
+    await me.clearUserActiveChatTopic(topicToClear);
   });
 
   me.$chat_space.on("click", ".chat-plus-add-topic", async function (e) {
@@ -6385,7 +6384,10 @@ bindUserActiveTopicRealtime() {
 }
 
 handleUserActiveTopicRealtime(res = {}) {
-  if (!res || res.realtime_type !== "user_active_topic") return;
+  if (!res) return;
+
+  const rt = res.realtime_type;
+  if (rt !== "user_active_topic" && !(rt === "close_topic" && res.user_scoped == 1)) return;
 
   const chatChannel = this.getCurrentChatChannel?.() ||
     (this.profile.room_type === "Contributor" ? this.profile.parent_channel : this.profile.room);
@@ -8999,7 +9001,7 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
 
         const incomingTopic = res.chat_topic || res.topic || null;
         if (incomingTopic && !me.chat_topic_space && !me.is_topic_window && me.profile.room_type !== "Topic") {
-          me.setActiveMessageTopic(incomingTopic, res.chat_topic_subject || null);
+         // me.setActiveMessageTopic(incomingTopic, res.chat_topic_subject || null);
           me.expandTopicMessages(incomingTopic);
         }
       } else if (res.realtime_type == "add_group_member") {
@@ -9091,6 +9093,19 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
         const activeTopic = me.activeMessageTopic ? String(me.activeMessageTopic) : null;
         if (!topicToClear || !activeTopic || activeTopic === topicToClear) {
           me.clearMessageTopic(false);
+        }
+      } else if (res.realtime_type == "close_topic" && res.user_scoped == 1) {
+        const topicToClear = res.chat_topic || res.topic_name || null;
+        const rtChatChannel = me.getCurrentChatChannel?.() ||
+          (me.profile.room_type === "Contributor" ? me.profile.parent_channel : me.profile.room);
+
+        if (res.chat_channel && rtChatChannel && res.chat_channel !== rtChatChannel) {
+          return;
+        }
+
+        if (!topicToClear || me.activeMessageTopic === topicToClear) {
+          me.clearMessageTopic(false);
+          me.updatePlusTopicButton?.();
         }
       } else if (res.realtime_type == "close_topic") {
         const closedTopic = res.chat_topic || me.chat_topic || null;

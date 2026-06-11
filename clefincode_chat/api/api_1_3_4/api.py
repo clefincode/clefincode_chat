@@ -1718,11 +1718,6 @@ def get_messages(room, user_email, room_type, chat_topic=None,
         message["time_zone"] = user_tz
         message["get_messages"] = 1
 
-        if room_type != "Topic" and str(message.get("topic_status") or "").lower() == "closed":
-            message["chat_topic"] = None
-            message["chat_topic_subject"] = None
-            message["topic_color"] = None
-
         if message.get("is_deleted"):
             message.update({
                 "content": None,
@@ -3422,8 +3417,8 @@ def clear_user_active_chat_topic(chat_channel, chat_topic=None, user_email=None)
     if not chat_channel:
         frappe.throw(_("chat_channel is required"))
 
-    filters_user = {"parent": chat_channel, "user": user_email, "is_removed": 0}
-    filters_contributor = {"parent": chat_channel, "user": user_email, "active": 1}
+    filters_user = {"parent": chat_channel, "user": user_email}
+    filters_contributor = {"parent": chat_channel, "user": user_email}
 
     if chat_topic:
         filters_user["active_chat_topic"] = chat_topic
@@ -3443,11 +3438,38 @@ def clear_user_active_chat_topic(chat_channel, chat_topic=None, user_email=None)
         None
     )
 
-    publish_user_active_topic_realtime(
-        user_email=user_email,
-        chat_channel=chat_channel,
-        chat_topic=chat_topic,
-        action="clear"
+    payload = {
+        "realtime_type": "close_topic",
+        "action": "clear",
+        "user_scoped": 1,
+        "do_not_close_topic": 1,
+        "chat_channel": chat_channel,
+        "chat_topic": chat_topic,
+        "topic_name": chat_topic,
+    }
+
+    frappe.publish_realtime(
+        event=f"user_active_topic:{user_email}",
+        message=payload,
+        user=user_email
+    )
+
+    frappe.publish_realtime(
+        event="receive_message",
+        message=payload,
+        user=user_email
+    )
+
+    frappe.publish_realtime(
+        event="msg",
+        message=payload,
+        user=user_email
+    )
+
+    send_notification(
+        user_email,
+        payload,
+        "close_topic"
     )
 
     return {"results": [{"status": 1}]}
