@@ -1332,7 +1332,8 @@ getCopyableMessageText(messageName) {
         .message-reactions,
         .edited-label,
         .forwarded-label,
-        .reply-link
+        .reply-link,
+        .chat-read-more-btn
       `)
       .remove();
 
@@ -2153,6 +2154,15 @@ highlightAndScroll($msg) {
 
   const $bubble = $msg.find(".message-bubble").first();
   if (!$bubble.length) return;
+
+  const $longBody = $bubble.find(".message-text-body.long-message-body");
+  if ($longBody.length) {
+    $longBody
+      .removeClass("long-message-body")
+      .addClass("long-message-expanded");
+    $bubble.find(".chat-read-more-btn").remove();
+  }
+
   if (this.searchQuery) {
   const regex = new RegExp(`(${this.searchQuery})`, "gi");
 
@@ -4353,6 +4363,28 @@ if (!me.chat_topic_space) {
     e.stopPropagation();
     me.closePlusMenu();
     await me.openCreateTopicFromPlusDialog();
+  });
+
+  me.$chat_space.on("click", ".chat-read-more-btn", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const $btn = $(this);
+    const $textBody = $btn.siblings(".message-text-body").first();
+    if (!$textBody.length) return;
+
+    let step = parseInt($textBody.attr("data-read-more-step") || "0", 10);
+    const nextStep = step + 1;
+
+    if (nextStep >= 2) {
+      $textBody
+        .removeClass("long-message-body")
+        .addClass("long-message-expanded");
+      $btn.remove();
+    } else {
+      const heights = [320, 640, 960];
+      $textBody.css("max-height", heights[nextStep] + "px");
+      $textBody.attr("data-read-more-step", nextStep);
+    }
   });
 
   me.$chat_space.on("input", ".topic-select-search", function () {
@@ -6830,6 +6862,12 @@ async getFirstRealTopicMessageName(topicName) {
       </div> `;
   }
 
+  _getPlainTextLength(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || "").length;
+  }
+
   async make_message(params) {
     const {
       content,
@@ -6926,7 +6964,40 @@ async getFirstRealTopicMessageName(topicName) {
           $message_element.append($forwarded_label);
         }
 
-        $message_element.append($sanitized_content);
+        let $contentToAppend = $sanitized_content;
+
+        if (
+          !is_deleted &&
+          type !== "info-message" &&
+          this._getPlainTextLength(content) > 300
+        ) {
+          const cacheEntry = this.messageCache.get(message_name);
+          const isTextOnly =
+            !cacheEntry ||
+            (!cacheEntry.is_media &&
+              !cacheEntry.is_document &&
+              !cacheEntry.is_voice_clip &&
+              !cacheEntry.is_screenshot &&
+              !cacheEntry.attachment);
+
+          if (isTextOnly) {
+            const $wrapper = $(
+              '<div class="message-text-body long-message-body" data-read-more-step="0">'
+            );
+            $wrapper.append($sanitized_content.contents());
+            $contentToAppend = $wrapper;
+          }
+        }
+
+        $message_element.append($contentToAppend);
+        if ($contentToAppend.is(".long-message-body")) {
+          const $readMoreBtn = $(
+            '<button type="button" class="chat-read-more-btn">' +
+              __("Read more") +
+              "</button>"
+          );
+          $message_element.append($readMoreBtn);
+        }
 
 // ================= Message Topic Badge =================
 if (chat_topic && !is_deleted) {

@@ -672,6 +672,15 @@ performSearchLocal(query) {
   this.$chatbot_container.find("[data-message-name]").each(function () {
     const $msg = $(this);
     const name = $msg.data("message-name");
+
+    const $longBody = $msg.find(".message-text-body.long-message-body");
+    if ($longBody.length) {
+      $longBody
+        .removeClass("long-message-body")
+        .addClass("long-message-expanded");
+      $msg.find(".chat-read-more-btn").remove();
+    }
+
     const $bubble = $msg.find(".message-bubble").first();
 
     const originalHtml = $bubble.html();
@@ -714,6 +723,14 @@ navigateToSearchResult() {
   const name = this.searchResults[this.currentSearchIndex];
   const $msg = this.$chatbot_container.find(`#msg-${name}`);
   if (!$msg.length) return;
+
+  const $longBody = $msg.find(".message-text-body.long-message-body");
+  if ($longBody.length) {
+    $longBody
+      .removeClass("long-message-body")
+      .addClass("long-message-expanded");
+    $msg.find(".chat-read-more-btn").remove();
+  }
 
   this.$chatbot_container.find(".search-highlight-active")
     .removeClass("search-highlight-active");
@@ -1055,6 +1072,29 @@ me.$chatbot_container.on("click.portal", ".reply-link", function () {
   const $msg = me.$chatbot_container.find(`#msg-${target}`);
   if ($msg.length) $msg[0].scrollIntoView({ behavior: "smooth", block: "center" });
 }); 
+// Read more for long messages
+me.$chatbot_container.on("click.portal", ".chat-read-more-btn", function (e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const $btn = $(this);
+  const $textBody = $btn.siblings(".message-text-body").first();
+  if (!$textBody.length) return;
+
+  let step = parseInt($textBody.attr("data-read-more-step") || "0", 10);
+  const nextStep = step + 1;
+
+  if (nextStep >= 3) {
+    $textBody
+      .removeClass("long-message-body")
+      .addClass("long-message-expanded");
+    $btn.remove();
+  } else {
+    const heights = [200, 400, 600];
+    $textBody.css("max-height", heights[nextStep] + "px");
+    $textBody.attr("data-read-more-step", nextStep);
+  }
+});
+
 // Toggle search bar
 me.$chatbot_space.on("click.portal", ".toggle-search", function () {
   const $search = me.$chatbot_space.find(".chat-search");
@@ -1340,7 +1380,32 @@ me.$chatbot_space.on("click.portal", ".search-clear", () => {
     `);
   }
 
-  $message_element.append($sanitized_content);
+  let $contentToAppend = $sanitized_content;
+
+  if (!is_deleted && type !== "info-message") {
+    const plainText = content.replace(/<[^>]*>/g, "");
+    const isTextOnly =
+      !/<\s*(img|video|audio|source|canvas)\b/i.test(content) &&
+      !content.includes("data-audio");
+
+    if (isTextOnly && plainText.length > 300) {
+      const $wrapper = $(
+        '<div class="message-text-body long-message-body" data-read-more-step="0">'
+      );
+      $wrapper.append($sanitized_content.contents());
+      $contentToAppend = $wrapper;
+    }
+  }
+
+  $message_element.append($contentToAppend);
+  if ($contentToAppend.is(".long-message-body")) {
+    const $readMoreBtn = $(
+      '<button type="button" class="chat-read-more-btn">' +
+        __("Read more") +
+        "</button>"
+    );
+    $message_element.append($readMoreBtn);
+  }
   const isDark = document.documentElement.dataset.themeMode === "dark";
   const deleteIcon = isDark
   ? "/assets/clefincode_chat/icons/delete.png"
