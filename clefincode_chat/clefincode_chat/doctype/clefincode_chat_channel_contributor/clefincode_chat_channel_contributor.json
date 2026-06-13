@@ -11,6 +11,7 @@
     "platform",
     "active",
     "channel",
+    "active_chat_topic",
     "last_message_read",
     "unread_messages"
   ],
@@ -35,10 +36,16 @@
       "label": "Channel"
     },
     {
-      "fieldname": "last_message_read",
-      "fieldtype": "Icon",
-      "in_list_view": 1,
-      "label": "Last Message Read"
+      "fieldname": "active_chat_topic",
+       "fieldtype": "Link",
+       "label": "Active Chat Topic",
+       "options": "ClefinCode Chat Topic"
+      },
+      {
+       "fieldname": "last_message_read",
+       "fieldtype": "Icon",
+       "in_list_view": 1,
+       "label": "Last Message Read"
     },
     {
       "default": "1",

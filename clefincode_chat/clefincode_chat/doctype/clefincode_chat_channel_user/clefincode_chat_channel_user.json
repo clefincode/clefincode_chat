@@ -15,8 +15,9 @@
   "is_removed",
   "remove_date",
   "is_admin",
-  "channel_last_message_number",
-  "platform_profile",
+   "channel_last_message_number",
+   "active_chat_topic",
+   "platform_profile",
   "platform_gateway",
   "pending_messages"
  ],
@@ -87,12 +88,18 @@
    "label": "Profile Id",
    "options": "ClefinCode Chat Profile"
   },
-  {
-   "fieldname": "platform_profile",
-   "fieldtype": "Link",
-   "label": "Platform",
-   "options": "DocType"
-  },
+   {
+    "fieldname": "active_chat_topic",
+    "fieldtype": "Link",
+    "label": "Active Chat Topic",
+    "options": "ClefinCode Chat Topic"
+   },
+   {
+    "fieldname": "platform_profile",
+    "fieldtype": "Link",
+    "label": "Platform",
+    "options": "DocType"
+   },
   {
    "fieldname": "platform_gateway",
    "fieldtype": "Dynamic Link",
