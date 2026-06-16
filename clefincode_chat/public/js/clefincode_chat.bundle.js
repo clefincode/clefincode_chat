@@ -879,7 +879,7 @@ window.CCChatContactList = ChatContactList;
 async function get_settings(token) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_settings",
+    method: "clefincode_chat.api.api_1_3_4.api.get_settings",
     args: {
       token: token,
     },
