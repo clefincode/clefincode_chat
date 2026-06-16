@@ -4601,7 +4601,7 @@ def search_in_message_contents(channel, query, sub_channel=None, chat_topic=None
 #############################################################################################
 ######################################## WhatsApp Functions #################################
 #############################################################################################
-def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0):    
+def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0,override_variables=None ):    
     responder_user_profile = get_profile_id(email)
     message = None
     reply_preview_message=None
@@ -4671,7 +4671,7 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
             send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
-            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment)
+            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment,override_variables )
         else:
             if reply_preview_message:
                 send_whatsapp_message_twilio(new_message, platform_gateway,whatsapp_customer_number,reply_preview_message, None, 0)
@@ -6808,7 +6808,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
             )
 
         # Save Twilio SID
-       
+    
         new_message_doc.whatsapp_message_id = msg.sid
         new_message_doc.save(ignore_permissions=True)
         frappe.db.commit()
