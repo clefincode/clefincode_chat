@@ -149,6 +149,40 @@ export default class ChatList {
             ${frappe.utils.icon("close", "lg")}
           </div>
 
+          ${this.is_limited_user ? `
+          <div
+            class="limited-user-info-icon"
+            title="Is Limited"
+            style="
+              cursor:pointer;
+              margin-left:6px;
+              width:22px;
+              height:22px;
+              min-width:22px;
+              border-radius:50%;
+              display:flex;
+              align-items:center;
+              justify-content:center;
+              background:#e7f1ff;
+              color:#2490ef;
+              border:1px solid #b8d8ff;
+            "
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 10.5V17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="12" cy="7" r="1.2" fill="currentColor"/>
+            </svg>
+          </div>
+          ` : ""}
+
         </div>
       </div>
     `;
@@ -164,6 +198,39 @@ export default class ChatList {
         title='Close'>
         ${frappe.utils.icon("close", "lg")}
         </div>
+        ${this.is_limited_user ? `
+        <div
+          class="limited-user-info-icon"
+          title="Is Limited"
+          style="
+            cursor:pointer;
+            margin-left:6px;
+            width:22px;
+            height:22px;
+            min-width:22px;
+            border-radius:50%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#e7f1ff;
+            color:#2490ef;
+            border:1px solid #b8d8ff;
+          "
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 10.5V17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="12" cy="7" r="1.2" fill="currentColor"/>
+          </svg>
+        </div>
+        ` : ""}
       </div>
     </div>
   `;
@@ -510,7 +577,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
           },
         });
       }
-      
+      console.log(me);
 
       let profile = {
         is_admin: me.is_admin,
@@ -524,7 +591,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
         room_type: "Group",
         // contact: contact,
         is_first_message: 1,
-        platform: platform,
+        platform: me.platform || "Chat",
         is_website_support_group: 1
       };
       this.chat_space = new ChatSpace({
@@ -567,6 +634,30 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
       frappe.realtime.off("update_room");
       frappe.realtime.off("add_group_member");
       frappe.realtime.off("remove_group_member");
+    });
+
+    this.$chat_list.off("click", ".limited-user-info-icon");
+    this.$chat_list.on("click", ".limited-user-info-icon", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      frappe.msgprint({
+        title: __("Limited User"),
+        indicator: "blue",
+        message: `
+          <div>
+            <p>
+              ${__("This user has limited chat access.")}
+            </p>
+            <p>
+              ${__("A limited user can communicate with internal users or support team members, but cannot see or start conversations with other limited users.")}
+            </p>
+            <p>
+              ${__("This restriction helps protect external users' privacy and prevents them from discovering or contacting each other inside the system.")}
+            </p>
+          </div>
+        `
+      });
     });
 
     // Add resize event listener for zoom out/in
