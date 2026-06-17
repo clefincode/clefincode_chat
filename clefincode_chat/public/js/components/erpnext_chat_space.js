@@ -120,6 +120,16 @@ export default class ChatSpace {
     };
     this.$plusMenu = null;
     this.$topicSelectPopup = null;
+    this.$allTopicsView = null;
+    this._allTopicsState = {
+      topics: [],
+      offset: 0,
+      limit: 20,
+      totalCount: 0,
+      hasMore: true,
+      loading: false,
+      query: ''
+    };
 
     this.topicPalette = [
       "#7c3aed", // purple
@@ -333,7 +343,10 @@ isRealTopicTimelineMessage(message = {}) {
     templateType === "settopic" ||
     templateType === "remove topic" ||
     templateType === "remove-topic" ||
-    templateType === "removetopic"
+    templateType === "removetopic" ||
+    templateType === "close topic" ||
+    templateType === "close-topic" ||
+    templateType === "closetopic"
   ) return false;
   return true;
 }
@@ -356,7 +369,7 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
       data-topic-color="${safeColor}"
       style="--topic-color:${safeColor};"
     >
-      <span class="topic-separator-title">${__("Topic")}: ${safeSubject}</span>
+      <span class="topic-separator-title">${safeSubject}</span>
 
       <button
         type="button"
@@ -985,6 +998,10 @@ async openCreateTopicFromPlusDialog() {
         });
 
         this.selectMessageTopic(topicName, topicSubject, { scroll: false, color, topic_color: color });
+        await this.saveUserActiveChatTopic(topicName);
+        setTimeout(() => {
+          this.updatePlusTopicButton();
+        }, 50);
 
         frappe.show_alert({
           message: __("Topic selected for new messages"),
@@ -1049,7 +1066,7 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
 
         const finalSubject = hasSubject
           ? subject
-          : `topic :${referenceDoctype}/${referenceDocname}`;
+          : `${referenceDoctype}:${referenceDocname}`;
 
         const mention_doctypes = hasFullReference
           ? JSON.stringify([{ doctype: referenceDoctype, docname: referenceDocname }])
@@ -1315,7 +1332,8 @@ getCopyableMessageText(messageName) {
         .message-reactions,
         .edited-label,
         .forwarded-label,
-        .reply-link
+        .reply-link,
+        .chat-read-more-btn
       `)
       .remove();
 
@@ -1916,13 +1934,28 @@ async performSearch(query) {
   this.searchQuery = query;
   this.searchActive = true;
 
+  const chatChannel = this.profile.room_type === "Contributor"
+    ? this.profile.parent_channel
+    : this.profile.room;
+
+  const isContributor = this.profile.room_type === "Contributor";
+
+  const searchArgs = {
+    channel: chatChannel,
+    query: query,
+  };
+
+  if (isContributor) {
+    searchArgs.sub_channel = this.profile.room;
+  }
+
+  if (this.profile.room_type === "Topic" || this.is_topic_window) {
+    searchArgs.chat_topic = this.profile.chat_topic || this.chat_topic_space || this.chat_topic || null;
+  }
+
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_3_4.api.search_in_message_contents",
-    args: {
-      channel: this.profile.room,
-      query: query,
-      sub_channel: this.last_active_sub_channel || null
-    }
+    args: searchArgs
   });
    
   
@@ -2020,7 +2053,16 @@ async makeReplySnippet(replyMsgName, maxLen = 80) {
     original = {
       sender: msg.sender,
       content: msg.content,
-      is_deleted: msg.is_deleted || 0
+      is_deleted: msg.is_deleted || 0,
+
+      chat_topic: msg.chat_topic || msg.topic || msg.topic_name || null,
+      chat_topic_subject:
+        msg.chat_topic_subject ||
+        msg.topic_subject ||
+        msg.chat_topic_title ||
+        msg.subject ||
+        null,
+      topic_color: msg.topic_color || msg.chat_topic_color || null
     };
 
     
@@ -2112,6 +2154,15 @@ highlightAndScroll($msg) {
 
   const $bubble = $msg.find(".message-bubble").first();
   if (!$bubble.length) return;
+
+  const $longBody = $bubble.find(".message-text-body.long-message-body");
+  if ($longBody.length) {
+    $longBody
+      .removeClass("long-message-body")
+      .addClass("long-message-expanded");
+    $bubble.find(".chat-read-more-btn").remove();
+  }
+
   if (this.searchQuery) {
   const regex = new RegExp(`(${this.searchQuery})`, "gi");
 
@@ -2397,7 +2448,7 @@ async fetch_single_message(messageName) {
           this.alternative_subject ||
           topicName;
 
-        header_title = this.normalizeTopicSubject(topicSubject, topicName);
+        header_title = "#" + this.normalizeTopicSubject(topicSubject, topicName);
         header_full_name = header_title;
         header_title = header_title.length > 25 ? header_title.substring(0, 25) + "..." : header_title;
     } else {
@@ -2689,6 +2740,7 @@ async fetch_single_message(messageName) {
       );
       await this.setup_messages(res.results || []);
       await this.setup_actions();
+      await this.applySavedActiveTopic();
       this.render();
     } catch (error) {
       console.log(error);
@@ -2903,6 +2955,8 @@ async fetch_single_message(messageName) {
   setup_socketio() {
     const me = this;
 
+    this.bindUserActiveTopicRealtime();
+
     const updateLastActiveHandler = function (res) {
       if (
         res.sender_email == me.profile.contact &&
@@ -3114,7 +3168,7 @@ async fetch_single_message(messageName) {
       : `
             <button type="button" class="chat-plus-topics">${frappe.utils.icon("tag", "sm")} ${__("Select Topic")}</button>
             <button type="button" class="chat-plus-add-topic">${frappe.utils.icon("small-add", "sm")} ${__("Add New Topic")}</button>
-            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">${frappe.utils.icon("remove", "sm")} ${__("Remove Topic")}</button>
+            <button type="button" class="chat-plus-remove-topic" style="${this.activeMessageTopic ? "" : "display:none;"}">${frappe.utils.icon("remove", "sm")} ${__("Unselect Topic")}</button>
           `;
 
     const plus_btn = `<span class="open-chat-plus-menu plus-btn">＋</span>`;
@@ -3777,6 +3831,23 @@ this.$wrapper.off("click.chatMenuActions", ".delete-action")
     me.startBulkSelection("delete", messageName);
   });
 
+this.$wrapper.off("click.chatMenuActions", ".remove-message-topic-action")
+  .on("click.chatMenuActions", ".remove-message-topic-action", async function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const messageName = $(this).data("message-name");
+    me.closeMessageActionMenu();
+
+    if (!messageName) return;
+
+    frappe.confirm(
+      __("Remove topic from this message?"),
+      async () => {
+        await me.removeTopicFromMessage(messageName);
+      }
+    );
+  });
 
 this.$wrapper.off("click.chatBubbleActions").on("click.chatBubbleActions", function (e) {
   const insideMenu = $(e.target).closest(".message-action-menu, .message-menu-trigger").length;
@@ -4278,11 +4349,13 @@ if (!me.chat_topic_space) {
     me.openTopicSelectPopup();
   });
 
-  me.$chat_space.on("click", ".chat-plus-remove-topic", function (e) {
+  me.$chat_space.on("click", ".chat-plus-remove-topic", async function (e) {
     e.preventDefault();
     e.stopPropagation();
+    const topicToClear = me.activeMessageTopic || null;
     me.closePlusMenu();
-    me.clearMessageTopic();
+    me.clearMessageTopic(false);
+    await me.clearUserActiveChatTopic(topicToClear);
   });
 
   me.$chat_space.on("click", ".chat-plus-add-topic", async function (e) {
@@ -4290,6 +4363,28 @@ if (!me.chat_topic_space) {
     e.stopPropagation();
     me.closePlusMenu();
     await me.openCreateTopicFromPlusDialog();
+  });
+
+  me.$chat_space.on("click", ".chat-read-more-btn", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const $btn = $(this);
+    const $textBody = $btn.siblings(".message-text-body").first();
+    if (!$textBody.length) return;
+
+    let step = parseInt($textBody.attr("data-read-more-step") || "0", 10);
+    const nextStep = step + 1;
+
+    if (nextStep >= 2) {
+      $textBody
+        .removeClass("long-message-body")
+        .addClass("long-message-expanded");
+      $btn.remove();
+    } else {
+      const heights = [320, 640, 960];
+      $textBody.css("max-height", heights[nextStep] + "px");
+      $textBody.attr("data-read-more-step", nextStep);
+    }
   });
 
   me.$chat_space.on("input", ".topic-select-search", function () {
@@ -4316,9 +4411,10 @@ if (!me.chat_topic_space) {
     topic_color: topicColor
   });
 
-  me.closeTopicSelectPopup?.();
+  await me.saveUserActiveChatTopic(topicName);
 
-  // await me.scrollToFirstRealTopicMessage(topicName);
+  me.closeTopicSelectPopup?.();
+  me.closeAllTopicsView?.();
 });
 
   me.$chat_space.on("click", ".topic-select-open", async function (e) {
@@ -4331,6 +4427,33 @@ if (!me.chat_topic_space) {
       : String(rawSubject || topicName);
     if (!topicName) return;
     await me.openTopicChatWindow(topicName, safeSubject);
+  });
+
+  me.$chat_space.on("click", ".topic-select-see-more", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    me.closeTopicSelectPopup();
+    me.openAllTopicsView();
+  });
+
+  me.$chat_space.on("click", ".all-topics-back", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    me.closeAllTopicsView();
+  });
+
+  me.$chat_space.on("input", ".all-topics-search", function () {
+    const query = $(this).val() || "";
+    me._allTopicsState.query = query;
+    me.renderAllTopicsList();
+  });
+
+  me.$chat_space.on("scroll", ".all-topics-list", function () {
+    const el = this;
+    if (me._allTopicsState.loading || !me._allTopicsState.hasMore) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+      me.loadMoreAllTopics();
+    }
   });
 }
 
@@ -4711,6 +4834,20 @@ async setup_messages(messages_list) {
     );
   }
 
+  isCloseTopicInfoMessage(params = {}) {
+    const template = String(params.message_template_type || "").toLowerCase();
+    const contentText = this.stripHtml(params.content || "").toLowerCase();
+
+    return (
+      template === "close topic" ||
+      template === "close-topic" ||
+      template === "closetopic" ||
+      contentText.includes("closed topic") ||
+      contentText.includes("you closed topic") ||
+      contentText.includes("topic closed")
+    );
+  }
+
   makeTopicSeparatorHtml(topicName, topicSubject) {
   if (!topicName) return "";
   if (this.isDedicatedTopicContext?.()) return "";
@@ -4735,7 +4872,7 @@ async setup_messages(messages_list) {
         title="${__("Show / Hide topic messages")}"
       >
         <span class="topic-caret">▾</span>
-        <span class="topic-title">${__("Topic")}: ${title}</span>
+        <span class="topic-title">${title}</span>
         <span class="topic-count"></span>
       </button>
 
@@ -4777,7 +4914,11 @@ async setup_messages(messages_list) {
     }
 
     updatePlusTopicButton() {
-      const $btn = this.$chat_actions?.find(".open-chat-plus-menu, .plus-btn").first();
+      const $btn = (
+        this.$chat_actions?.find(".open-chat-plus-menu, .plus-btn").first()?.length
+          ? this.$chat_actions.find(".open-chat-plus-menu, .plus-btn").first()
+          : this.$chat_space?.find(".open-chat-plus-menu, .plus-btn").first()
+      );
       if (!$btn?.length) return;
 
       if (this.activeMessageTopic) {
@@ -4811,6 +4952,68 @@ getOutgoingTopicInfo() {
   const topicColor = isTopicWindow
     ? this.topicColorMap.get(topicName) || this.activeMessageTopicColor || this.getTopicColor(topicName)
     : this.activeMessageTopicColor || this.topicColorMap.get(topicName) || this.getTopicColor(topicName);
+
+  return {
+    chat_topic: topicName,
+    chat_topic_subject: topicSubject,
+    topic_color: topicColor
+  };
+}
+
+async getReplyMessageTopicInfo() {
+  const replyMessageName = this.reply_to_message_name;
+  if (!replyMessageName) return null;
+
+  let original = this.messageCache.get(replyMessageName);
+
+  if (!original || (!original.chat_topic && !original.topic && !original.topic_name)) {
+    try {
+      const msg = await this.fetch_single_message(replyMessageName);
+      if (msg) {
+        original = {
+          ...(original || {}),
+          ...msg,
+          chat_topic: msg.chat_topic || msg.topic || msg.topic_name || null,
+          chat_topic_subject:
+            msg.chat_topic_subject ||
+            msg.topic_subject ||
+            msg.chat_topic_title ||
+            msg.subject ||
+            null,
+          topic_color: msg.topic_color || msg.chat_topic_color || null
+        };
+
+        this.messageCache.set(replyMessageName, original);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch reply topic info", e);
+    }
+  }
+
+  const topicName =
+    original?.chat_topic ||
+    original?.topic ||
+    original?.topic_name ||
+    null;
+
+  if (!topicName) return null;
+
+  const topicSubject =
+    original.chat_topic_subject ||
+    original.topic_subject ||
+    original.chat_topic_title ||
+    original.subject ||
+    topicName;
+
+  const topicColor =
+    original.topic_color ||
+    original.chat_topic_color ||
+    this.topicColorMap?.get(topicName) ||
+    this.getTopicColor(topicName);
+
+  if (topicColor) {
+    this.topicColorMap?.set(topicName, topicColor);
+  }
 
   return {
     chat_topic: topicName,
@@ -5208,6 +5411,78 @@ applyTopicToRenderedMessage(messageName, topicName, topicSubject = null, topicCo
   }
 }
 
+async removeTopicFromMessage(messageName) {
+  if (!messageName) return;
+
+  const cached = this.messageCache.get(messageName) || {};
+  const oldTopic =
+    cached.chat_topic ||
+    cached.topic ||
+    cached.topic_name ||
+    null;
+
+  if (!oldTopic) {
+    frappe.show_alert({
+      message: __("This message has no linked topic"),
+      indicator: "orange"
+    });
+    return;
+  }
+
+  try {
+    await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.remove_message_topic",
+      args: {
+        message_name: messageName
+      }
+    });
+
+    cached.chat_topic = null;
+    cached.topic = null;
+    cached.topic_name = null;
+    cached.chat_topic_subject = null;
+    cached.topic_subject = null;
+    cached.chat_topic_title = null;
+    cached.topic_color = null;
+    cached.chat_topic_color = null;
+    this.messageCache.set(messageName, cached);
+
+    const $msg = this.$chat_space.find(`[data-message-name="${messageName}"]`);
+    const $bubble = $msg.find(".message-bubble").first();
+
+    $msg
+      .removeClass("topic-message-item has-message-topic")
+      .removeAttr("data-topic-name")
+      .removeAttr("data-topic-subject")
+      .removeAttr("data-topic-color")
+      .css("--topic-color", "");
+
+    $bubble
+      .removeClass("has-message-topic")
+      .removeAttr("data-topic-name")
+      .removeAttr("title");
+
+    $bubble.find(".message-topic-bar").remove();
+
+    this.normalizeTopicSeparators?.();
+    this.buildTopicMetaMap?.();
+    this.applyTopicVisibility?.();
+    this.refreshTopicNavBar?.();
+
+    frappe.show_alert({
+      message: __("Topic removed from message"),
+      indicator: "green"
+    });
+  } catch (e) {
+    console.error("Failed to remove message topic", e);
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("Failed to remove topic from message."),
+      indicator: "red"
+    });
+  }
+}
+
 applyRelinkedTopicToMessages(messageNames = [], topicName, topicSubject = null, topicColor = null) {
   if (!messageNames || !messageNames.length || !topicName) return;
 
@@ -5561,6 +5836,187 @@ closeTopicSelectPopup() {
   }
 }
 
+// ================= All Topics Full Page View =================
+
+openAllTopicsView() {
+  this.closeAllTopicsView();
+  if (!this.$chat_space || !this.$chat_space.length) return;
+
+  const $existing = this.$chat_space.find(".all-topics-view");
+  if ($existing.length) return;
+
+  this.$allTopicsView = $(`
+    <div class="all-topics-view">
+      <div class="all-topics-header">
+        <button type="button" class="all-topics-back" title="${__("Back")}">
+          ${frappe.utils.icon("arrow-left", "sm") || "←"}
+        </button>
+        <input class="all-topics-search" placeholder="${__("Search all topics...")}" />
+      </div>
+      <div class="all-topics-list"></div>
+      <div class="all-topics-loading" style="display:none;">${__("Loading...")}</div>
+    </div>
+  `);
+
+  this.$chat_space.append(this.$allTopicsView);
+
+  this._allTopicsState = {
+    topics: [],
+    offset: 0,
+    limit: 20,
+    totalCount: 0,
+    hasMore: true,
+    loading: false,
+    query: ''
+  };
+
+  this.loadMoreAllTopics();
+
+  setTimeout(() => {
+    this.$allTopicsView.find(".all-topics-search").focus();
+  }, 0);
+}
+
+closeAllTopicsView() {
+  if (this.$allTopicsView) {
+    this.$allTopicsView.remove();
+    this.$allTopicsView = null;
+  }
+  this._allTopicsState = {
+    topics: [],
+    offset: 0,
+    limit: 20,
+    totalCount: 0,
+    hasMore: true,
+    loading: false,
+    query: ''
+  };
+}
+
+renderAllTopicsList() {
+  if (!this.$allTopicsView) return;
+
+  const $list = this.$allTopicsView.find(".all-topics-list");
+  const $loading = this.$allTopicsView.find(".all-topics-loading");
+  const query = (this._allTopicsState.query || "").toLowerCase();
+
+  let displayTopics = this._allTopicsState.topics;
+  if (query) {
+    displayTopics = displayTopics.filter((topic) => {
+      const name = String(topic.name || "").toLowerCase();
+      const subject = String(topic.subject || "").toLowerCase();
+      return name.includes(query) || subject.includes(query);
+    });
+  }
+
+  if (!displayTopics.length) {
+    $list.html(`<div class="all-topics-empty">${__("No topics found")}</div>`);
+    $loading.hide();
+    return;
+  }
+
+  $list.html(displayTopics.map((topic) => this.makeTopicSelectRowHtml(topic)).join(""));
+  $loading.hide();
+}
+
+async loadMoreAllTopics() {
+  if (this._allTopicsState.loading || !this._allTopicsState.hasMore) return;
+  this._allTopicsState.loading = true;
+
+  const $list = this.$allTopicsView ? this.$allTopicsView.find(".all-topics-list") : null;
+  const $loading = this.$allTopicsView ? this.$allTopicsView.find(".all-topics-loading") : null;
+  if ($loading && $loading.length) $loading.show();
+
+  try {
+    const chatChannel = this.getCurrentChatChannel();
+    if (!chatChannel) {
+      this._allTopicsState.loading = false;
+      if ($loading && $loading.length) $loading.hide();
+      return;
+    }
+
+    const r = await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
+      args: {
+        chat_channel: chatChannel,
+        topic_status: "All",
+        limit: this._allTopicsState.limit,
+        offset: this._allTopicsState.offset
+      }
+    });
+
+    const topics = r.message?.topics || [];
+    const totalCount = r.message?.total_count || 0;
+
+    let newRowsHtml = '';
+    topics.forEach((topic) => {
+      const name = topic.name;
+      if (!name) return;
+      const subject = topic.subject || topic.chat_topic_subject || name;
+      const dbColor = topic.topic_color || topic.color || null;
+      const color = this.getTopicColor(name, dbColor);
+
+      const existing = this.allKnownTopicMetaMap.get(name) || {};
+      this.allKnownTopicMetaMap.set(name, {
+        ...existing,
+        name,
+        subject,
+        color,
+        topic_color: color,
+        topic_status: topic.topic_status || existing.topic_status || "Open",
+        status: topic.topic_status || existing.status || "Open",
+        count: existing.count || 0,
+        latestIndex: existing.latestIndex ?? -1,
+        latestDate: existing.latestDate || topic.modified || topic.creation || ""
+      });
+
+      if (dbColor) {
+        this.topicColorMap.set(name, dbColor);
+      }
+
+      if (!this._allTopicsState.topics.some(t => t.name === name)) {
+        this._allTopicsState.topics.push({
+          name,
+          subject,
+          color,
+          topic_color: color,
+          count: topic.references_count || 0,
+          latestDate: topic.modified || topic.creation || ""
+        });
+        newRowsHtml += this.makeTopicSelectRowHtml({
+          name, subject, color, topic_color: color,
+          count: topic.references_count || 0
+        });
+      }
+    });
+
+    this._allTopicsState.offset += topics.length;
+    this._allTopicsState.totalCount = totalCount;
+    this._allTopicsState.hasMore = this._allTopicsState.offset < totalCount;
+
+    if ($list && $list.length) {
+      const query = (this._allTopicsState.query || "").toLowerCase();
+      if (query) {
+        this.renderAllTopicsList();
+      } else {
+        if (newRowsHtml) {
+          const $empty = $list.find(".all-topics-empty");
+          if ($empty.length) $empty.replaceWith(newRowsHtml);
+          else $list.append(newRowsHtml);
+        }
+        if (!this._allTopicsState.topics.length) {
+          $list.html(`<div class="all-topics-empty">${__("No topics found")}</div>`);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to load more topics", e);
+  }
+
+  this._allTopicsState.loading = false;
+  if ($loading && $loading.length) $loading.hide();
+}
+
 renderTopicSelectList(query = "") {
   if (!this.$topicSelectPopup) return;
 
@@ -5584,6 +6040,9 @@ renderTopicSelectList(query = "") {
   const lowerQuery = String(query).toLowerCase();
 
   const filtered = topicSource.filter((topic) => {
+    const status = String(topic.topic_status || topic.status || topic.chat_topic_status || "").toLowerCase();
+    if (status === "closed") return false;
+
     if (!lowerQuery) return true;
     return (
       String(topic.name).toLowerCase().includes(lowerQuery) ||
@@ -5599,7 +6058,15 @@ renderTopicSelectList(query = "") {
     return;
   }
 
-  $list.html(filtered.map((topic) => this.makeTopicSelectRowHtml(topic)).join(""));
+  const DISPLAY_LIMIT = 6;
+  const displayItems = filtered.slice(0, DISPLAY_LIMIT);
+  const hasMore = filtered.length > DISPLAY_LIMIT;
+
+  let html = displayItems.map((topic) => this.makeTopicSelectRowHtml(topic)).join("");
+  if (hasMore) {
+    html += `<button type="button" class="topic-select-see-more">${__("See more")}</button>`;
+  }
+  $list.html(html);
 }
 
 makeTopicSelectRowHtml(topic) {
@@ -5635,7 +6102,7 @@ async loadChannelTopicsForSelect() {
       method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
       args: {
         chat_channel: chatChannel,
-        topic_status: "All"
+        topic_status: "Open"
       }
     });
 
@@ -5656,6 +6123,8 @@ async loadChannelTopicsForSelect() {
         subject,
         color,
         topic_color: color,
+        topic_status: topic.topic_status || existing.topic_status || "Open",
+        status: topic.topic_status || existing.status || "Open",
         count: existing.count || 0,
         latestIndex: existing.latestIndex ?? -1,
         latestDate: existing.latestDate || topic.modified || topic.creation || ""
@@ -5734,7 +6203,7 @@ selectMessageTopic(topicName, topicSubject = null, opts = {}) {
   // }
 }
 
-clearMessageTopic() {
+clearMessageTopic(showAlert = true) {
   this.activeMessageTopic = null;
   this.activeMessageTopicSubject = null;
   this.activeMessageTopicColor = null;
@@ -5745,10 +6214,283 @@ clearMessageTopic() {
     $removeBtn.hide();
   }
 
-  frappe.show_alert({
-    message: __("Topic removed from new messages"),
-    indicator: "green"
+  if (showAlert) {
+    frappe.show_alert({
+      message: __("Topic removed from new messages"),
+      indicator: "green"
+    });
+  }
+}
+
+clearClosedTopicUi(topicName = null) {
+  const closedTopic = topicName ? String(topicName) : null;
+
+  this.clearMessageTopic(false);
+  this.chat_topic = null;
+  this.chat_topic_subject = null;
+  this.chat_topic_status = "Closed";
+  this.reference_doctypes = [];
+  this.updateActiveTopicButton(null);
+  this.updatePlusTopicButton?.();
+
+  if (closedTopic && this.activeTopicFilter && String(this.activeTopicFilter) === closedTopic) {
+    this.activeTopicFilter = null;
+  }
+
+  if (closedTopic && this.collapsedTopics) {
+    this.collapsedTopics.delete(closedTopic);
+  }
+
+  [this.topicMetaMap, this.allKnownTopicMetaMap].forEach((map) => {
+    if (!map || !closedTopic || !map.has(closedTopic)) return;
+    const meta = map.get(closedTopic) || {};
+    meta.status = "Closed";
+    meta.topic_status = "Closed";
+    meta.chat_topic_status = "Closed";
+    map.set(closedTopic, meta);
   });
+
+  if (closedTopic && this.messageCache) {
+    this.messageCache.forEach((cached) => {
+      const cachedTopic =
+        cached.chat_topic ||
+        cached.topic ||
+        cached.topic_name ||
+        null;
+
+      if (String(cachedTopic || "") !== closedTopic) return;
+
+      cached.chat_topic = null;
+      cached.topic = null;
+      cached.topic_name = null;
+      cached.chat_topic_subject = null;
+      cached.topic_subject = null;
+      cached.chat_topic_title = null;
+      cached.topic_color = null;
+      cached.chat_topic_color = null;
+    });
+  }
+
+  const $root = this.$chat_space_container?.length
+    ? this.$chat_space_container
+    : this.$chat_space;
+
+  if (closedTopic && $root?.length && !this.isDedicatedTopicContext?.()) {
+    const safe = this.escapeSelectorValue(closedTopic);
+
+    $root
+      .find(
+        `.chat-topic-separator[data-topic-name="${safe}"], ` +
+        `.topic-system-separator[data-topic-name="${safe}"], ` +
+        `.topic-start-separator[data-topic-name="${safe}"]`
+      )
+      .remove();
+
+    $root.find(`.topic-message-item[data-topic-name="${safe}"]`).each((_, el) => {
+      const $msg = $(el);
+      const $bubble = $msg.find(".message-bubble").first();
+
+      $msg
+        .removeClass("topic-message-item has-message-topic")
+        .removeAttr("data-topic-name")
+        .removeAttr("data-topic-subject")
+        .removeAttr("data-topic-color")
+        .css("--topic-color", "")
+        .show();
+
+      $bubble
+        .removeClass("has-message-topic")
+        .removeAttr("data-topic-name")
+        .removeAttr("title");
+
+      $bubble.find(".message-topic-bar").remove();
+    });
+  }
+
+  this.normalizeTopicSeparators?.();
+  this.buildTopicMetaMap?.();
+  this.refreshTopicNavBar?.();
+  this.applyTopicVisibility?.();
+
+  if (this.$topicSelectPopup?.length) {
+    const query = this.$topicSelectPopup.find(".topic-select-search").val() || "";
+    this.renderTopicSelectList(query);
+  }
+}
+
+async saveUserActiveChatTopic(topicName) {
+  const chatChannel = this.getCurrentChatChannel?.() ||
+    (this.profile.room_type === "Contributor" ? this.profile.parent_channel : this.profile.room);
+
+  if (!chatChannel || !topicName || this.is_topic_window || this.profile.room_type === "Topic") {
+    return;
+  }
+
+  try {
+    await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.set_user_active_chat_topic",
+      args: {
+        chat_channel: chatChannel,
+        chat_topic: topicName,
+        user_email: this.profile.user_email
+      }
+    });
+  } catch (e) {
+    console.warn("Failed to save active chat topic", e);
+  }
+}
+
+async applySavedActiveTopic() {
+  const chatChannel = this.getCurrentChatChannel?.() ||
+    (this.profile.room_type === "Contributor" ? this.profile.parent_channel : this.profile.room);
+
+  if (!chatChannel || this.is_topic_window || this.profile.room_type === "Topic" || this.chat_topic_space) {
+    return;
+  }
+
+  try {
+    const r = await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.get_user_active_chat_topic",
+      args: {
+        chat_channel: chatChannel,
+        user_email: this.profile.user_email
+      }
+    });
+
+    const topic = r.message?.results?.[0];
+
+    if (!topic || !topic.chat_topic) {
+      return;
+    }
+
+    this.selectMessageTopic(
+      topic.chat_topic,
+      topic.chat_topic_subject || topic.chat_topic,
+      {
+        scroll: false,
+        color: topic.topic_color,
+        topic_color: topic.topic_color
+      }
+    );
+  } catch (e) {
+    console.warn("Failed to apply saved active topic", e);
+  }
+}
+
+async clearUserActiveChatTopic(topicName = null) {
+  const chatChannel = this.getCurrentChatChannel?.() ||
+    (this.profile.room_type === "Contributor" ? this.profile.parent_channel : this.profile.room);
+
+  if (!chatChannel || this.is_topic_window || this.profile.room_type === "Topic") {
+    return;
+  }
+
+  try {
+    await frappe.call({
+      method: "clefincode_chat.api.api_1_3_4.api.clear_user_active_chat_topic",
+      args: {
+        chat_channel: chatChannel,
+        chat_topic: topicName,
+        user_email: this.profile.user_email
+      }
+    });
+  } catch (e) {
+    console.warn("Failed to clear active chat topic", e);
+  }
+}
+
+getUserActiveTopicEventName() {
+  return `user_active_topic:${this.profile.user_email}`;
+}
+
+bindUserActiveTopicRealtime() {
+  if (!this.profile?.user_email) return;
+
+  const eventName = this.getUserActiveTopicEventName();
+
+  const handler = (res = {}) => {
+    this.handleUserActiveTopicRealtime(res);
+  };
+
+  this.bindRealtimeChannel(eventName, handler);
+}
+
+handleUserActiveTopicRealtime(res = {}) {
+  if (!res) return;
+
+  const rt = res.realtime_type;
+  if (rt !== "user_active_topic" && !(rt === "close_topic" && res.user_scoped == 1)) return;
+
+  const chatChannel = this.getCurrentChatChannel?.() ||
+    (this.profile.room_type === "Contributor" ? this.profile.parent_channel : this.profile.room);
+
+  if (!chatChannel || res.chat_channel !== chatChannel) {
+    return;
+  }
+
+  if (this.is_topic_window || this.profile.room_type === "Topic") {
+    return;
+  }
+
+  const action = res.action;
+  const topicName = res.chat_topic || res.topic_name || null;
+
+  if (action === "select") {
+    if (!topicName) return;
+
+    this.selectMessageTopic(
+      topicName,
+      res.chat_topic_subject || res.topic_subject || topicName,
+      {
+        scroll: false,
+        color: res.topic_color,
+        topic_color: res.topic_color
+      }
+    );
+
+    return;
+  }
+
+  if (action === "clear") {
+    if (!topicName || this.activeMessageTopic === topicName) {
+      this.clearMessageTopic(false);
+      this.updatePlusTopicButton?.();
+    }
+  }
+}
+
+async closeTopicForConversation(chatTopic = null) {
+  const chatChannel =
+    this.profile?.room_type === "Contributor"
+      ? this.profile?.parent_channel
+      : this.profile?.room;
+
+  if (!chatChannel) return;
+
+  try {
+    const results = await close_chat_topic(
+      chatChannel,
+      chatTopic,
+      this.last_active_sub_channel,
+      this.profile?.user_email,
+      this.profile?.user
+    );
+    const closedTopic = results?.[0]?.chat_topic || chatTopic || this.chat_topic || null;
+
+    await this.clearUserActiveChatTopic(closedTopic);
+    this.clearClosedTopicUi(closedTopic);
+
+    frappe.show_alert({
+      message: __("Topic closed for this conversation"),
+      indicator: "green"
+    });
+  } catch (error) {
+    console.error("Failed to close topic", error);
+    frappe.show_alert({
+      message: __("Could not close topic"),
+      indicator: "red"
+    });
+  }
 }
 
 // ================= Scroll to Topic =================
@@ -5956,7 +6698,12 @@ async getFirstRealTopicMessageName(topicName) {
           message_template_type: element.message_template_type
         });
 
-        if (isSetTopicInfo || isRemoveTopicInfo) {
+        const isCloseTopicInfo = this.isCloseTopicInfoMessage({
+          content: element.content,
+          message_template_type: element.message_template_type
+        });
+
+        if (isSetTopicInfo || isRemoveTopicInfo || isCloseTopicInfo) {
           const topicNameForSystemMessage =
             element.chat_topic ||
             element.topic ||
@@ -6115,6 +6862,12 @@ async getFirstRealTopicMessageName(topicName) {
       </div> `;
   }
 
+  _getPlainTextLength(html) {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || "").length;
+  }
+
   async make_message(params) {
     const {
       content,
@@ -6211,7 +6964,40 @@ async getFirstRealTopicMessageName(topicName) {
           $message_element.append($forwarded_label);
         }
 
-        $message_element.append($sanitized_content);
+        let $contentToAppend = $sanitized_content;
+
+        if (
+          !is_deleted &&
+          type !== "info-message" &&
+          this._getPlainTextLength(content) > 300
+        ) {
+          const cacheEntry = this.messageCache.get(message_name);
+          const isTextOnly =
+            !cacheEntry ||
+            (!cacheEntry.is_media &&
+              !cacheEntry.is_document &&
+              !cacheEntry.is_voice_clip &&
+              !cacheEntry.is_screenshot &&
+              !cacheEntry.attachment);
+
+          if (isTextOnly) {
+            const $wrapper = $(
+              '<div class="message-text-body long-message-body" data-read-more-step="0">'
+            );
+            $wrapper.append($sanitized_content.contents());
+            $contentToAppend = $wrapper;
+          }
+        }
+
+        $message_element.append($contentToAppend);
+        if ($contentToAppend.is(".long-message-body")) {
+          const $readMoreBtn = $(
+            '<button type="button" class="chat-read-more-btn">' +
+              __("Read more") +
+              "</button>"
+          );
+          $message_element.append($readMoreBtn);
+        }
 
 // ================= Message Topic Badge =================
 if (chat_topic && !is_deleted) {
@@ -6543,6 +7329,18 @@ if (!is_deleted && type !== "info-message") {
         }
       }
       // ===========================================
+      else if (message_template_type == "Close Topic") {
+        const sender_email = $sanitized_content
+          .find(".sender-user")
+          .attr("data-user");
+        if (sender_email == this.profile.user_email) {
+          $sanitized_content.find(".sender-user").html("You");
+        } else {
+          const sender_name = await get_profile_full_name(sender_email);
+          $sanitized_content.find(".sender-user").html(sender_name);
+        }
+      }
+      // ===========================================
       else if (message_template_type == "Remove Doctype") {
         const sender_email = $sanitized_content
           .find(".sender-user")
@@ -6649,7 +7447,10 @@ if (!is_deleted && type !== "info-message") {
     const $editor = this.$chat_space.find(".type-message .ql-editor");
     const editorText = ($editor.text() || "").trim();
     const hasImages = $editor.find("img").length > 0;
-    const messageChatTopic = this.chat_topic || this.activeMessageTopic || null;
+    const messageChatTopic =
+      this.isDedicatedTopicContext?.()
+        ? (this.chat_topic || this.chat_topic_space || this.profile.chat_topic || null)
+        : (this.activeMessageTopic || null);
     const messageChatTopicSubject = this.activeMessageTopicSubject || null;
 
     if (editorText.length === 0 && !attachment && !hasImages) {
@@ -7086,6 +7887,7 @@ if (!is_deleted && type !== "info-message") {
             createdTopicColor || this.getTopicColor(createdTopicName);
 
           this.updatePlusTopicButton?.();
+          this.saveUserActiveChatTopic(createdTopicName);
         }
 
         message_info.chat_topic = createdTopicName;
@@ -7117,6 +7919,8 @@ if (!is_deleted && type !== "info-message") {
     // ================= End Handling with Mentions ===========================
 
     const outgoingTopic = this.getOutgoingTopicInfo();
+    const replyTopic = outgoingTopic ? null : await this.getReplyMessageTopicInfo();
+    const finalOutgoingTopic = outgoingTopic || replyTopic;
 
     const message_info = {
       content:
@@ -7135,24 +7939,24 @@ if (!is_deleted && type !== "info-message") {
       is_document: this.is_document,
       is_voice_clip: this.is_voice_clip,
       file_id: file_id,
-      chat_topic: outgoingTopic ? outgoingTopic.chat_topic : (this.chat_topic || messageChatTopic),
-      chat_topic_subject: outgoingTopic ? outgoingTopic.chat_topic_subject : null,
-      topic_color: outgoingTopic ? outgoingTopic.topic_color : null,
+      chat_topic: finalOutgoingTopic ? finalOutgoingTopic.chat_topic : (this.chat_topic || messageChatTopic),
+      chat_topic_subject: finalOutgoingTopic ? finalOutgoingTopic.chat_topic_subject : null,
+      topic_color: finalOutgoingTopic ? finalOutgoingTopic.topic_color : null,
       is_screenshot: is_screenshot,
       reply_to_message_name: this.reply_to_message_name,
     };
    
     this.last_chat_space_message = await send_message(message_info);
 
-    if (this.last_chat_space_message && outgoingTopic) {
+    if (this.last_chat_space_message && finalOutgoingTopic) {
       setTimeout(() => {
         this.applyTopicToRenderedMessage(
           this.last_chat_space_message,
-          outgoingTopic.chat_topic,
-          outgoingTopic.chat_topic_subject,
-          outgoingTopic.topic_color
+          finalOutgoingTopic.chat_topic,
+          finalOutgoingTopic.chat_topic_subject,
+          finalOutgoingTopic.topic_color
         );
-      }, 150);
+      }, 600);
     }
 
     this.reply_to_message_name = null;
@@ -7753,7 +8557,12 @@ async fetchTemplateSuggestions(textValue) {
         message_template_type: res.message_template_type
       });
 
-      if (isSetTopicInfoRealtime || isRemoveTopicInfoRealtime) {
+      const isCloseTopicInfoRealtime = this.isCloseTopicInfoMessage({
+        content: res.content,
+        message_template_type: res.message_template_type
+      });
+
+      if (isSetTopicInfoRealtime || isRemoveTopicInfoRealtime || isCloseTopicInfoRealtime) {
         const topicNameForSystemMessage =
           res.chat_topic ||
           res.topic ||
@@ -7875,6 +8684,14 @@ async fetchTemplateSuggestions(textValue) {
 
         this.$chat_space_container.append(message_content);
         this.normalizeTopicSeparators();
+        if (topicNameForRealtime) {
+          this.applyTopicToRenderedMessage(
+            res.message_name,
+            topicNameForRealtime,
+            res.chat_topic_subject || res.topic_subject || topicNameForRealtime,
+            topicColorForRealtime
+          );
+        }
         if (!this.chat_topic_space) {
           this.buildTopicMetaMap();
           this.applyTopicVisibility();
@@ -8040,21 +8857,50 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   `
     : "";
 
-  items.push(`
-    <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
-      <button
-        type="button"
-        class="relink-topic-menu-main relink-action"
-        data-message-name="${safeMessageName}"
-        title="${__("ReLink Topic")}"
-      >
-        ${icon("relink")}
-        <span class="menu-label">${__("ReLink")}</span>
-      </button>
+  if (isMyMessage) {
+    items.push(`
+      <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
+        <button
+          type="button"
+          class="relink-topic-menu-main relink-action"
+          data-message-name="${safeMessageName}"
+          title="${__("ReLink Topic")}"
+        >
+          ${icon("relink")}
+          <span class="menu-label">${__("ReLink")}</span>
+        </button>
 
-      ${openTopicButtonHtml}
-    </div>
-  `);
+        ${openTopicButtonHtml}
+      </div>
+    `);
+  } else if (menuTopicName) {
+    items.push(`
+      <div class="menu-item relink-topic-menu-row" role="group">
+        <button
+          type="button"
+          class="relink-topic-menu-main topic-open-window-btn message-topic-open-action"
+          data-message-name="${safeMessageName}"
+          data-topic-name="${safeMenuTopicName}"
+          data-topic-subject="${safeMenuTopicSubject}"
+          data-topic-color="${safeMenuTopicColor}"
+          title="${__("Open topic in new window")}"
+          aria-label="${__("Open topic in new window")}"
+        >
+          ${icon("relink")}
+          <span class="menu-label">${__("Open Topic")}</span>
+        </button>
+      </div>
+    `);
+  }
+
+  if (isMyMessage && menuTopicName) {
+    items.push(item({
+      actionClass: "remove-message-topic-action",
+      iconName: "delete",
+      label: "Remove Topic",
+      danger: true
+    }));
+  }
 
   if (isMyMessage) {
     items.push(item({
@@ -8226,7 +9072,7 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
 
         const incomingTopic = res.chat_topic || res.topic || null;
         if (incomingTopic && !me.chat_topic_space && !me.is_topic_window && me.profile.room_type !== "Topic") {
-          me.setActiveMessageTopic(incomingTopic, res.chat_topic_subject || null);
+         // me.setActiveMessageTopic(incomingTopic, res.chat_topic_subject || null);
           me.expandTopicMessages(incomingTopic);
         }
       } else if (res.realtime_type == "add_group_member") {
@@ -8311,7 +9157,33 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
       } else if (res.realtime_type == "remove_topic") {
         me.chat_topic = null;
         me.reference_doctypes = [];
+        me.clearMessageTopic(false);
         me.updateActiveTopicButton(null);
+      } else if (res.realtime_type == "clear_message_topic") {
+        const topicToClear = res.chat_topic ? String(res.chat_topic) : null;
+        const activeTopic = me.activeMessageTopic ? String(me.activeMessageTopic) : null;
+        if (!topicToClear || !activeTopic || activeTopic === topicToClear) {
+          me.clearMessageTopic(false);
+        }
+      } else if (res.realtime_type == "close_topic" && res.user_scoped == 1) {
+        const topicToClear = res.chat_topic || res.topic_name || null;
+        const rtChatChannel = me.getCurrentChatChannel?.() ||
+          (me.profile.room_type === "Contributor" ? me.profile.parent_channel : me.profile.room);
+
+        if (res.chat_channel && rtChatChannel && res.chat_channel !== rtChatChannel) {
+          return;
+        }
+
+        if (!topicToClear || me.activeMessageTopic === topicToClear) {
+          me.clearMessageTopic(false);
+          me.updatePlusTopicButton?.();
+        }
+      } else if (res.realtime_type == "close_topic") {
+        const closedTopic = res.chat_topic || me.chat_topic || null;
+        if (closedTopic && (!me.activeMessageTopic || String(me.activeMessageTopic) === String(closedTopic))) {
+          me.clearMessageTopic(false);
+        }
+        me.clearClosedTopicUi(closedTopic);
       } else if (res.realtime_type == "remove_doctype") {
         if (me.reference_doctypes.length == 1) {
           me.reference_doctypes = [];
@@ -9392,6 +10264,42 @@ export async function remove_chat_topic(
     args: {
       chat_topic: chat_topic,
       chat_channel: chat_channel,
+      last_active_sub_channel: last_active_sub_channel,
+    },
+  });
+  return await res.message.results;
+}
+
+async function close_chat_topic(
+  chat_channel,
+  chat_topic,
+  last_active_sub_channel,
+  user_email,
+  user_name
+) {
+  const res = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_4.api.close_chat_topic",
+    args: {
+      chat_channel: chat_channel,
+      chat_topic: chat_topic,
+      last_active_sub_channel: last_active_sub_channel,
+      user_email: user_email,
+      user_name: user_name,
+    },
+  });
+  return await res.message.results;
+}
+
+async function clear_message_topic(
+  chat_channel,
+  chat_topic,
+  last_active_sub_channel
+) {
+  const res = await frappe.call({
+    method: "clefincode_chat.api.api_1_3_4.api.clear_message_topic",
+    args: {
+      chat_channel: chat_channel,
+      chat_topic: chat_topic,
       last_active_sub_channel: last_active_sub_channel,
     },
   });

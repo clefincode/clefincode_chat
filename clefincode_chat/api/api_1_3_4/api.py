@@ -46,7 +46,7 @@ from frappe.auth import LoginManager
 from frappe.utils.password import check_password, update_password
 from frappe.sessions import clear_sessions
 from frappe.desk.search import validate_and_sanitize_search_inputs
-
+from packaging import version
 
 
 
@@ -325,7 +325,7 @@ def get_registration_tokens(user_email):
                     "registration_token": row.registration_token,
                     "platform": row.platform
                 })
-    frappe.log_error('tokens',tokens)
+    
     return tokens
 
 def get_registration_token(user_email):
@@ -468,10 +468,31 @@ def get_social_config_for_user(user):
     }
 # ==========================================================================================
 
+DEFAULT_LIMITED_ROLES = [
+    "Customer",
+    "Supplier",
+    "Student",
+    "Instructor",
+    "Sales Partner",
+    "Member",
+    "Shareholder",
+    "Guardian",
+]
 def is_limited_user(user):
-    roles = frappe.get_roles(user)
-    limited_roles = ["Customer", "Supplier", "Student", "Instructor", "Sales Partner", "Member", "Shareholder", "Guardian"]
-    return any(role in roles for role in limited_roles)
+    user_roles = frappe.get_roles(user)
+
+    settings = frappe.get_single("ClefinCode Chat Settings")
+
+    limited_roles = [
+        row.role
+        for row in settings.limited_roles
+        if row.role
+    ]
+
+    if not limited_roles:
+        limited_roles = DEFAULT_LIMITED_ROLES
+
+    return any(role in user_roles for role in limited_roles)
 # ==========================================================================================
 def get_user_type():
     if frappe.session.user == "Guest":
@@ -666,20 +687,12 @@ def create_sub_channel(new_contributors , parent_channel , user , user_email , c
                 frappe.publish_realtime(event= parent_channel, message=results, user= member.user)
         
         results2 = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel", "target_user" : user_to_remove, "chat_topic": chat_topic[0].name if chat_topic else None}
-        # frappe.publish_realtime(event= "receive_message", message= results2, user= user_to_remove)
-        frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        notification_title = get_room_name(parent_channel, "Contributor")
-        send_notification(user_to_remove , results2, "create_sub_channel", notification_title)
         return {"results" : [{"channel" : parent_channel}]}
     else:    
         if user_to_remove:  
             res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel" , "target_user" : user_to_remove, "chat_topic": chat_topic[0].name if chat_topic else None} 
             disable_contributor(parent_channel_doc , user_to_remove)         
             frappe.db.sql(f"""UPDATE  `tabClefinCode Chat Channel User` SET active = 0 WHERE parent = '{last_active_sub_channel}' AND user = '{user_to_remove}'""")            
-            # frappe.publish_realtime(event= "receive_message", message= res, user= user_to_remove)
-            frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-            notification_title = get_room_name(parent_channel, "Contributor")
-            send_notification(user_to_remove , res, "create_sub_channel", notification_title)
         
         if isinstance(new_contributors , str):
             new_contributors = json.loads(new_contributors)
@@ -768,18 +781,11 @@ def leave_contributor(parent_channel , user , creation_date = None , last_active
             if member.platform == "Chat":
                 frappe.publish_realtime(event= parent_channel, message=results, user= member.user)
         res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel", "target_user" : user_to_remove}
-        # frappe.publish_realtime(event= "receive_message", message= res, user= user_to_remove)
-        frappe.publish_realtime(event= last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        send_notification(user_to_remove , res, "create_sub_channel")
-        
         return {"results" : [{"channel" : parent_channel}]}
     else:    
         res = {'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel" , "target_user" : user_to_remove}
         disable_contributor(parent_channel_doc , user_to_remove)         
         frappe.db.sql(f"""UPDATE  `tabClefinCode Chat Channel User` SET active = 0 WHERE parent = '{last_active_sub_channel}' AND user = '{user_to_remove}'""")            
-        # frappe.publish_realtime(event="receive_message", message= res, user= user_to_remove)
-        frappe.publish_realtime(event=last_active_sub_channel, message={'parent_channel' : parent_channel, "sub_channel" : "" , "realtime_type" : "create_sub_channel"}, user= user_to_remove)
-        send_notification(user_to_remove , res, "create_sub_channel")
 
         
         sub_channel_doc = frappe.get_doc({
@@ -1186,8 +1192,9 @@ def get_all_sub_channels_for_contributor(parent_channel , user_email):
 #############################################################################################
 ######################################## Messages ###########################################
 #############################################################################################
+
 @frappe.whitelist()
-def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None):
+def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None,override_variables=None ):
     
     try:
         
@@ -1258,7 +1265,10 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             new_message.file_id = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "name")               
             new_message.save(ignore_permissions = True)
 
-        if attachment: set_attach_message(attachment, new_message.name)
+        if file_id:
+            set_attach_message(file_id=file_id, message_name=new_message.name)
+        elif attachment:
+            set_attach_message(attachment=attachment, message_name=new_message.name)
         if reply_to_message_name:
                 try:
                   
@@ -1370,8 +1380,20 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             "utc_message_date" : send_date,
             "is_forwarded":is_forwarded,
             
-            "platform": platform 
+            "platform": platform ,
+            "chat_channel": room,
+            "chat_topic": chat_topic,
         }
+        
+        if chat_topic:
+            try:
+                topic_info = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, ["topic_subject", "topic_color"], as_dict=True)
+                if topic_info:
+                    results["chat_topic_subject"] = topic_info.topic_subject
+                    results["topic_color"] = topic_info.topic_color
+            except Exception:
+                pass
+        
         
         if reply_to_message_name :
             results.update({"reply_to_message":reply_to_message_name,
@@ -1464,7 +1486,7 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)    
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
-                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded)
+                    process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded,override_variables )
                     if member.pending_messages >= 1:
                         frappe.db.set_value('ClefinCode Chat Channel User', member.name, 'pending_messages', member.pending_messages +1)
                 elif member.platform == "Instagram" and str(email) != str(member.user) and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
@@ -1614,6 +1636,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.chat_topic,
             topic.subject AS chat_topic_subject,
             topic.topic_color AS topic_color,
+            topic.topic_status AS topic_status,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
@@ -1653,6 +1676,7 @@ def get_messages(room, user_email, room_type, chat_topic=None,
             msg.chat_topic,
             topic.subject AS chat_topic_subject,
             topic.topic_color AS topic_color,
+            topic.topic_status AS topic_status,
             msg.is_edited,
             backup.original_content AS original_content
         FROM `tabClefinCode Chat Message` msg
@@ -2563,13 +2587,39 @@ def get_file_view_size(file_id,is_video=None):
         file_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return {"results" : [{'file_size':file_doc.file_size,'data':file_base64,'duration':duration}]}
 # ==========================================================================================
-def set_attach_message(attachment, message):
-    file_doc = frappe.get_doc("File", {"file_url": attachment})
-    file_doc.update({
-        "attached_to_doctype": "ClefinCode Chat Message",
-        "attached_to_name": message
-    })
-    file_doc.save(ignore_permissions = True)
+def set_attach_message(file_id=None, attachment=None, message_name=None):
+    import frappe
+    from urllib.parse import urlparse, unquote
+
+    file_doc = None
+
+    if file_id:
+        file_doc = frappe.get_doc("File", file_id)
+
+    elif attachment:
+        parsed = urlparse(attachment)
+
+        file_url = parsed.path if parsed.scheme and parsed.netloc else attachment
+        file_url = unquote(file_url)
+
+        if not file_url.startswith("/"):
+            file_url = "/" + file_url
+
+        file_name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+
+        if not file_name:
+            frappe.throw(f"File not found yet or wrong file_url: {file_url}")
+
+        file_doc = frappe.get_doc("File", file_name)
+
+    if not file_doc:
+        frappe.throw("No file_id or attachment provided")
+
+    file_doc.attached_to_doctype = "ClefinCode Chat Message"
+    file_doc.attached_to_name = message_name
+    file_doc.save(ignore_permissions=True)
+
+    return file_doc
 # ==========================================================================================
 def get_file_type(file_name):
     ext = os.path.splitext(file_name)[1]  # Get the file extension
@@ -2873,8 +2923,9 @@ def ensure_video_thumbnail(message_doc, max_size=(320, 320), quality=80):
 #############################################################################################
 @frappe.whitelist()
 def get_topic_info(chat_channel):
-    chat_topic = frappe.get_all("ClefinCode Chat Topic" , ["name" , "subject" , "is_private"] , {"chat_channel":chat_channel , "topic_status" : "Open"})
+    chat_topic = frappe.get_all("ClefinCode Chat Topic" , ["name" , "subject" , "is_private" , "topic_color"] , {"chat_channel":chat_channel , "topic_status" : "Open"})
     if chat_topic:
+        topic_color = chat_topic[0].topic_color
         reference_doctypes = frappe.db.sql(f"""
         SELECT doctype_link AS doctype , docname
         FROM `tabClefinCode Chat Topic Reference`
@@ -2882,9 +2933,9 @@ def get_topic_info(chat_channel):
         ORDER BY idx
         """ , as_dict = True)
         if reference_doctypes:    
-            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : reference_doctypes, "chat_topic_subject" : chat_topic[0].subject , "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
+            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : reference_doctypes, "chat_topic_subject" : chat_topic[0].subject , "topic_color": topic_color, "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
         else:        
-            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : [] , "chat_topic_subject" : chat_topic[0].subject , "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
+            return {"results" : [{"chat_topic" : chat_topic[0].name , "reference_doctypes" : [] , "chat_topic_subject" : chat_topic[0].subject , "topic_color": topic_color, "chat_topic_status": "private" if chat_topic[0].is_private == 1 else "public"}]}
     else:
         return {"results" : [{"chat_topic" : None , "reference_doctypes" : [] , "chat_topic_subject" : None}]}
 # ==========================================================================================
@@ -2901,13 +2952,22 @@ def get_references_doctypes(chat_topic):
     return {"results" : [{"reference_doctypes" : reference_doctypes , "chat_topic_subject" : frappe.db.get_value("ClefinCode Chat Topic" , chat_topic, "subject") , "chat_topic_status" : frappe.db.get_value("ClefinCode Chat Topic" , chat_topic, "is_private")}]}
 # ==========================================================================================
 @frappe.whitelist()
-def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = None):
+def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = None, subject = None):
     mention_doctypes = json.loads(mention_doctypes)
+
+    if not subject and not mention_doctypes:
+        frappe.throw("Subject or at least one reference is required to create a topic.")
+
+    if not subject and mention_doctypes:
+        subject = "{}:{}".format(mention_doctypes[0]["doctype"], mention_doctypes[0]["docname"])
+
     chat_topic = frappe.get_doc({
         "doctype" : "ClefinCode Chat Topic",
         "chat_channel" : chat_channel,
         "topic_status": "Open",
-        "is_private" : 1
+        "is_private" : 1,
+        "topic_color": get_random_topic_color(),
+        "subject": subject,
     }).insert(ignore_permissions = True)
     for doc in mention_doctypes:
         chat_topic.append("references", {"doctype_link": doc["doctype"] , "docname":doc["docname"], "active":1})
@@ -2917,7 +2977,10 @@ def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = 
     results = {
         "realtime_type" : "set_topic",
         "chat_topic": chat_topic.name,
-        "mention_doctypes" : mention_doctypes
+        "mention_doctypes" : mention_doctypes,
+        "topic_color": chat_topic.topic_color
+        
+
     }
 
     for member in frappe.get_doc("ClefinCode Chat Channel" , chat_channel).members:
@@ -2939,11 +3002,14 @@ def create_chat_topic(mention_doctypes, chat_channel, last_active_sub_channel = 
             # frappe.publish_realtime(event="receive_message", message=results, user= contributor.user) 
             send_notification(contributor.user , results, "set_topic")  
 
-    return {"results" : [{"chat_topic" : chat_topic.name}]}
+    return {"results" : [{"chat_topic" : chat_topic.name, "topic_color" : chat_topic.topic_color, "subject": subject, "chat_topic_subject": subject}]}
+
 # ==========================================================================================
 @frappe.whitelist()
 def remove_chat_topic(chat_topic, chat_channel, last_active_sub_channel = None):
     frappe.db.set_value("ClefinCode Chat Topic" , chat_topic , "topic_status" , "Closed")
+
+    clear_active_chat_topic_for_all(chat_channel, chat_topic)
 
     results = {
         "realtime_type" : "remove_topic"
@@ -2967,18 +3033,513 @@ def remove_chat_topic(chat_topic, chat_channel, last_active_sub_channel = None):
             send_notification(contributor.user , results, "remove_topic")
     
     return {"results" : [{"chat_topic_subject" : frappe.db.get_value("ClefinCode Chat Topic" , chat_topic , "subject")}]}
+
+
+def _get_chat_topic_subject_for_close(chat_topic):
+    if not chat_topic:
+        return None
+
+    topic_subject = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "subject")
+    if topic_subject:
+        return topic_subject
+
+    first_reference = frappe.get_all(
+        "ClefinCode Chat Topic Reference",
+        filters={
+            "parent": chat_topic,
+            "parenttype": "ClefinCode Chat Topic",
+            "parentfield": "references",
+            "active": 1
+        },
+        fields=["docname"],
+        order_by="idx asc",
+        limit_page_length=1
+    )
+
+    if first_reference:
+        return first_reference[0].docname
+
+    return chat_topic
+
+
+def _publish_closed_topic_realtime(
+    chat_topic,
+    chat_channel,
+    chat_topic_subject=None,
+    last_active_sub_channel=None,
+    realtime_type="remove_topic"
+):
+    results = {
+        "realtime_type": realtime_type,
+        "chat_topic": chat_topic,
+        "chat_topic_subject": chat_topic_subject,
+        "topic_status": "Closed",
+        "chat_topic_status": "Closed",
+        "clear_message_topic": 1
+    }
+
+    for member in frappe.get_doc("ClefinCode Chat Channel" , chat_channel).members:
+        if member.is_removed == 0 and member.platform == "Chat":
+            member_results = dict(results)
+            member_results["room"] = chat_channel
+            member_results["target_user"] = member.user
+            frappe.publish_realtime(event= chat_channel, message=member_results, user=member.user)
+            frappe.publish_realtime(event="receive_message", message=member_results, user= member.user)
+            send_notification(member.user , member_results, realtime_type)
+
+    for contributor in frappe.get_doc("ClefinCode Chat Channel" , chat_channel).contributors:
+        if contributor.active == 1 and contributor.platform == "Chat":
+            notification_results = None
+            for contributor_room in _get_realtime_contributor_rooms(chat_channel, contributor, last_active_sub_channel):
+                contributor_results = dict(results)
+                contributor_results["room"] = contributor_room
+                contributor_results["parent_channel"] = chat_channel
+                contributor_results["target_user"] = contributor.user
+                if notification_results is None:
+                    notification_results = contributor_results
+                frappe.publish_realtime(event= contributor_room, message=contributor_results, user=contributor.user)
+                frappe.publish_realtime(event="receive_message", message=contributor_results, user= contributor.user)
+            if notification_results:
+                send_notification(contributor.user , notification_results, realtime_type)
+
+
+def _get_realtime_contributor_rooms(chat_channel, contributor=None, last_active_sub_channel=None):
+    rooms = []
+
+    def add_room(room):
+        if room and room not in rooms:
+            rooms.append(room)
+
+    add_room(last_active_sub_channel)
+    add_room(getattr(contributor, "channel", None))
+
+    open_sub_channels = frappe.get_all(
+        "ClefinCode Chat Channel",
+        filters={"parent_channel": chat_channel, "chat_status": "Open"},
+        pluck="name"
+    )
+
+    for sub_channel in open_sub_channels:
+        add_room(sub_channel)
+
+    add_room(chat_channel)
+    return rooms
+
+
+def _publish_clear_message_topic_realtime(
+    chat_channel,
+    chat_topic=None,
+    chat_topic_subject=None,
+    last_active_sub_channel=None
+):
+    results = {
+        "realtime_type": "clear_message_topic",
+        "chat_topic": chat_topic,
+        "chat_topic_subject": chat_topic_subject,
+        "clear_message_topic": 1
+    }
+
+    channel = frappe.get_doc("ClefinCode Chat Channel", chat_channel)
+
+    for member in channel.members:
+        if member.is_removed == 0 and member.platform == "Chat":
+            member_results = dict(results)
+            member_results["room"] = chat_channel
+            member_results["target_user"] = member.user
+            frappe.publish_realtime(event=chat_channel, message=member_results, user=member.user)
+            frappe.publish_realtime(event="receive_message", message=member_results, user=member.user)
+
+    for contributor in channel.contributors:
+        if contributor.active == 1 and contributor.platform == "Chat":
+            for contributor_room in _get_realtime_contributor_rooms(chat_channel, contributor, last_active_sub_channel):
+                contributor_results = dict(results)
+                contributor_results["room"] = contributor_room
+                contributor_results["parent_channel"] = chat_channel
+                contributor_results["target_user"] = contributor.user
+                frappe.publish_realtime(event=contributor_room, message=contributor_results, user=contributor.user)
+                frappe.publish_realtime(event="receive_message", message=contributor_results, user=contributor.user)
+
+
+@frappe.whitelist()
+def clear_message_topic(chat_channel, chat_topic=None, last_active_sub_channel=None):
+    if not chat_channel and chat_topic:
+        chat_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    chat_topic_subject = _get_chat_topic_subject_for_close(chat_topic) if chat_topic else None
+    _publish_clear_message_topic_realtime(
+        chat_channel=chat_channel,
+        chat_topic=chat_topic,
+        chat_topic_subject=chat_topic_subject,
+        last_active_sub_channel=last_active_sub_channel
+    )
+
+    return {
+        "results": [{
+            "status": "Cleared",
+            "chat_channel": chat_channel,
+            "chat_topic": chat_topic,
+            "chat_topic_subject": chat_topic_subject,
+            "clear_message_topic": 1
+        }]
+    }
+
+
+@frappe.whitelist()
+def close_chat_topic(chat_channel, chat_topic=None, last_active_sub_channel=None, user_email=None, user_name=None):
+    if not chat_channel and chat_topic:
+        chat_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    if not chat_topic:
+        open_topic = frappe.get_all(
+            "ClefinCode Chat Topic",
+            filters={"chat_channel": chat_channel, "topic_status": "Open"},
+            fields=["name"],
+            order_by="creation desc",
+            limit_page_length=1
+        )
+        chat_topic = open_topic[0].name if open_topic else None
+
+    if not chat_topic:
+        frappe.throw(_("No open topic found for this channel."))
+
+    topic = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+    if topic.chat_channel and topic.chat_channel != chat_channel:
+        frappe.throw(_("Topic does not belong to this channel."))
+
+    chat_topic_subject = _get_chat_topic_subject_for_close(chat_topic)
+    should_send_close_message = topic.topic_status != "Closed"
+
+    if should_send_close_message:
+        topic.topic_status = "Closed"
+        topic.save(ignore_permissions=True)
+        frappe.db.commit()
+
+    clear_active_chat_topic_for_all(chat_channel, chat_topic)
+
+    _publish_closed_topic_realtime(
+        chat_topic=chat_topic,
+        chat_channel=chat_channel,
+        chat_topic_subject=chat_topic_subject,
+        last_active_sub_channel=last_active_sub_channel,
+        realtime_type="close_topic"
+    )
+
+    if should_send_close_message:
+        if not user_email:
+            session_user = frappe.session.user
+            user_email = frappe.db.get_value("User", session_user, "email") or session_user
+
+        sender_name = user_name or get_profile_id(user_email) or user_email
+        safe_user_email = frappe.utils.escape_html(user_email or "")
+        safe_topic_subject = frappe.utils.escape_html(chat_topic_subject or chat_topic)
+        close_content = f"""
+        <div class="close-topic" data-template="close_topic_template">
+            <span class="sender-user" data-user="{safe_user_email}"></span><span> closed topic: "{safe_topic_subject}" </span>
+        </div>
+        """
+
+        send(
+            content=close_content,
+            user=sender_name,
+            room=chat_channel,
+            email=user_email,
+            is_first_message=0,
+            sub_channel=last_active_sub_channel,
+            message_type="information",
+            message_template_type="Close Topic",
+            chat_topic=None
+        )
+
+    return {
+        "results": [{
+            "status": "Closed",
+            "chat_topic": chat_topic,
+            "chat_channel": chat_channel,
+            "chat_topic_subject": chat_topic_subject,
+            "topic_status": "Closed",
+            "chat_topic_status": "Closed"
+        }]
+    }
+
+# ==========================================================================================
+@frappe.whitelist()
+def publish_user_active_topic_realtime(user_email, chat_channel, chat_topic=None, action="select", topic_subject=None, topic_color=None, topic_status=None):
+    if not user_email:
+        return
+
+    payload = {
+        "realtime_type": "user_active_topic",
+        "action": action,
+        "chat_channel": chat_channel,
+        "chat_topic": chat_topic,
+        "topic_name": chat_topic,
+        "chat_topic_subject": topic_subject,
+        "topic_subject": topic_subject,
+        "topic_color": topic_color,
+        "topic_status": topic_status,
+    }
+
+    frappe.publish_realtime(
+        event=f"user_active_topic:{user_email}",
+        message=payload,
+        user=user_email
+    )
+
+    frappe.publish_realtime(
+        event="user_active_topic",
+        message=payload,
+        user=user_email
+    )
+
+
+@frappe.whitelist()
+def set_user_active_chat_topic(chat_channel, chat_topic, user_email=None):
+    if not user_email:
+        user_email = frappe.session.user
+
+    if not chat_channel or not chat_topic:
+        frappe.throw(_("chat_channel and chat_topic are required"))
+
+    topic_exists = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "name")
+    if not topic_exists:
+        frappe.throw(_("Topic does not exist"))
+
+    topic_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+    if topic_channel != chat_channel:
+        frappe.throw(_("Topic does not belong to the given channel"))
+
+    topic_status = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "topic_status")
+    if topic_status == "Closed":
+        frappe.throw(_("Cannot select a closed topic"))
+
+    frappe.db.set_value(
+        "ClefinCode Chat Channel User",
+        {"parent": chat_channel, "user": user_email, "is_removed": 0},
+        "active_chat_topic",
+        chat_topic
+    )
+
+    frappe.db.set_value(
+        "ClefinCode Chat Channel Contributor",
+        {"parent": chat_channel, "user": user_email, "active": 1},
+        "active_chat_topic",
+        chat_topic
+    )
+
+    topic_subject = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "subject")
+    topic_color = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "topic_color")
+
+    publish_user_active_topic_realtime(
+        user_email=user_email,
+        chat_channel=chat_channel,
+        chat_topic=chat_topic,
+        action="select",
+        topic_subject=topic_subject,
+        topic_color=topic_color,
+        topic_status="Open"
+    )
+
+    return {
+        "results": [{
+            "status": 1,
+            "chat_topic": chat_topic,
+            "chat_topic_subject": topic_subject,
+            "topic_color": topic_color,
+            "topic_status": "Open"
+        }]
+    }
+
+# ==========================================================================================
+@frappe.whitelist()
+def get_user_active_chat_topic(chat_channel, user_email=None):
+    if not user_email:
+        user_email = frappe.session.user
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    active_topic = frappe.db.get_value(
+        "ClefinCode Chat Channel User",
+        {"parent": chat_channel, "user": user_email, "is_removed": 0},
+        "active_chat_topic"
+    )
+
+    if not active_topic:
+        active_topic = frappe.db.get_value(
+            "ClefinCode Chat Channel Contributor",
+            {"parent": chat_channel, "user": user_email, "active": 1},
+            "active_chat_topic"
+        )
+
+    if not active_topic:
+        return {"results": [{"chat_topic": None}]}
+
+    topic = frappe.db.get_value(
+        "ClefinCode Chat Topic",
+        active_topic,
+        ["name", "subject", "topic_color", "topic_status", "chat_channel"],
+        as_dict=True
+    )
+
+    if not topic:
+        clear_user_active_chat_topic(chat_channel, chat_topic=active_topic, user_email=user_email)
+        return {"results": [{"chat_topic": None}]}
+
+    if topic.chat_channel != chat_channel:
+        clear_user_active_chat_topic(chat_channel, chat_topic=active_topic, user_email=user_email)
+        return {"results": [{"chat_topic": None}]}
+
+    if topic.topic_status == "Closed":
+        clear_user_active_chat_topic(chat_channel, chat_topic=active_topic, user_email=user_email)
+        return {"results": [{"chat_topic": None}]}
+
+    return {
+        "results": [{
+            "chat_topic": topic.name,
+            "chat_topic_subject": topic.subject,
+            "topic_color": topic.topic_color,
+            "topic_status": topic.topic_status
+        }]
+    }
+
+# ==========================================================================================
+@frappe.whitelist()
+def clear_user_active_chat_topic(chat_channel, chat_topic=None, user_email=None):
+    if not user_email:
+        user_email = frappe.session.user
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+    filters_user = {"parent": chat_channel, "user": user_email}
+    filters_contributor = {"parent": chat_channel, "user": user_email}
+
+    if chat_topic:
+        filters_user["active_chat_topic"] = chat_topic
+        filters_contributor["active_chat_topic"] = chat_topic
+
+    frappe.db.set_value(
+        "ClefinCode Chat Channel User",
+        filters_user,
+        "active_chat_topic",
+        None
+    )
+
+    frappe.db.set_value(
+        "ClefinCode Chat Channel Contributor",
+        filters_contributor,
+        "active_chat_topic",
+        None
+    )
+
+    payload = {
+        "realtime_type": "close_topic",
+        "action": "clear",
+        "user_scoped": 1,
+        "do_not_close_topic": 1,
+        "chat_channel": chat_channel,
+        "chat_topic": chat_topic,
+        "topic_name": chat_topic,
+    }
+
+    frappe.publish_realtime(
+        event=f"user_active_topic:{user_email}",
+        message=payload,
+        user=user_email
+    )
+
+    frappe.publish_realtime(
+        event="receive_message",
+        message=payload,
+        user=user_email
+    )
+
+    frappe.publish_realtime(
+        event="msg",
+        message=payload,
+        user=user_email
+    )
+
+    send_notification(
+        user_email,
+        payload,
+        "close_topic"
+    )
+
+    return {"results": [{"status": 1}]}
+
+# ==========================================================================================
+def clear_active_chat_topic_for_all(chat_channel, chat_topic):
+    if not chat_channel or not chat_topic:
+        return
+
+    affected_users = set()
+
+    user_rows = frappe.get_all(
+        "ClefinCode Chat Channel User",
+        filters={"parent": chat_channel, "active_chat_topic": chat_topic},
+        fields=["name", "user"]
+    )
+
+    contributor_rows = frappe.get_all(
+        "ClefinCode Chat Channel Contributor",
+        filters={"parent": chat_channel, "active_chat_topic": chat_topic},
+        fields=["name", "user"]
+    )
+
+    for row in user_rows:
+        frappe.db.set_value(
+            "ClefinCode Chat Channel User",
+            row.name,
+            "active_chat_topic",
+            None,
+            update_modified=False
+        )
+        if row.user:
+            affected_users.add(row.user)
+
+    for row in contributor_rows:
+        frappe.db.set_value(
+            "ClefinCode Chat Channel Contributor",
+            row.name,
+            "active_chat_topic",
+            None,
+            update_modified=False
+        )
+        if row.user:
+            affected_users.add(row.user)
+
+    for user in affected_users:
+        publish_user_active_topic_realtime(
+            user_email=user,
+            chat_channel=chat_channel,
+            chat_topic=chat_topic,
+            action="clear",
+            topic_status="Closed"
+        )
+
 # ==========================================================================================
 @frappe.whitelist()
 def add_reference_doctype(mention_doctypes, chat_topic, last_active_sub_channel = None):
     chat_topic_doc = frappe.get_doc("ClefinCode Chat Topic" , chat_topic)
     for doc in json.loads(mention_doctypes):
-        reference_doctype_name = frappe.db.get_value("ClefinCode Chat Topic Reference" , {"parent" : chat_topic , "docname" : doc["docname"], "active" : 0} , "name")
-        if reference_doctype_name:
-            frappe.db.set_value("ClefinCode Chat Topic Reference" , reference_doctype_name , "active", 1)
+        existing_name = frappe.db.get_value("ClefinCode Chat Topic Reference", {
+            "parent": chat_topic,
+            "doctype_link": doc["doctype"],
+            "docname": doc["docname"],
+        }, "name")
+        if existing_name:
+            frappe.db.set_value("ClefinCode Chat Topic Reference", existing_name, "active", 1)
         else:
-            chat_topic_doc = frappe.get_doc("ClefinCode Chat Topic" , chat_topic)
-            chat_topic_doc.append("references", {"doctype_link": doc["doctype"] , "docname":doc["docname"], "active":1})
-            chat_topic_doc.save(ignore_permissions = True)
+            chat_topic_doc = frappe.get_doc("ClefinCode Chat Topic", chat_topic)
+            chat_topic_doc.append("references", {"doctype_link": doc["doctype"], "docname": doc["docname"], "active": 1})
+            chat_topic_doc.save(ignore_permissions=True)
             frappe.db.commit()
 
     results = {
@@ -3041,7 +3602,8 @@ def set_topic_subject(chat_topic, new_subject, chat_channel, last_active_sub_cha
     
     results = {
         "realtime_type" : "rename_topic",
-        "new_subject": new_subject
+        "new_subject": new_subject,
+        "chat_topic": chat_topic,
     }
 
     for member in frappe.get_doc("ClefinCode Chat Channel" , chat_channel).members:
@@ -3098,6 +3660,120 @@ def set_topic_status(chat_topic, chat_topic_status, chat_channel, last_active_su
                 share_doctype("ClefinCode Chat Message", m.name, user = None, everyone = 1)
     
     return {"results" : [{"status" : "Done"}]}
+# ==========================================================================================
+
+@frappe.whitelist()
+def replace_topic_references(
+    chat_topic,
+    mention_doctypes,
+    chat_channel=None,
+    user_email=None,
+    user_name=None,
+    last_active_sub_channel=None
+):
+    import json
+
+    if not chat_topic:
+        frappe.throw(_("chat_topic is required"))
+
+    if isinstance(mention_doctypes, str):
+        mention_doctypes_list = json.loads(mention_doctypes or "[]")
+    else:
+        mention_doctypes_list = mention_doctypes or []
+
+    if not isinstance(mention_doctypes_list, list) or not mention_doctypes_list:
+        frappe.throw(_("mention_doctypes must be a non-empty list"))
+
+    if not chat_channel:
+        chat_channel = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, "chat_channel")
+
+    if not chat_channel:
+        frappe.throw(_("chat_channel is required"))
+
+ 
+    old_topic_label = chat_topic
+
+    old_refs = frappe.get_all(
+        "ClefinCode Chat Topic Reference",
+        filters={
+            "parent": chat_topic,
+            "parenttype": "ClefinCode Chat Topic",
+            "parentfield": "references",
+            "active": 1
+        },
+        fields=["doctype_link", "docname"],
+        order_by="idx asc",
+        limit=1
+    )
+
+    if old_refs:
+        old_topic_label = old_refs[0].docname
+
+  
+    remove_chat_topic(chat_topic, chat_channel, last_active_sub_channel)
+
+    remove_content = f"""
+    <div class="remove-topic" data-template="remove_topic_template">
+        <span class="sender-user" data-user="{user_email}"></span><span> removed topic: "{old_topic_label}" </span>
+    </div>
+    """
+
+    send(
+        content=remove_content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Remove Topic",
+        chat_topic=None
+    )
+
+  
+    created = create_chat_topic(
+        json.dumps(mention_doctypes_list),
+        chat_channel,
+        last_active_sub_channel
+    )
+
+    new_chat_topic = None
+    if isinstance(created, dict):
+        results = created.get("results") or []
+        if results:
+            new_chat_topic = results[0].get("chat_topic")
+
+    if not new_chat_topic:
+        frappe.throw(_("Failed to create replacement topic"))
+
+    first_ref = mention_doctypes_list[0]
+    ref_docname = first_ref.get("docname", "")
+
+    set_content = f"""
+    <div class="set-topic" data-template="set_topic_template">
+        <span class="sender-user" data-user="{user_email}"></span><span> set topic: "{ref_docname}" </span>
+    </div>
+    """
+
+    send(
+        content=set_content,
+        user=user_name or user_email,
+        room=chat_channel,
+        email=user_email,
+        is_first_message=0,
+        sub_channel=last_active_sub_channel,
+        message_type="information",
+        message_template_type="Set Topic",
+        chat_topic=new_chat_topic
+    )
+
+    return {
+        "results": [{
+            "old_chat_topic": chat_topic,
+            "chat_topic": new_chat_topic,
+            "chat_channel": chat_channel
+        }]
+    }
 # ==========================================================================================
 @frappe.whitelist()
 def check_if_user_has_permission(user_email, chat_topic, chat_channel):
@@ -3200,7 +3876,7 @@ def get_topic_messages(chat_topic):
     WHERE chat_topic = '{chat_topic}'   
     """ , as_dict = True)
 
-    return topic_messages            
+    return topic_messages                   
 # ==========================================================================================
 #############################################################################################
 ######################################## Contacts ###########################################
@@ -3530,6 +4206,10 @@ def app_text(key, lang="en"):
         "remove_topic": {
             "en": "The topic has been removed",
             "ar": "تمت إزالة الموضوع"
+        },
+        "close_topic": {
+            "en": "The topic has been closed",
+            "ar": "تم إغلاق الموضوع"
         },
         "add_doctype": {
             "en": "A new doctype has been added",
@@ -3884,7 +4564,7 @@ def search_in_message_content(user , query):
     return my_messages
 # ==========================================================================================
 @frappe.whitelist()
-def search_in_message_contents(channel, query, sub_channel=None):
+def search_in_message_contents(channel, query, sub_channel=None, chat_topic=None):
 
     if not channel or not query:
         return {"results": []}
@@ -3896,6 +4576,9 @@ def search_in_message_contents(channel, query, sub_channel=None):
 
     if sub_channel:
         filters["sub_channel"] = sub_channel
+
+    if chat_topic:
+        filters["chat_topic"] = chat_topic
 
     results = frappe.get_all(
         "ClefinCode Chat Message",
@@ -3918,7 +4601,7 @@ def search_in_message_contents(channel, query, sub_channel=None):
 #############################################################################################
 ######################################## WhatsApp Functions #################################
 #############################################################################################
-def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0):    
+def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded=0,override_variables=None ):    
     responder_user_profile = get_profile_id(email)
     message = None
     reply_preview_message=None
@@ -3988,7 +4671,7 @@ def process_whatsapp_message(platform_gateway, whatsapp_customer_number , email,
             send_whatsapp_message(new_message, platform_gateway, whatsapp_customer_number , message, file_type if file_type in ["image", "video", "audio", "document"] else None, is_voice_clip)
     else:
         if new_message.message_template_type=="Send Template":
-            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment)
+            send_whatsapp_message_from_template(new_message, whatsapp_customer_number,platform_gateway,results,attachment,override_variables )
         else:
             if reply_preview_message:
                 send_whatsapp_message_twilio(new_message, platform_gateway,whatsapp_customer_number,reply_preview_message, None, 0)
@@ -4947,7 +5630,7 @@ def normalize_realtime_key(value):
         "new_topic": "set_topic",
 
         "remove_topic": "remove_topic",
-        "close_topic": "remove_topic",
+        "close_topic": "close_topic",
 
         "rename_topic": "rename_topic",
         "set_topic_status": "set_topic_status",
@@ -4993,6 +5676,7 @@ def get_body_message_information(realtime_type, lang="en"):
         "remove_group_member",
         "set_topic",
         "remove_topic",
+        "close_topic",
         "add_doctype",
         "remove_doctype",
         "create_sub_channel",
@@ -6124,7 +6808,7 @@ def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, mes
             )
 
         # Save Twilio SID
-       
+    
         new_message_doc.whatsapp_message_id = msg.sid
         new_message_doc.save(ignore_permissions=True)
         frappe.db.commit()
@@ -9562,7 +10246,7 @@ def get_topic_open_context(chat_topic, message_name=None):
         or getattr(channel, "room_type", None)
         or "Group"
     )
-    frappe.log_error( "can_write", can_write)
+   
     return {
         "can_write": can_write,
         "can_reopen": bool(is_member or is_active_contributor),
@@ -10052,10 +10736,14 @@ def create_chat_topic_with_message(
         frappe.throw(_("mention_doctypes is required"))
 
     # 1) create topic
+    first_ref = mention_doctypes_list[0]
+    subject = "{}:{}".format(first_ref.get("doctype", ""), first_ref.get("docname", ""))
+
     created = create_chat_topic(
         json.dumps(mention_doctypes_list),
         chat_channel,
-        last_active_sub_channel
+        last_active_sub_channel,
+        subject
     )
 
     chat_topic = None
@@ -10226,6 +10914,41 @@ def _normalize_topic_doc(topic_doc):
 
 
 @frappe.whitelist()
+def remove_message_topic(message_name):
+    if not message_name:
+        frappe.throw("Message name is required")
+
+    msg = frappe.get_doc("ClefinCode Chat Message", message_name)
+
+    current_user_email = frappe.session.user
+    is_admin = "System Manager" in frappe.get_roles(frappe.session.user)
+
+    sender_email = getattr(msg, "sender_email", None) or getattr(msg, "email", None)
+
+    if sender_email and sender_email != current_user_email and not is_admin:
+        frappe.throw("You can remove topic only from your own messages")
+
+    old_topic = getattr(msg, "chat_topic", None)
+
+    if hasattr(msg, "chat_topic"):
+        msg.chat_topic = None
+
+    if hasattr(msg, "chat_topic_subject"):
+        msg.chat_topic_subject = None
+
+    if hasattr(msg, "topic_color"):
+        msg.topic_color = None
+
+    msg.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {
+        "ok": True,
+        "message_name": message_name,
+        "old_chat_topic": old_topic
+    }
+
+@frappe.whitelist()
 def get_channel_topics(chat_channel, topic_status=None):
  
     if not chat_channel:
@@ -10253,4 +10976,3 @@ def get_channel_topics(chat_channel, topic_status=None):
         "count": len(topics),
         "topics": topics,
     }
-

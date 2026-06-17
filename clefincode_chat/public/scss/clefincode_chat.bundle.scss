@@ -1336,6 +1336,7 @@ $height: 582px;
 //END chat-topic-space
 
 .chat-space {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -3861,8 +3862,6 @@ html[data-theme-mode="dark"] .chat-plus-menu {
   left: 8px;
   right: 8px;
   bottom: 54px;
-  max-height: 320px;
-  overflow: auto;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -3966,6 +3965,105 @@ html[data-theme-mode="dark"] .chat-plus-menu {
   opacity: .65;
 }
 
+.topic-select-see-more {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2563eb;
+  background: transparent;
+  border: 1px dashed #d1d5db;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.topic-select-see-more:hover {
+  background: #f3f4f6;
+}
+
+/* ========= All Topics Full Page ========= */
+
+.all-topics-view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg, #fff);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.all-topics-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  flex-shrink: 0;
+}
+
+.all-topics-back {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-color, #374151);
+  font-size: 18px;
+}
+
+.all-topics-back:hover {
+  background: var(--control-bg, #f3f4f6);
+}
+
+.all-topics-search {
+  flex: 1;
+  min-height: 32px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 6px 9px;
+  font-size: 13px;
+  outline: none;
+  background: var(--control-bg, #fff);
+  color: var(--text-color, #374151);
+}
+
+.all-topics-search:focus {
+  border-color: #2563eb;
+}
+
+.all-topics-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.all-topics-loading {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  opacity: .65;
+}
+
+.all-topics-empty {
+  padding: 24px;
+  text-align: center;
+  font-size: 13px;
+  opacity: .65;
+}
+
 /* ========= Set Topic Info Message ========= */
 
 .info-message.set-topic {
@@ -3994,7 +4092,12 @@ html[data-theme-mode="dark"] .chat-plus-menu {
 
 @media (max-width: 480px) {
   .topic-select-panel {
-    max-height: 280px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .all-topics-list {
+    padding: 8px 8px;
   }
 }
 
@@ -4050,4 +4153,68 @@ html[data-theme-mode="dark"] .chat-plus-menu {
 
 .chat-topic-separator .topic-separator-open-btn:hover {
   background: rgba(255,255,255,.28);
+}
+
+/* ===== Read More for Long Messages ===== */
+.message-text-body {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.message-text-body.long-message-body {
+  max-height: 320px;
+  overflow: hidden;
+  position: relative;
+
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+}
+
+.chat-read-more-btn {
+  display: inline-block;
+  border: none;
+  background: none;
+  color: var(--primary, #0d6efd);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  margin: 2px 0 0;
+  line-height: 1.4;
+  user-select: none;
+  opacity: 0.85;
+}
+
+.chat-read-more-btn:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.message-text-body.long-message-expanded {
+  max-height: none !important;
+  overflow: visible !important;
+
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
+/* ===== Read More – Dark Mode Overrides ===== */
+[data-theme="dark"] .chat-read-more-btn {
+  color: #8ec5ff;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 1px 7px;
+  opacity: 1;
+}
+
+[data-theme="dark"] .chat-read-more-btn:hover {
+  color: #b7dcff;
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.22);
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .message-text-body.long-message-body {
+  -webkit-mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
 }

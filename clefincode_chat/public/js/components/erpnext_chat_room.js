@@ -536,6 +536,23 @@ export default class ChatRoom {
     }
     // ===============================================================
     else if (
+      $content.find(".close-topic").data("template") == "close_topic_template"
+    ) {
+      if (
+        $content.find(".sender-user").attr("data-user") ==
+        this.profile.user_email
+      ) {
+        $content.find(".sender-user").html("You");
+      } else {
+        const sender_name = await get_profile_full_name(
+          $content.find(".sender-user").attr("data-user")
+        );
+        $content.find(".sender-user").html(sender_name);
+      }
+      return $content.children("div").first().prop("outerHTML");
+    }
+    // ===============================================================
+    else if (
       $content.find(".remove-doctype").data("template") ==
       "remove_doctype_template"
     ) {

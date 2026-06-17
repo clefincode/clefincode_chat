@@ -508,6 +508,16 @@ const isSystemManager = roles.includes("System Manager");
     if (contact_element.hasClass("options-icon")) {
         return;
     }
+    const contacts = this.profile.contact_details || [];
+    const onlyEmail = contacts.length > 0 &&
+        contacts.every(c => c.contact_type === "Email");
+
+    if (onlyEmail) {
+        this.handle_mail_icon_click({
+            data: () => contacts[0].contact_info
+        });
+        return;
+    }
 
     // Handle based on contact type
     if (contact_element.length > 0) {
