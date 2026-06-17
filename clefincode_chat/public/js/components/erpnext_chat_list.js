@@ -577,7 +577,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
           },
         });
       }
-      
+      console.log(me);
 
       let profile = {
         is_admin: me.is_admin,
@@ -591,7 +591,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
         room_type: "Group",
         // contact: contact,
         is_first_message: 1,
-        platform: platform,
+        platform: me.platform || "Chat",
         is_website_support_group: 1
       };
       this.chat_space = new ChatSpace({
