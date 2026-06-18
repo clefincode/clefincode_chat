@@ -41,6 +41,7 @@ console.log("topic_button.js loaded");
 
 	function add_topic_chat_button(frm) {
 		if (!frm || !frm.page || !frm.doc) return;
+		if (frappe.session.user === "Administrator") return;
 
 		const container = get_action_buttons_container(frm);
 		if (!container.length) return;
