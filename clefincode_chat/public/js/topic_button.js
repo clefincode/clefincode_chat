@@ -41,6 +41,7 @@ console.log("topic_button.js loaded");
 
 	function add_topic_chat_button(frm) {
 		if (!frm || !frm.page || !frm.doc) return;
+		if (frappe.session.user === "Administrator") return;
 
 		const container = get_action_buttons_container(frm);
 		if (!container.length) return;
@@ -236,26 +237,34 @@ async function link_current_doc_to_room(frm, room) {
 	const mention_doctypes = JSON.stringify([current_ref]);
 
 	
-	if (!existing_topic) {
-		const createdTopic = await frappe.call({
-			method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic_with_message",
-			args: {
-				mention_doctypes,
-				chat_channel: room,
-				user_email: frappe.session.user,
-				user_name: frappe.session.user_fullname || frappe.session.user
-			}
-		});
+if (!existing_topic) {
+	const createdTopic = await frappe.call({
+		method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic_with_message",
+		args: {
+			mention_doctypes,
+			chat_channel: room,
+			user_email: frappe.session.user,
+			user_name: frappe.session.user_fullname || frappe.session.user
+		}
+	});
 
-		return {
-			room,
-			chat_topic:
-				createdTopic.message?.results?.[0]?.name ||
-				createdTopic.message?.name ||
-				null,
-			mode: "created"
-		};
+	const new_chat_topic =
+		createdTopic.message?.results?.[0]?.chat_topic ||
+		createdTopic.message?.results?.[0]?.name ||
+		createdTopic.message?.chat_topic ||
+		createdTopic.message?.name ||
+		null;
+
+	if (!new_chat_topic) {
+		throw new Error("Topic was created but chat_topic was not returned");
 	}
+
+	return {
+		room,
+		chat_topic: new_chat_topic,
+		mode: "created"
+	};
+}
 
 	const refs = get_topic_references(topicRow);
 	
@@ -597,10 +606,10 @@ function open_chat_room(profile, chat_status = null) {
 	}
 
 
-	if (window.CCCheckIfChatWindowOpen(profile.room, "room")) {
-		$(".expand-chat-window[data-id|='" + profile.room + "']").click();
-		return;
-	}
+if (!profile.chat_topic && window.CCCheckIfChatWindowOpen(profile.room, "room")) {
+	$(".expand-chat-window[data-id|='" + profile.room + "']").click();
+	return;
+}
 
 	const chat_window = new window.CCChatWindow({
 		profile: { room: profile.room }
