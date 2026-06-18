@@ -90,6 +90,8 @@ export default class ChatSpace {
     this.topic_read_only = Boolean(opts.topic_read_only);
     this.chat_topic_status = opts.chat_topic_status || null;
     this.reply_to_message_name = null;
+    this.topicInactiveNoticeDismissed = false;
+    this.$topicInactiveNotice = null;
     this.pendingReplies = [];
     this.searchResults = [];
     this.currentSearchIndex = -1;
@@ -2741,6 +2743,7 @@ async fetch_single_message(messageName) {
       await this.setup_messages(res.results || []);
       await this.setup_actions();
       await this.applySavedActiveTopic();
+      this.checkAndShowTopicInactiveNotice();
       this.render();
     } catch (error) {
       console.log(error);
@@ -5138,6 +5141,48 @@ isDedicatedTopicContext() {
   );
 }
 
+checkAndShowTopicInactiveNotice() {
+  if (this.isDedicatedTopicContext()) return;
+  if (this.topicInactiveNoticeDismissed) return;
+
+  const lastMsg = this.prevMessage;
+  if (!lastMsg) return;
+
+  const topicName = lastMsg.chat_topic || lastMsg.topic || null;
+  if (!topicName) return;
+
+  if (this.activeMessageTopic && String(this.activeMessageTopic) === String(topicName)) return;
+
+  const topicSubject = lastMsg.chat_topic_subject || lastMsg.topic_subject || topicName;
+  this.showTopicInactiveNotice(topicSubject);
+}
+
+showTopicInactiveNotice(topicSubject) {
+  const $notice = $(`
+  <div class="topic-inactive-notice" style="font-size:12px;opacity:0.6;text-align:center;padding:4px 8px;background:var(--bg-light,#f9f9f9);border-top:1px solid var(--border-color,#eee);">
+    ${__('No topic selected ')}
+  </div>
+`);
+  if (this.$chat_actions && this.$chat_actions.length) {
+    this.$chat_actions.before($notice);
+  } else {
+    this.$chat_space.append($notice);
+  }
+  this.$topicInactiveNotice = $notice;
+}
+
+hideTopicInactiveNotice() {
+  if (this.$topicInactiveNotice) {
+    this.$topicInactiveNotice.remove();
+    this.$topicInactiveNotice = null;
+  }
+}
+
+dismissTopicInactiveNotice() {
+  this.topicInactiveNoticeDismissed = true;
+  this.hideTopicInactiveNotice();
+}
+
 getTopicReferenceTargetForSend() {
   const isTopicWindow = Boolean(
     this.is_topic_window ||
@@ -7456,6 +7501,8 @@ if (!is_deleted && type !== "info-message") {
     if (editorText.length === 0 && !attachment && !hasImages) {
       return;
     }
+
+    this.dismissTopicInactiveNotice();
 
     let content = this.$chat_space.find(".type-message .ql-editor").html();
     (this.is_link = null),
