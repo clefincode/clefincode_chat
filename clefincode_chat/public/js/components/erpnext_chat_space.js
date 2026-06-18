@@ -8904,7 +8904,7 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   `
     : "";
 
-  if (isMyMessage) {
+  // if (isMyMessage) {
     items.push(`
       <div class="menu-item relink-topic-menu-row ${menuTopicName ? "" : "no-linked-topic"}" role="group">
         <button
@@ -8920,25 +8920,25 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
         ${openTopicButtonHtml}
       </div>
     `);
-  } else if (menuTopicName) {
-    items.push(`
-      <div class="menu-item relink-topic-menu-row" role="group">
-        <button
-          type="button"
-          class="relink-topic-menu-main topic-open-window-btn message-topic-open-action"
-          data-message-name="${safeMessageName}"
-          data-topic-name="${safeMenuTopicName}"
-          data-topic-subject="${safeMenuTopicSubject}"
-          data-topic-color="${safeMenuTopicColor}"
-          title="${__("Open topic in new window")}"
-          aria-label="${__("Open topic in new window")}"
-        >
-          ${icon("relink")}
-          <span class="menu-label">${__("Open Topic")}</span>
-        </button>
-      </div>
-    `);
-  }
+  // } else if (menuTopicName) {
+  //   items.push(`
+  //     <div class="menu-item relink-topic-menu-row" role="group">
+  //       <button
+  //         type="button"
+  //         class="relink-topic-menu-main topic-open-window-btn message-topic-open-action"
+  //         data-message-name="${safeMessageName}"
+  //         data-topic-name="${safeMenuTopicName}"
+  //         data-topic-subject="${safeMenuTopicSubject}"
+  //         data-topic-color="${safeMenuTopicColor}"
+  //         title="${__("Open topic in new window")}"
+  //         aria-label="${__("Open topic in new window")}"
+  //       >
+  //         ${icon("relink")}
+  //         <span class="menu-label">${__("Open Topic")}</span>
+  //       </button>
+  //     </div>
+  //   `);
+  // }
 
   if (isMyMessage && menuTopicName) {
     items.push(item({
