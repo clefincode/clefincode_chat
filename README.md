@@ -6,7 +6,7 @@
   <p align="center">Enhance business communication with multimedia messaging, ERPNext integration, and multi-platform customer messaging.
     <br />
     <br />
-    <a href="https://website.clefincode.com/clefincode_chat_docs"><strong>Documentation »</strong></a>
+    <a href="https://clefincode.com/clefincode_chat_docs"><strong>Documentation »</strong></a>
     ·
     <a href="https://github.com/clefincode/clefincode_chat/issues">Issues</a>
     ·
@@ -48,12 +48,12 @@ The app supports direct messages, group conversations, document-linked topics, g
 
 Full product documentation is available here:
 
-- [ClefinCode Chat Documentation](https://website.clefincode.com/clefincode_chat_docs)
-- [Web UI Features](https://website.clefincode.com/clefincode_chat_docs#web-ui-features)
-- [Twilio WhatsApp Integration](https://website.clefincode.com/clefincode_chat_docs#twilio-whatsapp-integration)
-- [Twilio Template](https://website.clefincode.com/clefincode_chat_docs#twilio-template)
-- [Meta WhatsApp Cloud API Setup](https://website.clefincode.com/clefincode_chat_docs#meta-whatsapp-cloud-api-setup)
-- [Edit and Add Contacts](https://website.clefincode.com/clefincode_chat_docs#edit-and-add-contacts)
+- [ClefinCode Chat Documentation](https://clefincode.com/clefincode_chat_docs)
+- [Web UI Features](https://clefincode.com/clefincode_chat_docs#web-ui-features)
+- [Twilio WhatsApp Integration](https://clefincode.com/clefincode_chat_docs#twilio-whatsapp-integration)
+- [Twilio Template](https://clefincode.com/clefincode_chat_docs#twilio-template)
+- [Meta WhatsApp Cloud API Setup](https://clefincode.com/clefincode_chat_docs#meta-whatsapp-cloud-api-setup)
+- [Edit and Add Contacts](https://clefincode.com/clefincode_chat_docs#edit-and-add-contacts)
 
 ## Features
 
@@ -280,7 +280,7 @@ Configure Instagram credentials and create a profile to route messages to the co
 
 Important tip: Enter the username without the `@` symbol, for example `example_username`.
 
-Documentation: [Instagram setup](https://website.clefincode.com/clefincode_chat_docs#instagram-setup-web)
+Documentation: [Instagram setup](https://clefincode.com/clefincode_chat_docs#instagram-setup-web)
 
 ### Telegram setup
 
@@ -295,7 +295,7 @@ Configure the Telegram bot token, confirm that the site webhook is set successfu
 - Make sure **Site Webhook Successfully Set** appears.
 - Create a ClefinCode Telegram Profile and assign users.
 
-Documentation: [Telegram setup](https://website.clefincode.com/clefincode_chat_docs#telegram-setup-web)
+Documentation: [Telegram setup](https://clefincode.com/clefincode_chat_docs#telegram-setup-web)
 
 ### Facebook Messenger setup
 
@@ -303,7 +303,7 @@ Configure Messenger integration and profiles to enable inbound and outbound mess
 
 Important tip: Ensure the Messenger Profile ID matches the correct Facebook Page ID and confirm required app permissions for messaging.
 
-Documentation: [Facebook Messenger setup](https://website.clefincode.com/clefincode_chat_docs#facebook-messenger-setup-web)
+Documentation: [Facebook Messenger setup](https://clefincode.com/clefincode_chat_docs#facebook-messenger-setup-web)
 
 ## Twilio Meta Connection Guide
 
@@ -330,7 +330,7 @@ Use this setup when WhatsApp will be connected through Twilio instead of direct 
 8. Add and verify the phone number by SMS or voice OTP.
 9. Refresh WhatsApp Senders in Twilio until the sender is ready.
 
-Documentation: [Twilio Meta Connection Guide](https://website.clefincode.com/clefincode_chat_docs#twilio-meta-connection-guide)
+Documentation: [Twilio Meta Connection Guide](https://clefincode.com/clefincode_chat_docs#twilio-meta-connection-guide)
 
 ## Twilio WhatsApp Integration
 
@@ -530,7 +530,7 @@ ClefinCode Chat Template is used to create and manage reusable WhatsApp template
 - Select the created template.
 - If linked to a DocType, choose the required document.
 
-Documentation: [ClefinCode Chat Template](https://website.clefincode.com/clefincode_chat_docs#clefincode-chat-template)
+Documentation: [ClefinCode Chat Template](https://clefincode.com/clefincode_chat_docs#clefincode-chat-template)
 
 ## Manage Contacts
 
@@ -569,7 +569,7 @@ For Support Profiles:
 - **Receiver Role** distributes messages randomly among users with that role.
 - To always include a specific user in all support chats, use **User – Receive By User**.
 
-Documentation: [ClefinCode WhatsApp Profile](https://website.clefincode.com/clefincode_chat_docs#clefincode-whatsapp-profile)
+Documentation: [ClefinCode WhatsApp Profile](https://clefincode.com/clefincode_chat_docs#clefincode-whatsapp-profile)
 
 ## 🖥 Web UI Features
 
