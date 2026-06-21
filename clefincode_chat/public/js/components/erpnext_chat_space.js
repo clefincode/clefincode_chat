@@ -1011,6 +1011,10 @@ async openCreateTopicFromPlusDialog() {
         });
 
         await this.loadChannelTopicsForSelect?.();
+        await this.openTopicChatWindow(topicName, topicSubject, {
+          topic_color: color
+        });
+        
       }
     }
   });
@@ -4395,7 +4399,7 @@ if (!me.chat_topic_space) {
     me.renderTopicSelectList(query);
   });
 
-  me.$chat_space.on("click", ".topic-select-main", async function (e) {
+me.$chat_space.on("click", ".topic-select-main", async function (e) {
   e.preventDefault();
   e.stopPropagation();
 
@@ -4418,8 +4422,11 @@ if (!me.chat_topic_space) {
 
   me.closeTopicSelectPopup?.();
   me.closeAllTopicsView?.();
-});
 
+  await me.openTopicChatWindow(topicName, topicSubject, {
+    topic_color: topicColor
+  });
+});
   me.$chat_space.on("click", ".topic-select-open", async function (e) {
     e.preventDefault();
     e.stopPropagation();
@@ -7765,16 +7772,26 @@ if (!is_deleted && type !== "info-message") {
 
           await this.send_add_document_message(mention_doctypes, chat_room);
         } else {
-          let results = await create_chat_topic(
+       let results = await create_chat_topic(
             mention_doctypes,
             chat_room,
             this.last_active_sub_channel
           );
 
+          const createdTopicName = results?.[0]?.chat_topic || results?.[0]?.name;
+          const createdTopicSubject = mention_doctypes?.[0]?.docname || createdTopicName;
+          const createdTopicColor = results?.[0]?.topic_color || null;
+
           await this.send_set_topic_message(
-            mention_doctypes[0].docname,
+            createdTopicSubject,
             chat_room
           );
+
+          if (createdTopicName) {
+            await this.openTopicChatWindow(createdTopicName, createdTopicSubject, {
+              topic_color: createdTopicColor
+            });
+          }
         }
         return;
       }
@@ -7959,6 +7976,11 @@ if (!is_deleted && type !== "info-message") {
           mention_doctypes[0].docname,
           chat_room
         );
+        if (createdTopicName) {
+        await this.openTopicChatWindow(createdTopicName, this.activeMessageTopicSubject, {
+          topic_color: createdTopicColor
+        });
+      }
 
         return;
       }
