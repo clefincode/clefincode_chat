@@ -90,6 +90,7 @@ export default class ChatSpace {
     this.topic_read_only = Boolean(opts.topic_read_only);
     this.chat_topic_status = opts.chat_topic_status || null;
     this.reply_to_message_name = null;
+    this.pendingReplyAfterReopen = null;
     this.topicInactiveNoticeDismissed = false;
     this.$topicInactiveNotice = null;
     this.pendingReplies = [];
@@ -182,7 +183,7 @@ export default class ChatSpace {
     this.initial_message_scroll_done = false;
 
     this.messageCache = new Map();
-    this.setup();
+    this.ready = this.setup();
   }
   async fetchTopicColorFromDB(topicName) {
   if (!topicName) return null;
@@ -554,7 +555,21 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
 
   if (check_if_chat_window_open(topicKey, "topic")) {
     $(`.expand-chat-window[data-id|='${topicKey}']`).click();
-    return;
+
+    let existingInstance = null;
+    $(".chat-window").each(function () {
+      const inst = $(this).find(".chat-space").data("chat-space-instance");
+      if (inst && String(inst.chat_topic_space || inst.chat_topic || "") === topicKey) {
+        existingInstance = inst;
+        return false;
+      }
+    });
+
+    if (existingInstance?.ready) {
+      await existingInstance.ready;
+    }
+
+    return existingInstance;
   }
 
   const chat_window = new ChatWindow({
@@ -563,7 +578,7 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
     }
   });
 
-  new ChatSpace({
+  const topicChatSpace = new ChatSpace({
     $wrapper: chat_window.$chat_window,
     profile: {
       ...this.profile,
@@ -596,6 +611,12 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
     chat_topic_status: ctx.topic_status,
     original_room_type: ctx.room_type || this.profile.room_type
   });
+
+  if (topicChatSpace.ready) {
+    await topicChatSpace.ready;
+  }
+
+  return topicChatSpace;
 }
 toggleTopicMessages(topicName) {
   if (!topicName) return;
@@ -999,21 +1020,32 @@ async openCreateTopicFromPlusDialog() {
           latestDate: ""
         });
 
-        this.selectMessageTopic(topicName, topicSubject, { scroll: false, color, topic_color: color });
-        await this.saveUserActiveChatTopic(topicName);
-        setTimeout(() => {
-          this.updatePlusTopicButton();
-        }, 50);
+        // this.selectMessageTopic(topicName, topicSubject, { scroll: false, color, topic_color: color });
+        // await this.saveUserActiveChatTopic(topicName);
+        // setTimeout(() => {
+        //   this.updatePlusTopicButton();
+        // }, 50);
 
-        frappe.show_alert({
-          message: __("Topic selected for new messages"),
-          indicator: "green"
-        });
+        // frappe.show_alert({
+        //   message: __("Topic selected for new messages"),
+        //   indicator: "green"
+        // });
+  
 
-        await this.loadChannelTopicsForSelect?.();
+       await this.loadChannelTopicsForSelect?.();
         await this.openTopicChatWindow(topicName, topicSubject, {
           topic_color: color
         });
+          this.activeMessageTopic = null;
+        this.activeMessageTopicSubject = null;
+        this.activeMessageTopicColor = null;
+        this.chat_topic = null;        
+        
+        this.clearMessageTopic(false);
+        this.updateActiveTopicButton(null);
+        this.updatePlusTopicButton();
+        
+        await this.clearUserActiveChatTopic(topicName);
         
       }
     }
@@ -2090,6 +2122,54 @@ if (original.is_deleted) {
     sender: original.sender || "",
     text
   };
+}
+async prepareReplyToMessage(messageName) {
+  if (!messageName) return;
+
+  if (this.ready) {
+    await this.ready;
+  }
+
+  this.reply_to_message_name = messageName;
+
+  const snippet = await this.makeReplySnippet(messageName, 120);
+  const text = snippet?.text || "[Attachment]";
+
+  let $host = this.$chat_space.children(".reply-preview-host");
+
+  if (!$host.length) {
+    $host = $('<div class="reply-preview-host"></div>');
+
+    if (this.$chat_actions && this.$chat_actions.length) {
+      this.$chat_actions.before($host);
+    } else {
+      this.$chat_space.append($host);
+    }
+  }
+
+  $host.html(`
+    <div class="reply-preview">
+      <span class="reply-preview__icon">↩</span>
+      <span class="reply-preview__text"></span>
+      <button type="button" class="reply-preview__close cancel-reply" aria-label="Cancel">×</button>
+    </div>
+  `);
+
+  $host.find(".reply-preview__text").text(text);
+
+  setTimeout(() => {
+    if (this.type_message_input?.quill) {
+      this.type_message_input.quill.focus();
+      this.type_message_input.quill.setSelection(
+        this.type_message_input.quill.getLength(),
+        0
+      );
+      return;
+    }
+
+    const $editor = this.$chat_actions?.find(".type-message .ql-editor");
+    if ($editor?.length) $editor.trigger("focus");
+  }, 0);
 }
 async jumpToMessage(messageName, maxTries = 50) {
 
@@ -3560,6 +3640,15 @@ this.$chat_space.off("click.reopenTopic", ".reopen-topic-btn")
       await me.setup_actions();
       me.setup_events();
 
+      if (me.pendingReplyAfterReopen) {
+        const pendingMessageName = me.pendingReplyAfterReopen;
+        me.pendingReplyAfterReopen = null;
+
+        setTimeout(async () => {
+          await me.prepareReplyToMessage(pendingMessageName);
+        }, 150);
+      }
+
       frappe.show_alert({
         message: __("Topic reopened"),
         indicator: "green"
@@ -3767,40 +3856,89 @@ this.$wrapper.off("click.chatMenuActions", ".reply-action")
     me.closeMessageActionMenu();
 
     const messageName = $(this).data("message-name");
-    me.reply_to_message_name = messageName;
+    if (!messageName) return;
 
-    const snippet = await me.makeReplySnippet(messageName, 120);
-    const text = snippet?.text || "[Attachment]";
+    const isAlreadyInTopic =
+      me.is_topic_window ||
+      me.profile?.room_type === "Topic" ||
+      me.chat_topic_space;
 
-    let $host = me.$chat_space.children(".reply-preview-host");
-    if (!$host.length) {
-      $host = $('<div class="reply-preview-host"></div>');
-      me.$chat_actions.before($host);
+    let cached = me.messageCache.get(messageName) || {};
+
+    if (!cached.chat_topic && !cached.topic && !cached.topic_name) {
+      try {
+        const msg = await me.fetch_single_message(messageName);
+
+        if (msg) {
+          cached = {
+            ...cached,
+            ...msg,
+            chat_topic: msg.chat_topic || msg.topic || msg.topic_name || cached.chat_topic || null,
+            chat_topic_subject:
+              msg.chat_topic_subject ||
+              msg.topic_subject ||
+              msg.chat_topic_title ||
+              msg.subject ||
+              cached.chat_topic_subject ||
+              null,
+            topic_color:
+              msg.topic_color ||
+              msg.chat_topic_color ||
+              cached.topic_color ||
+              null
+          };
+
+          me.messageCache.set(messageName, cached);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch message before reply", err);
+      }
     }
 
-    $host.html(`
-      <div class="reply-preview">
-        <span class="reply-preview__icon">↩</span>
-        <span class="reply-preview__text"></span>
-        <button type="button" class="reply-preview__close cancel-reply" aria-label="Cancel">×</button>
-      </div>
-    `);
+    const linkedTopic = await me.getLinkedTopicInfo(cached);
 
-    $host.find(".reply-preview__text").text(text);
+    if (linkedTopic?.name && !isAlreadyInTopic) {
+      const topicSpace = await me.openTopicChatWindow(
+        linkedTopic.name,
+        linkedTopic.subject || linkedTopic.name,
+        {
+          topic_color:
+            linkedTopic.topic_color ||
+            linkedTopic.color ||
+            cached.topic_color ||
+            null
+        }
+      );
 
-    setTimeout(() => {
-      if (me.type_message_input?.quill) {
-        me.type_message_input.quill.focus();
-        me.type_message_input.quill.setSelection(
-          me.type_message_input.quill.getLength(),
-          0
-        );
+      if (topicSpace) {
+        const isClosed =
+          String(
+            topicSpace.chat_topic_status ||
+            topicSpace.profile?.chat_topic_status ||
+            ""
+          ).toLowerCase() === "closed";
+
+        const isReadOnly =
+          topicSpace.topic_read_only === true ||
+          topicSpace.topic_write_mode === false;
+
+        if (isClosed || isReadOnly) {
+          topicSpace.pendingReplyAfterReopen = messageName;
+
+          frappe.show_alert({
+            message: __("Reopen the topic to reply"),
+            indicator: "orange"
+          });
+
+          return;
+        }
+
+        await topicSpace.prepareReplyToMessage(messageName);
         return;
       }
+    }
 
-      const $editor = me.$chat_actions?.find(".type-message .ql-editor");
-      if ($editor?.length) $editor.trigger("focus");
-    }, 0);
+    await me.prepareReplyToMessage(messageName);
   });
 
 this.$wrapper.off("click.chatMenuActions", ".react-action")
@@ -4370,6 +4508,7 @@ if (!me.chat_topic_space) {
     e.stopPropagation();
     me.closePlusMenu();
     await me.openCreateTopicFromPlusDialog();
+
   });
 
   me.$chat_space.on("click", ".chat-read-more-btn", function (e) {
@@ -4412,13 +4551,13 @@ me.$chat_space.on("click", ".topic-select-main", async function (e) {
 
   topicColor = await me.getTopicColorFromSource(topicName, null, { forceRefresh: true });
 
-  me.selectMessageTopic(topicName, topicSubject, {
-    scroll: false,
-    color: topicColor,
-    topic_color: topicColor
-  });
+  // me.selectMessageTopic(topicName, topicSubject, {
+  //   scroll: false,
+  //   color: topicColor,
+  //   topic_color: topicColor
+  // });
 
-  await me.saveUserActiveChatTopic(topicName);
+  // await me.saveUserActiveChatTopic(topicName);
 
   me.closeTopicSelectPopup?.();
   me.closeAllTopicsView?.();
