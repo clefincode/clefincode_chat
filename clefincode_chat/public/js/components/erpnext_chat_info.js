@@ -737,6 +737,16 @@ save_all_contacts(dialog) {
               ${frappe.utils.escape_html(topicStatus)}
             </span>
           </div>
+
+          <div class="mt-3" style="display:flex; justify-content:center;">
+            <button
+              type="button"
+              class="btn btn-sm btn-danger close-topic"
+              ${topicStatus === "Closed" ? "disabled" : ""}
+            >
+              ${topicStatus === "Closed" ? __("Closed") : __("Close Topic")}
+            </button>
+          </div>
         </div>
       `;
 
@@ -839,6 +849,106 @@ save_all_contacts(dialog) {
 
     });
 
+    // Close topic
+    this.$chat_info.find(".close-topic").on("click", async () => {
+      const topicName =
+        this.chat_space.chat_topic_space ||
+        this.chat_space.chat_topic ||
+        this.chat_space.profile?.chat_topic;
+
+      if (!topicName) {
+        frappe.msgprint({
+          title: __("Error"),
+          message: __("No topic found."),
+          indicator: "red"
+        });
+        return;
+      }
+
+      try {
+        await frappe.call({
+          method: "clefincode_chat.api.api_1_3_4.api.update_chat_topic_info",
+          args: {
+            chat_topic: topicName,
+            topic_status: "Closed"
+          }
+        });
+
+        this.applyUpdatedTopicInfo(
+          topicName,
+          this.chat_space.chat_topic_subject ||
+            this.chat_space.chat_topic_space_subject ||
+            this.chat_space.alternative_subject ||
+            topicName,
+          this.chat_space.activeMessageTopicColor ||
+            this.chat_space.topicColorMap?.get(topicName) ||
+            this.chat_space.getTopicColor?.(topicName),
+          this.chat_space.is_private ??
+            this.chat_space.profile?.is_private ??
+            0,
+          "Closed"
+        );
+
+        this.chat_space.topic_status = "Closed";
+        this.chat_space.chat_topic_status = "Closed";
+
+        if (this.chat_space.profile) {
+          this.chat_space.profile.topic_status = "Closed";
+        }
+
+        if (this.chat_space.topicDetailsCache?.has(topicName)) {
+          const cached = this.chat_space.topicDetailsCache.get(topicName);
+          if (cached) {
+            cached.topic_status = "Closed";
+            cached.status = "Closed";
+          }
+        }
+
+        if (this.chat_space.messageCache) {
+          this.chat_space.messageCache.forEach((cached, key) => {
+            if (
+              cached.chat_topic === topicName ||
+              cached.topic === topicName ||
+              cached.chat_topic_space === topicName
+            ) {
+              cached.topic_status = "Closed";
+              cached.chat_topic_status = "Closed";
+              cached.status = "Closed";
+            }
+          });
+        }
+
+        const $topicElements = this.chat_space.$chat_space_container
+          ? this.chat_space.$chat_space_container.find(
+              `[data-topic-name="${topicName}"]`
+            )
+          : this.chat_space.$chat_space
+            ? this.chat_space.$chat_space.find(
+                `[data-topic-name="${topicName}"]`
+              )
+            : $();
+
+        $topicElements.attr("data-topic-status", "Closed");
+
+        this.chat_space.refreshTopicNavBar?.();
+        this.chat_space.buildTopicMetaMap?.();
+        this.chat_space.applyTopicVisibility?.();
+
+        this.$chat_info.find(".close-topic").prop("disabled", true).text(__("Closed"));
+         $(".close-chat-window").click();       
+        frappe.show_alert({
+          message: __("Topic closed"),
+          indicator: "green"
+        });
+      } catch (e) {
+        console.error("Failed to close topic", e);
+        frappe.msgprint({
+          title: __("Error"),
+          message: __("Failed to close topic."),
+          indicator: "red"
+        });
+      }
+    });
 
     this.$chat_info.find(".back-to-chat-info").on("click", function () {
       me.chat_space.$wrapper.find(".chat-info").show();
