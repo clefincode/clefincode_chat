@@ -577,6 +577,9 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
       topic: topicKey
     }
   });
+  chat_window.$chat_window
+  .attr("data-topic", topicKey)
+  .data("topic", topicKey);
 
   const topicChatSpace = new ChatSpace({
     $wrapper: chat_window.$chat_window,
@@ -2208,6 +2211,8 @@ async jumpToMessage(messageName, maxTries = 50) {
       this.applyTopicVisibility();
     }
 
+    this.checkAndShowTopicInactiveNotice?.();
+
     $msg = this.$chat_space.find(`#msg-${messageName}`);
     
  
@@ -2827,8 +2832,8 @@ async fetch_single_message(messageName) {
       await this.setup_messages(res.results || []);
       await this.setup_actions();
       await this.applySavedActiveTopic();
-      this.checkAndShowTopicInactiveNotice();
       this.render();
+      this.checkAndShowTopicInactiveNotice?.();
     } catch (error) {
       console.log(error);
     }
@@ -5288,32 +5293,96 @@ isDedicatedTopicContext() {
 }
 
 checkAndShowTopicInactiveNotice() {
-  if (this.isDedicatedTopicContext()) return;
-  if (this.topicInactiveNoticeDismissed) return;
+  if (
+    this.isDedicatedTopicContext?.() ||
+    this.is_topic_window ||
+    this.profile?.room_type === "Topic" ||
+    this.chat_topic_space
+  ) {
+    this.hideTopicInactiveNotice?.();
+    return;
+  }
 
-  const lastMsg = this.prevMessage;
-  if (!lastMsg) return;
+  if (!this.$chat_space_container || !this.$chat_space_container.length) {
+    return;
+  }
 
-  const topicName = lastMsg.chat_topic || lastMsg.topic || null;
-  if (!topicName) return;
+  const $lastMsg = this.$chat_space_container
+    .find("[data-message-name]")
+    .filter((_, el) => {
+      const $el = $(el);
+      const messageName = $el.attr("data-message-name") || $el.data("message-name");
+      const cached = this.messageCache?.get(messageName) || {};
 
-  if (this.activeMessageTopic && String(this.activeMessageTopic) === String(topicName)) return;
+      if (Number(cached.is_deleted || 0) === 1) return false;
 
-  const topicSubject = lastMsg.chat_topic_subject || lastMsg.topic_subject || topicName;
+      const messageType = String(cached.message_type || "").toLowerCase();
+      if (messageType === "information") return false;
+
+      const templateType = String(cached.message_template_type || "").toLowerCase();
+      if (
+        templateType === "set topic" ||
+        templateType === "set-topic" ||
+        templateType === "settopic" ||
+        templateType === "remove topic" ||
+        templateType === "remove-topic" ||
+        templateType === "removetopic" ||
+        templateType === "close topic" ||
+        templateType === "close-topic" ||
+        templateType === "closetopic"
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .last();
+
+  if (!$lastMsg.length) {
+    this.hideTopicInactiveNotice?.();
+    return;
+  }
+
+  const messageName = $lastMsg.attr("data-message-name") || $lastMsg.data("message-name");
+  const cached = this.messageCache?.get(messageName) || {};
+
+  const topicName =
+    $lastMsg.attr("data-topic-name") ||
+    cached.chat_topic ||
+    cached.topic ||
+    cached.topic_name ||
+    null;
+
+  if (!topicName) {
+    this.hideTopicInactiveNotice?.();
+    return;
+  }
+
+  const topicSubject =
+    $lastMsg.attr("data-topic-subject") ||
+    cached.chat_topic_subject ||
+    cached.topic_subject ||
+    cached.chat_topic_title ||
+    topicName;
+
   this.showTopicInactiveNotice(topicSubject);
 }
 
 showTopicInactiveNotice(topicSubject) {
+  this.hideTopicInactiveNotice?.();
+
   const $notice = $(`
-  <div class="topic-inactive-notice" style="font-size:12px;opacity:0.6;text-align:center;padding:4px 8px;background:var(--bg-light,#f9f9f9);border-top:1px solid var(--border-color,#eee);">
-    ${__('No topic selected ')}
-  </div>
-`);
+    <div class="topic-inactive-notice" style="font-size:12px;opacity:0.6;text-align:center;padding:4px 8px;background:var(--bg-light,#f9f9f9);border-top:1px solid var(--border-color,#eee);">
+      ${__("No topic selected")}
+    </div>
+  `);
+
   if (this.$chat_actions && this.$chat_actions.length) {
     this.$chat_actions.before($notice);
   } else {
     this.$chat_space.append($notice);
   }
+
   this.$topicInactiveNotice = $notice;
 }
 
@@ -8917,6 +8986,7 @@ async fetchTemplateSuggestions(textValue) {
         this.fetchAndRenderReactions(res.message_name);
        }
     this.prevMessage = res;
+    this.checkAndShowTopicInactiveNotice?.();
   }
 
 openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
@@ -9805,6 +9875,7 @@ async rebuildMessage(messageName) {
           me.buildTopicMetaMap();
           me.applyTopicVisibility();
         }
+        me.checkAndShowTopicInactiveNotice?.();
         me.resolvePendingReplies();
         me.hydrateReactionsForMessages(res.results);
         if (res.results.length != 0) {

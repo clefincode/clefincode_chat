@@ -166,12 +166,14 @@ function set_notification_count(type) {
 
 function check_if_chat_window_open(element, data) {
   let open_chat_windows = $(".chat-window");
+  console.log(open_chat_windows);
   let open_window_exist = false;
   if (open_chat_windows.length > 0) {
     open_chat_windows.each(function () {
       let open_chat_window = $(this).data(data);
       if (element == open_chat_window) {
         open_window_exist = true;
+         return false;
       }
     });
   }
