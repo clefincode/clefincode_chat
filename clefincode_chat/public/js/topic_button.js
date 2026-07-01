@@ -294,6 +294,33 @@ if (!existing_topic) {
 			};
 		}
 
+		if (action === "select") {
+				const selectedTopic = await pick_topic_for_room(room);
+				if (!selectedTopic) {
+					return {
+						room,
+						chat_topic: existing_topic,
+						mode: "cancelled"
+					};
+				}
+				const selectedTopicName = selectedTopic.chat_topic || selectedTopic.name;
+				await frappe.call({
+					method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype_with_message",
+					args: {
+						mention_doctypes,
+						chat_topic: selectedTopicName,
+						chat_channel: room,
+						user_email: frappe.session.user,
+						user_name: frappe.session.user_fullname || frappe.session.user
+					}
+				});
+				return {
+					room,
+					chat_topic: selectedTopicName,
+					mode: "attached"
+				};
+			}
+
 		if (action === "append") {
 				await frappe.call({
 					method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype_with_message",
@@ -435,45 +462,47 @@ function ask_topic_conflict_action(existing_refs) {
 			.join("<br>");
 
 		const d = new frappe.ui.Dialog({
-			title: __("Chat already linked"),
-			fields: [
-				{
-					fieldtype: "HTML",
-					fieldname: "message",
-					options: `
-						<div style="padding: 8px 0;">
-							<div style="margin-bottom: 8px;">
-								${__("This chat already has another topic/document:")}
-							</div>
-							<div class="text-muted">${refs_text}</div>
-							<div style="margin-top: 12px;">
-								${__("Choose what you want to do")}
-							</div>
-						</div>
-					`
-				}
-			],
-			primary_action_label: __("Add Current Topic"),
-			primary_action() {
-				finish("append");
-				d.hide();
-			}
-		});
+						title: __("Chat already linked"),
+						fields: [
+							{
+								fieldtype: "HTML",
+								fieldname: "message",
+								options: `
+									<div style="padding: 8px 0;">
+										<div style="margin-bottom: 8px;">
+											${__("This chat already has another topic/document:")}
+										</div>
+										<div class="text-muted">${refs_text}</div>
+										<div style="margin-top: 12px;">
+											${__("Choose what you want to do")}
+										</div>
+									</div>
+								`
+							}
+						],
+						primary_action_label: __("Select Topic"),
+						primary_action() {
+							finish("select");
+							d.hide();
+						}
+					});
 
 		d.show();
 
-		const $replace_btn = $(`
-			<button class="btn btn-secondary btn-sm" style="margin-right: 8px;">
-				${__("Close and Start New")}
-			</button>
-		`);
+const $replace_btn = $(`
+	<button class="btn btn-secondary btn-sm" style="margin-right: 8px;">
+		${__("Start New")}
+	</button>
+`);
 
-	
-		const $cancel_btn = $(`
-			<button class="btn btn-default btn-sm">
-				${__("Cancel")}
-			</button>
-		`);
+const $cancel_btn = $(`
+	<button class="btn btn-default btn-sm">
+		${__("Cancel")}
+	</button>
+`);
+
+		d.show();
+
 
 		$replace_btn.on("click", () => {
 			finish("replace");
@@ -592,6 +621,25 @@ function ensure_chat_widget_open() {
 
 	return true;
 }
+async function pick_topic_for_room(room) {
+  if (!window.CCOpenChannelTopicPicker) {
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("Topic picker is not available."),
+      indicator: "red"
+    });
+    return null;
+  }
+
+  return await window.CCOpenChannelTopicPicker({
+    chatChannel: room,
+    topicStatus: "Open",
+    title: __("Select Topic"),
+    selectLabel: __("Select"),
+    showAddNew: false
+  });
+}
+
 function open_chat_room(profile, chat_status = null) {
 	const app = window.erpnext_chat_app;
 

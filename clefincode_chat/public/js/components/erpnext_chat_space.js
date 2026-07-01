@@ -755,6 +755,39 @@ formatTopicCreatedAt(topic = {}) {
     return String(rawDate);
   }
 }
+async openChannelTopicPicker(opts = {}) {
+  const { chatChannel, topicStatus, title, selectLabel, showAddNew, addNewConfig } = opts;
+
+  const getTopicColor = (topic) => {
+    const topicName = topic.name || topic.chat_topic || "";
+    return topic.topic_color || topic.color || this.topicColorMap.get(topicName) || this.getTopicColor(topicName);
+  };
+
+  let addNewHandler = null;
+  if (showAddNew) {
+    addNewHandler = async ({ dialog, renderTopics }) => {
+      await this.promptCreateNewTopic({
+        chatChannel,
+        ...(addNewConfig || {}),
+        parentDialog: dialog,
+        afterCreate: async () => {
+          await renderTopics();
+        }
+      });
+    };
+  }
+
+  return await window.CCOpenChannelTopicPicker({
+    chatChannel,
+    topicStatus: topicStatus || "All",
+    title: title || __("Select Topic"),
+    selectLabel: selectLabel || __("Select"),
+    showAddNew,
+    addNewHandler,
+    getTopicColor
+  });
+}
+
 async openRelinkTopicsDialog(messageNames = []) {
   const chatChannel = this.getCurrentChatChannel();
 
@@ -767,215 +800,55 @@ async openRelinkTopicsDialog(messageNames = []) {
     return;
   }
 
-  const d = new frappe.ui.Dialog({
-    title: __("ReLink Topic"),
-    size: "large",
-    fields: [
-      {
-        fieldtype: "HTML",
-        fieldname: "topics_html"
-      }
-    ],
-    primary_action_label: __("Close"),
-    primary_action() {
-      d.hide();
-    }
-  });
   this.exitSelectionMode();
   this.closeMessageActionMenu();
   this.closeEmojiMenu();
   this.hideAllReactButtons();
-  d.show();
 
-  const renderTopics = async () => {
-    d.fields_dict.topics_html.$wrapper.html(`
-      <div style="padding:16px; text-align:center; opacity:.7;">
-        ${__("Loading topics...")}
-      </div>
-    `);
-
-    try {
-      const r = await frappe.call({
-        method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
-        args: {
-          chat_channel: chatChannel,
-          topic_status: "All"
-        }
-      });
-
-      const topics = r.message?.topics || [];
-      const rows = topics.length
-  ? topics.map((topic) => {
-      const refs = topic.references || [];
-
-      const topicName = topic.name || topic.chat_topic || "";
-      const subject =
-        (topic.subject || topic.chat_topic_subject || "").trim();
-
-      const displayTitle = subject || topicName;
-      const safeDisplayTitle = frappe.utils.escape_html(displayTitle || "");
-      const safeTopicName = frappe.utils.escape_html(topicName || "");
-
-      const topicColor =
-        topic.topic_color ||
-        topic.color ||
-        this.topicColorMap.get(topicName) ||
-        this.getTopicColor(topicName);
-
-      if (topicName && topicColor) {
-        this.topicColorMap.set(topicName, topicColor);
-      }
-
-      const createdAt = this.formatTopicCreatedAt(topic);
-
-      const topicNameHtml =
-        subject && topicName && subject !== topicName
-          ? `<div style="font-size:12px; opacity:.65; margin-top:2px; word-break:break-all;">
-               ${safeTopicName}
-             </div>`
-          : "";
-
-      const refsHtml = refs.length
-        ? refs.map(ref => `
-            <div style="font-size:12px; opacity:.75; margin-top:2px;">
-              ${frappe.utils.escape_html(ref.doctype || "")} / ${frappe.utils.escape_html(ref.docname || "")}
-            </div>
-          `).join("")
-        : `<div style="font-size:12px; opacity:.6; margin-top:2px;">${__("No references")}</div>`;
-
-      const colorDotHtml = topicColor
-        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${frappe.utils.escape_html(topicColor)};margin-right:6px;"></span>`
-        : "";
-
-      return `
-        <div class="relink-topic-row" style="
-          display:flex;
-          align-items:flex-start;
-          justify-content:space-between;
-          gap:12px;
-          padding:12px 0;
-          border-bottom:1px solid #eee;
-        ">
-          <div style="min-width:0; flex:1;">
-            <div style="font-weight:600;">
-              ${colorDotHtml}${safeDisplayTitle}
-            </div>
-            ${topicNameHtml}
-
-            <div style="font-size:12px; opacity:.7; margin-top:2px;">
-              ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
-              ${topic.is_private ? " • " + __("Private") : ""}
-            </div>
-
-            <div style="font-size:12px; opacity:.7; margin-top:2px;">
-              ${__("Created At")}: ${frappe.utils.escape_html(createdAt)}
-            </div>
-
-            <div style="margin-top:6px;">
-              <div style="font-size:12px; opacity:.65; margin-bottom:2px;">
-                ${__("References")}:
-              </div>
-              ${refsHtml}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            class="btn btn-sm btn-primary pick-relink-topic"
-            data-topic-name="${safeTopicName}"
-            data-topic-subject="${safeDisplayTitle}"
-            data-topic-color="${frappe.utils.escape_html(topicColor || "")}">
-            ${__("Select")}
-          </button>
-        </div>
-      `;
-    }).join("") 
-        : `
-          <div style="padding:16px; text-align:center; opacity:.7;">
-            ${__("No topics found for this channel.")}
-          </div>
-        `;
-
-      d.fields_dict.topics_html.$wrapper.html(`
-        <div class="relink-topic-dialog">
-          <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
-            <button type="button" class="btn btn-sm btn-secondary add-new-topic-btn">
-              ${__("Add New Topic")}
-            </button>
-          </div>
-          <div class="relink-topic-list">
-            ${rows}
-          </div>
-        </div>
-      `);
-
-    } catch (e) {
-      console.error("Failed to load channel topics", e);
-      d.fields_dict.topics_html.$wrapper.html(`
-        <div style="padding:16px; text-align:center; color:#d9534f;">
-          ${__("Failed to load topics.")}
-        </div>
-      `);
-    }
-  };
-
-  await renderTopics();
-
-  d.$wrapper.off("click", ".add-new-topic-btn").on("click", ".add-new-topic-btn", async (e) => {
-    e.stopPropagation();
-    await this.promptCreateNewTopic({
-      chatChannel,
-      messageNames,
-      parentDialog: d,
-      afterCreate: async () => {
-        await renderTopics();
-      }
-    });
+  const selectedTopic = await this.openChannelTopicPicker({
+    chatChannel,
+    topicStatus: "All",
+    title: __("ReLink Topic"),
+    selectLabel: __("Select"),
+    showAddNew: true,
+    addNewConfig: { messageNames }
   });
 
-  d.$wrapper.off("click", ".pick-relink-topic").on("click", ".pick-relink-topic", async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  if (!selectedTopic) return;
 
-    const $btn = $(e.currentTarget);
-    const topicName = $btn.attr("data-topic-name");
-    const topicSubject = $btn.attr("data-topic-subject") || topicName;
-    const topicColor =
-      $btn.attr("data-topic-color") ||
-      this.topicColorMap.get(topicName) ||
-      this.getTopicColor(topicName);
+  const topicName = selectedTopic.name || selectedTopic.chat_topic;
+  const topicSubject = selectedTopic.subject || selectedTopic.chat_topic_subject || topicName;
+  const topicColor = selectedTopic.topic_color || null;
 
-    if (!topicName) return;
+  if (!topicName) return;
 
-    await frappe.call({
-      method: "clefincode_chat.api.api_1_3_4.api.relink_messages_to_topic",
-      args: {
-        topic_name: topicName,
-        message_names: JSON.stringify(messageNames)
-      }
-    });
-
-    if (topicColor) {
-      this.topicColorMap.set(topicName, topicColor);
+  await frappe.call({
+    method: "clefincode_chat.api.api_1_3_4.api.relink_messages_to_topic",
+    args: {
+      topic_name: topicName,
+      message_names: JSON.stringify(messageNames)
     }
-
-    this.applyRelinkedTopicToMessages(
-      messageNames,
-      topicName,
-      topicSubject,
-      topicColor
-    );
-
-    this.normalizeTopicSeparators?.();
-
-    frappe.show_alert({
-      message: __("Selected topic: {0}", [topicSubject || topicName]),
-      indicator: "green"
-    });
-
-    d.hide();
-    this.exitSelectionMode();
   });
+
+  if (topicColor) {
+    this.topicColorMap.set(topicName, topicColor);
+  }
+
+  this.applyRelinkedTopicToMessages(
+    messageNames,
+    topicName,
+    topicSubject,
+    topicColor
+  );
+
+  this.normalizeTopicSeparators?.();
+
+  frappe.show_alert({
+    message: __("Selected topic: {0}", [topicSubject || topicName]),
+    indicator: "green"
+  });
+
+  this.exitSelectionMode();
 }
 async openCreateTopicFromPlusDialog() {
   const chatChannel = this.getCurrentChatChannel();
@@ -10698,3 +10571,136 @@ function show_doctype_selector(doctype, callback) {
 
   return `${getDeskBasePath()}/${routeDoctype}/${encodeURIComponent(docname)}`;
 }
+
+window.CCOpenChannelTopicPicker = async function ({ chatChannel, topicStatus = "All", title = __("Select Topic"), selectLabel = __("Select"), showAddNew = false, addNewHandler = null, getTopicColor = null } = {}) {
+  if (!chatChannel) {
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("No chat channel provided."),
+      indicator: "red"
+    });
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const d = new frappe.ui.Dialog({
+      title,
+      size: "large",
+      fields: [{ fieldtype: "HTML", fieldname: "topics_html" }],
+      primary_action_label: __("Close"),
+      primary_action() { d.hide(); }
+    });
+
+    d.$wrapper.on("hidden.bs.modal", () => {
+      if (settled) return;
+      settled = true;
+      resolve(null);
+    });
+
+    d.show();
+
+    const renderTopics = async () => {
+      d.fields_dict.topics_html.$wrapper.html(`<div style="padding:16px; text-align:center; opacity:.7;">${__("Loading topics...")}</div>`);
+
+      try {
+        const r = await frappe.call({
+          method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
+          args: { chat_channel: chatChannel, topic_status: topicStatus }
+        });
+
+        const topics = r.message?.topics || [];
+        const rows = topics.length
+          ? topics.map((topic) => {
+              const refs = topic.references || [];
+              const topicName = topic.name || topic.chat_topic || "";
+              const subject = (topic.subject || topic.chat_topic_subject || "").trim();
+              const displayTitle = subject || topicName;
+              const safeDisplayTitle = frappe.utils.escape_html(displayTitle || "");
+              const safeTopicName = frappe.utils.escape_html(topicName || "");
+
+              const topicColor = typeof getTopicColor === "function" ? getTopicColor(topic) : (topic.topic_color || topic.color || null);
+
+              const rawDate = topic.creation || topic.date || topic.created_on || topic.creation_date || topic.created_date || null;
+              let createdAt = "—";
+              if (rawDate) {
+                try {
+                  const tz = (frappe.boot?.time_zone?.system || frappe.boot?.time_zone?.user || "UTC");
+                  createdAt = get_date_from_now(rawDate, "space", tz) + " " + get_time(rawDate, tz);
+                } catch (e) { createdAt = String(rawDate); }
+              }
+
+              const topicNameHtml = subject && topicName && subject !== topicName
+                ? `<div style="font-size:12px; opacity:.65; margin-top:2px; word-break:break-all;">${safeTopicName}</div>`
+                : "";
+
+              const refsHtml = refs.length
+                ? refs.map(ref => `<div style="font-size:12px; opacity:.75; margin-top:2px;">${frappe.utils.escape_html(ref.doctype || "")} / ${frappe.utils.escape_html(ref.docname || "")}</div>`).join("")
+                : `<div style="font-size:12px; opacity:.6; margin-top:2px;">${__("No references")}</div>`;
+
+              const colorDotHtml = topicColor
+                ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${frappe.utils.escape_html(topicColor)};margin-right:6px;"></span>`
+                : "";
+
+              return `
+                <div class="topic-picker-row" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #eee;">
+                  <div style="min-width:0; flex:1;">
+                    <div style="font-weight:600;">${colorDotHtml}${safeDisplayTitle}</div>
+                    ${topicNameHtml}
+                    <div style="font-size:12px; opacity:.7; margin-top:2px;">
+                      ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
+                      ${topic.is_private ? " • " + __("Private") : ""}
+                    </div>
+                    <div style="font-size:12px; opacity:.7; margin-top:2px;">
+                      ${__("Created At")}: ${frappe.utils.escape_html(createdAt)}
+                    </div>
+                    <div style="margin-top:6px;">
+                      <div style="font-size:12px; opacity:.65; margin-bottom:2px;">${__("References")}:</div>
+                      ${refsHtml}
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-primary pick-topic-btn"
+                    data-topic-name="${safeTopicName}"
+                    data-topic-subject="${safeDisplayTitle}"
+                    data-topic-color="${frappe.utils.escape_html(topicColor || "")}">
+                    ${selectLabel}
+                  </button>
+                </div>`;
+            }).join("")
+          : `<div style="padding:16px; text-align:center; opacity:.7;">${__("No topics found for this channel.")}</div>`;
+
+        d.fields_dict.topics_html.$wrapper.html(`
+          <div class="topic-picker-dialog">
+            ${showAddNew ? `<div style="display:flex; justify-content:flex-end; margin-bottom:12px;"><button type="button" class="btn btn-sm btn-secondary add-new-topic-btn">${__("Add New Topic")}</button></div>` : ""}
+            <div class="topic-picker-list">${rows}</div>
+          </div>`);
+      } catch (e) {
+        console.error("Failed to load channel topics", e);
+        d.fields_dict.topics_html.$wrapper.html(`<div style="padding:16px; text-align:center; color:#d9534f;">${__("Failed to load topics.")}</div>`);
+      }
+    };
+
+    renderTopics();
+
+    if (showAddNew && typeof addNewHandler === "function") {
+      d.$wrapper.off("click", ".add-new-topic-btn").on("click", ".add-new-topic-btn", async (e) => {
+        e.stopPropagation();
+        await addNewHandler({ dialog: d, renderTopics });
+      });
+    }
+
+    d.$wrapper.off("click", ".pick-topic-btn").on("click", ".pick-topic-btn", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const $btn = $(e.currentTarget);
+      const topicName = $btn.attr("data-topic-name");
+      const topicSubject = $btn.attr("data-topic-subject") || topicName;
+      const topicColor = $btn.attr("data-topic-color") || null;
+      if (!topicName) return;
+      settled = true;
+      resolve({ name: topicName, chat_topic: topicName, subject: topicSubject, chat_topic_subject: topicSubject, topic_color: topicColor });
+      d.hide();
+    });
+  });
+};
