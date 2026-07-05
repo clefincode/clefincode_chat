@@ -282,8 +282,6 @@ if (!existing_topic) {
 		};
 	}
 
-	
-	if (refs.length > 0) {
 		const action = await ask_topic_conflict_action(refs);
 
 		if (action === "cancel") {
@@ -350,7 +348,7 @@ if (!existing_topic) {
 					mode: "replaced"
 				};
 			}
-	}
+	
 
 	// fallback
 	await frappe.call({
