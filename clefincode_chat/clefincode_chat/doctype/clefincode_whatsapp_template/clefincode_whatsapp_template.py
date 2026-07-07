@@ -1,4 +1,6 @@
 import frappe
+from frappe.utils import get_url_to_form
+from frappe import _
 from frappe.model.document import Document
 
 from bs4 import BeautifulSoup
@@ -6,6 +8,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 import json
 from clefincode_chat.utils.utils import get_access_token, get_auth_token_twillio
+
 
 
 def _sanitize_name(name: str) -> str:
@@ -17,6 +20,28 @@ def _sanitize_name(name: str) -> str:
     return safe
 
 class ClefinCodeWhatsAppTemplate(Document):
+    def validate(self):
+        existing_template = self.find_existing_same_content_language()
+        
+
+
+        if existing_template:
+            url = get_url_to_form(
+                    "ClefinCode WhatsApp Template",
+                    existing_template.name
+                )
+            frappe.throw(
+                msg = _(
+                        "An existing WhatsApp template with the same content, language, and buttons already exists: {0}.<br><br>"
+                        "Please use the existing template instead.<br><br>"
+                        "If you want to create a new template, please change the message content or buttons."
+                    ).format(
+                        f"""<a href="{url}" target="_blank">
+                                <b>{existing_template.meta_template_name or existing_template.name}</b>
+                            </a>"""
+                    ),
+                title=_("Existing WhatsApp Template Found")
+            )
     def before_insert(self):
         if self.whatsapp_business_account_id:
             self.template_name = f"{self.whatsapp_business_account_id}_{self.meta_template_name}"
@@ -46,55 +71,115 @@ class ClefinCodeWhatsAppTemplate(Document):
             frappe.throw(str(e))
     
     def post_whatsapp_template_meta(self):
-        try:
-            access_token = get_access_token()
-            api_base = "https://graph.facebook.com/v23.0"
-            endpoint = f"{api_base}/{self.whatsapp_business_account_id}/message_templates"
+            try:
+                existing_meta_template = self.find_existing_template_in_meta()
 
-            headers = {
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            }
-            
-            data = {
-                "name": self.meta_template_name,
-                "category": self.category,
-                "language": self.template_language,
-                "components": [
-                    {
-                        "type": "BODY",
-                        "text": BeautifulSoup(self.body, 'html.parser').get_text()			
-                    },
-                    {
-                        "type": "BUTTONS",
-                        "buttons": [
-                            {
-                                "type": "QUICK_REPLY",
-                                "text": "Yes"
-                            },
-                            {
-                                "type": "QUICK_REPLY",
-                                "text": "No"
-                            }
-                        ]
-                    }
-                ]
-            }
+                if existing_meta_template:
+                    self.whatsapp_template_id = existing_meta_template.get("id")
+                    self.template_status = existing_meta_template.get("status")
+                    self.save(ignore_permissions=True)
+                    frappe.db.commit()
 
-            response = requests.post(endpoint, json=data, headers=headers)
-            if response.ok:
-                frappe.msgprint(f"WhatsApp message template <b><a href='/app/clefincode-whatsapp-template/{self.name}' target='_blank'>{self.meta_template_name}</a></b> has been created to proceed communication with the customer outside of the 24-hour window")	
-                response_data = response.json()	
-                self.whatsapp_template_id = response_data.get("id")
-                self.template_status = response_data.get("status")
-                self.save()
-                frappe.db.commit()
-            else:
+                    frappe.msgprint(
+                        msg=_(
+                            "An existing WhatsApp template was found in Meta with the same content, language, and buttons. "
+                            "It has been linked to this ClefinCode template instead of creating a new one."
+                        ),
+                        title=_("Existing Meta Template Found"),
+                        indicator="orange"
+                    )
+
+                    return
+
+                access_token = get_access_token()
+                api_base = "https://graph.facebook.com/v23.0"
+                endpoint = f"{api_base}/{self.whatsapp_business_account_id}/message_templates"
+
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                }
+
+                data = {
+                    "name": self.meta_template_name,
+                    "category": self.category,
+                    "language": self.template_language,
+                    "components": [
+                        {
+                            "type": "BODY",
+                            "text": BeautifulSoup(self.body or "", "html.parser").get_text()
+                        },
+                        {
+                            "type": "BUTTONS",
+                            "buttons": [
+                                {
+                                    "type": "QUICK_REPLY",
+                                    "text": "Yes"
+                                },
+                                {
+                                    "type": "QUICK_REPLY",
+                                    "text": "No"
+                                }
+                            ]
+                        }
+                    ]
+                }
+
+                response = requests.post(endpoint, json=data, headers=headers)
+
+                if response.ok:
+                    response_data = response.json()
+
+                    self.whatsapp_template_id = response_data.get("id")
+                    self.template_status = response_data.get("status")
+                    self.save(ignore_permissions=True)
+                    frappe.db.commit()
+
+                    frappe.msgprint(
+                        msg=_(
+                            "WhatsApp message template {0} has been created to proceed communication with the customer outside of the 24-hour window."
+                        ).format(
+                            f"<b><a href='/app/clefincode-whatsapp-template/{self.name}' target='_blank'>{self.meta_template_name}</a></b>"
+                        ),
+                        title=_("WhatsApp Template Created"),
+                        indicator="green"
+                    )
+
+                    return
+
+                try:
+                    error_data = response.json()
+                except Exception:
+                    error_data = {}
+
+                error = error_data.get("error", {})
+                error_subcode = error.get("error_subcode")
+
+                if error_subcode == 2388024:
+                    existing_meta_template = self.find_existing_template_in_meta()
+
+                    if existing_meta_template:
+                        self.whatsapp_template_id = existing_meta_template.get("id")
+                        self.template_status = existing_meta_template.get("status")
+                        self.save(ignore_permissions=True)
+                        frappe.db.commit()
+
+                        frappe.msgprint(
+                            msg=_(
+                                "Meta reported that a template with the same content and language already exists. "
+                                "The existing Meta template has been linked instead of creating a duplicate."
+                            ),
+                            title=_("Existing Meta Template Linked"),
+                            indicator="orange"
+                        )
+
+                        return
+
                 frappe.throw(response.text)
+
+            except Exception as e:
+                frappe.throw(str(e))
             
-        except Exception as e:
-            frappe.throw(str(e))
-    
     def post_whatsapp_template_twilio(self, profile):
         """
         Create Content template in Twilio and submit approval for WhatsApp.
@@ -206,3 +291,113 @@ class ClefinCodeWhatsAppTemplate(Document):
         except Exception as e:
             frappe.log_error(f"post_whatsapp_template_twilio exception: {str(e)}", "post_whatsapp_template_twilio")
             frappe.throw(str(e))
+    def find_existing_same_content_language(self):
+        if not self.body or not self.template_language:
+            return None
+
+        existing_templates = frappe.get_all(
+            "ClefinCode WhatsApp Template",
+            filters={
+                "template_language": self.template_language,
+                "docstatus": ["!=", 2],
+                "name": ["!=", self.name],
+            },
+            fields=["name", "meta_template_name", "template_name", "body"]
+        )
+
+        current_body = BeautifulSoup(
+            self.body or "",
+            "html.parser"
+        ).get_text(" ").strip().lower()
+
+        current_buttons = []
+        for button in self.buttons or []:
+            current_buttons.append({
+                "type": (button.get("type") or "").strip().lower(),
+                "button_text": (button.get("button_text") or "").strip().lower(),
+            })
+
+        for template in existing_templates:
+            existing_doc = frappe.get_doc(
+                "ClefinCode WhatsApp Template",
+                template.name
+            )
+
+            existing_body = BeautifulSoup(
+                existing_doc.body or "",
+                "html.parser"
+            ).get_text(" ").strip().lower()
+
+            existing_buttons = []
+            for button in existing_doc.buttons or []:
+                existing_buttons.append({
+                    "type": (button.get("type") or "").strip().lower(),
+                    "button_text": (button.get("button_text") or "").strip().lower(),
+                })
+       
+
+            if existing_body == current_body and existing_buttons == current_buttons:
+                return existing_doc
+
+        return None
+    def find_existing_template_in_meta(self):
+            try:
+                access_token = get_access_token()
+                api_base = "https://graph.facebook.com/v23.0"
+                endpoint = f"{api_base}/{self.whatsapp_business_account_id}/message_templates"
+
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                }
+
+                params = {
+                    "fields": "id,name,status,language,category,components",
+                    "limit": 100
+                }
+
+                response = requests.get(endpoint, headers=headers, params=params)
+
+                if not response.ok:
+                    frappe.log_error(response.text, "meta_template_lookup_error")
+                    return None
+
+                templates = response.json().get("data", [])
+
+                current_body = BeautifulSoup(
+                    self.body or "",
+                    "html.parser"
+                ).get_text(" ").strip().lower()
+
+                current_buttons = []
+                for button in self.buttons or []:
+                    current_buttons.append(
+                        (button.get("button_text") or "").strip().lower()
+                    )
+
+                for template in templates:
+                    if template.get("language") != self.template_language:
+                        continue
+
+                    existing_body = ""
+                    existing_buttons = []
+
+                    for component in template.get("components", []):
+                        if component.get("type") == "BODY":
+                            existing_body = (
+                                component.get("text") or ""
+                            ).strip().lower()
+
+                        if component.get("type") == "BUTTONS":
+                            for btn in component.get("buttons", []):
+                                existing_buttons.append(
+                                    (btn.get("text") or "").strip().lower()
+                                )
+
+                    if existing_body == current_body and existing_buttons == current_buttons:
+                        return template
+
+                return None
+
+            except Exception as e:
+                frappe.log_error(str(e), "find_existing_template_in_meta")
+                return None

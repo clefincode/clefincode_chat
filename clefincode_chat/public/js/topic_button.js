@@ -1,4 +1,3 @@
-
 console.log("topic_button.js loaded");
 
 (function () {
@@ -94,54 +93,54 @@ console.log("topic_button.js loaded");
 		d.fields_dict.picker_html.$wrapper.empty().append($mount);
 
 		const contactList = new window.CCChatContactList({
-					$wrapper: $mount,
-					profile: get_chat_profile(),
-					topic_picker: 1,
-					on_select: async (target) => {
-						await link_doc_to_selected_target(frm, target);
-						d.hide();
-					},
-					on_cancel: () => {
-						d.hide();
-					}
-				});
+			$wrapper: $mount,
+			profile: get_chat_profile(),
+			topic_picker: 1,
+			on_select: async (target) => {
+				await link_doc_to_selected_target(frm, target);
+				d.hide();
+			},
+			on_cancel: () => {
+				d.hide();
+			}
+		});
 
 		if (contactList.ready) {
 			await contactList.ready;
 		}
 
 		contactList.forward_message = async function () {
-				if (!this.selected_contacts || !this.selected_contacts.length) {
-					frappe.msgprint({
-						title: __("Selection Required"),
-						message: __("Select one chat or contact first."),
-						indicator: "orange"
-					});
-					return;
-				}
+			if (!this.selected_contacts || !this.selected_contacts.length) {
+				frappe.msgprint({
+					title: __("Selection Required"),
+					message: __("Select one chat or contact first."),
+					indicator: "orange"
+				});
+				return;
+			}
 
-				if (this.selected_contacts.length > 1) {
-					frappe.msgprint({
-						title: __("Only one target allowed"),
-						message: __("Please select only one chat or contact."),
-						indicator: "orange"
-					});
-					return;
-				}
+			if (this.selected_contacts.length > 1) {
+				frappe.msgprint({
+					title: __("Only one target allowed"),
+					message: __("Please select only one chat or contact."),
+					indicator: "orange"
+				});
+				return;
+			}
 
-				try {
-					const target = this.selected_contacts[0];
-					await link_doc_to_selected_target(frm, target);
-					d.hide();
-				} catch (e) {
-					console.error("Linking failed:", e);
-					frappe.msgprint({
-						title: __("Error"),
-						message: e.message || __("Failed to link document to chat"),
-						indicator: "red"
-					});
-				}
-			};
+			try {
+				const target = this.selected_contacts[0];
+				await link_doc_to_selected_target(frm, target);
+				d.hide();
+			} catch (e) {
+				console.error("Linking failed:", e);
+				frappe.msgprint({
+					title: __("Error"),
+					message: e.message || __("Failed to link document to chat"),
+					indicator: "red"
+				});
+			}
+		};
 
 		contactList.render();
 
@@ -152,11 +151,9 @@ console.log("topic_button.js loaded");
 })();
 
 async function ensure_room_from_target(target) {
-
 	if (target.type === "room") {
 		return target.room || target.name;
 	}
-
 
 	const contact_email =
 		target.email ||
@@ -176,7 +173,7 @@ async function ensure_room_from_target(target) {
 			platform: "Chat"
 		}
 	});
-
+	console.log(check);
 
 	const existing_room =
 		check.message?.results?.name &&
@@ -187,7 +184,6 @@ async function ensure_room_from_target(target) {
 	if (existing_room) {
 		return existing_room;
 	}
-
 
 	const users = JSON.stringify([
 		{ email: frappe.session.user, platform: "Chat" },
@@ -229,51 +225,44 @@ async function link_current_doc_to_room(frm, room) {
 	const topicRow = topicInfo.message?.results?.[0] || null;
 	const existing_topic = topicRow?.chat_topic || null;
 
-	const current_ref = {
-		doctype: frm.doctype,
-		docname: frm.doc.name
-	};
-
+	const current_ref = build_current_doc_reference(frm);
 	const mention_doctypes = JSON.stringify([current_ref]);
 
-	
-if (!existing_topic) {
-	const createdTopic = await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic_with_message",
-		args: {
-			mention_doctypes,
-			chat_channel: room,
-			user_email: frappe.session.user,
-			user_name: frappe.session.user_fullname || frappe.session.user
+	if (!existing_topic) {
+		const createdTopic = await frappe.call({
+			method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic_with_message",
+			args: {
+				mention_doctypes,
+				chat_channel: room,
+				user_email: frappe.session.user,
+				user_name: frappe.session.user_fullname || frappe.session.user
+			}
+		});
+
+		const new_chat_topic =
+			createdTopic.message?.results?.[0]?.chat_topic ||
+			createdTopic.message?.results?.[0]?.name ||
+			createdTopic.message?.chat_topic ||
+			createdTopic.message?.name ||
+			null;
+
+		if (!new_chat_topic) {
+			throw new Error("Topic was created but chat_topic was not returned");
 		}
-	});
 
-	const new_chat_topic =
-		createdTopic.message?.results?.[0]?.chat_topic ||
-		createdTopic.message?.results?.[0]?.name ||
-		createdTopic.message?.chat_topic ||
-		createdTopic.message?.name ||
-		null;
-
-	if (!new_chat_topic) {
-		throw new Error("Topic was created but chat_topic was not returned");
+		return {
+			room,
+			chat_topic: new_chat_topic,
+			mode: "created"
+		};
 	}
 
-	return {
-		room,
-		chat_topic: new_chat_topic,
-		mode: "created"
-	};
-}
-
 	const refs = get_topic_references(topicRow);
-	
 
 	const same_doc_exists = refs.some((ref) => {
 		return ref.doctype === frm.doctype && ref.docname === frm.doc.name;
 	});
 
-	
 	if (same_doc_exists) {
 		return {
 			room,
@@ -282,91 +271,54 @@ if (!existing_topic) {
 		};
 	}
 
-	
-	if (refs.length > 0) {
-		const action = await ask_topic_conflict_action(refs);
+	const selectedTopic = await pick_topic_for_room(room, {
+		showTopActions: true,
+		compact: true
+	});
 
-		if (action === "cancel") {
-			return {
-				room,
-				chat_topic: existing_topic,
-				mode: "cancelled"
-			};
-		}
-
-		if (action === "select") {
-				const selectedTopic = await pick_topic_for_room(room);
-				if (!selectedTopic) {
-					return {
-						room,
-						chat_topic: existing_topic,
-						mode: "cancelled"
-					};
-				}
-				const selectedTopicName = selectedTopic.chat_topic || selectedTopic.name;
-				await frappe.call({
-					method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype_with_message",
-					args: {
-						mention_doctypes,
-						chat_topic: selectedTopicName,
-						chat_channel: room,
-						user_email: frappe.session.user,
-						user_name: frappe.session.user_fullname || frappe.session.user
-					}
-				});
-				return {
-					room,
-					chat_topic: selectedTopicName,
-					mode: "attached"
-				};
-			}
-
-		if (action === "append") {
-				await frappe.call({
-					method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype_with_message",
-					args: {
-						mention_doctypes,
-						chat_topic: existing_topic,
-						chat_channel: room,
-						user_email: frappe.session.user,
-						user_name: frappe.session.user_fullname || frappe.session.user
-					}
-				});
-
-				return {
-					room,
-					chat_topic: existing_topic,
-					mode: "attached"
-				};
-			}
-
-		if (action === "replace") {
-				const replaced = await replace_topic_references(existing_topic, room, current_ref);
-
-				return {
-					room,
-					chat_topic: replaced.chat_topic || existing_topic,
-					old_chat_topic: replaced.old_chat_topic || existing_topic,
-					mode: "replaced"
-				};
-			}
+	if (!selectedTopic) {
+		return {
+			room,
+			chat_topic: existing_topic,
+			mode: "cancelled"
+		};
 	}
 
-	// fallback
+	if (selectedTopic.__action === "create_new") {
+		const replaced = await replace_topic_references(existing_topic, room, current_ref);
+
+		return {
+			room,
+			chat_topic: replaced.chat_topic || existing_topic,
+			old_chat_topic: replaced.old_chat_topic || existing_topic,
+			mode: "replaced"
+		};
+	}
+
+	const selectedTopicName = selectedTopic.chat_topic || selectedTopic.name;
+
+	if (!selectedTopicName) {
+		throw new Error("Selected topic has no name");
+	}
+
 	await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype",
+		method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype_with_message",
 		args: {
 			mention_doctypes,
-			chat_topic: existing_topic
+			chat_topic: selectedTopicName,
+			chat_channel: room,
+			user_email: frappe.session.user,
+			user_name: frappe.session.user_fullname || frappe.session.user
 		}
 	});
 
 	return {
 		room,
-		chat_topic: existing_topic,
+		chat_topic: selectedTopicName,
 		mode: "attached"
 	};
 }
+
 async function link_doc_to_selected_target(frm, target) {
 	console.log("Selected target object:", target);
 
@@ -376,15 +328,16 @@ async function link_doc_to_selected_target(frm, target) {
 	if (result.mode === "cancelled") {
 		return result;
 	}
-	ensure_chat_widget_open();
-	const messages = {
-			created: __("Document linked and new chat topic created"),
-			attached: __("Document added to existing chat topic"),
-			already_linked: __("This document is already linked"),
-			replaced: __("Old topic closed and a new topic was created for this document")
-		};
 
-	
+	ensure_chat_widget_open();
+
+	const messages = {
+		created: __("Document linked and new chat topic created"),
+		attached: __("Document added to existing chat topic"),
+		already_linked: __("This document is already linked"),
+		replaced: __("Old topic closed and a new topic was created for this document")
+	};
+
 	open_chat_room({
 		is_admin: frappe.user.has_role("System Manager"),
 		user: frappe.session.user_fullname || frappe.session.user,
@@ -400,43 +353,56 @@ async function link_doc_to_selected_target(frm, target) {
 		platform: target.raw?.platform || "Chat",
 		chat_topic: result.chat_topic || null
 	});
+
 	frappe.show_alert({
 		message: messages[result.mode] || __("Done"),
 		indicator: "green"
 	});
 
-	
-
 	return result;
 }
-function extract_topic_references(topicRow) {
-	
+
+function get_topic_references(topicRow) {
+	console.log(topicRow);
 
 	if (!topicRow) return [];
 
-
 	if (Array.isArray(topicRow.reference_doctypes)) {
-		return topicRow.reference_doctypes.map(ref => ({
-			doctype: ref.doctype || ref.reference_doctype,
-			docname: ref.docname || ref.reference_name
-		})).filter(ref => ref.doctype && ref.docname);
+		return topicRow.reference_doctypes.map((r) => ({
+			doctype: r.doctype,
+			docname: r.docname
+		})).filter(r => r.doctype && r.docname);
+	}
+
+	if (typeof topicRow.reference_doctypes === "string" && topicRow.reference_doctypes.trim()) {
+		try {
+			const parsed = JSON.parse(topicRow.reference_doctypes);
+			if (Array.isArray(parsed)) {
+				return parsed.map((r) => ({
+					doctype: r.doctype_link || r.doctype,
+					docname: r.docname,
+					active: cint(r.active || 0)
+				})).filter(r => r.doctype && r.docname);
+			}
+		} catch (e) {
+			console.warn("Failed to parse references", e);
+		}
 	}
 
 	if (topicRow.mention_doctypes) {
 		try {
 			const parsed = JSON.parse(topicRow.mention_doctypes);
 			if (Array.isArray(parsed)) {
-				return parsed.map(ref => ({
-					doctype: ref.doctype,
-					docname: ref.docname
-				})).filter(ref => ref.doctype && ref.docname);
+				return parsed.map((r) => ({
+					doctype: r.doctype,
+					docname: r.docname
+				})).filter(r => r.doctype && r.docname);
 			}
 		} catch (e) {
 			console.warn("Could not parse mention_doctypes", e);
 		}
 	}
 
-	
 	if (topicRow.reference_doctype && topicRow.reference_name) {
 		return [{
 			doctype: topicRow.reference_doctype,
@@ -447,84 +413,38 @@ function extract_topic_references(topicRow) {
 	return [];
 }
 
-function ask_topic_conflict_action(existing_refs) {
-	return new Promise((resolve) => {
-		let settled = false;
-
-		const finish = (value) => {
-			if (settled) return;
-			settled = true;
-			resolve(value);
-		};
-
-		const refs_text = existing_refs
-			.map(ref => `${frappe.utils.escape_html(ref.doctype)} / ${frappe.utils.escape_html(ref.docname)}`)
-			.join("<br>");
-
-		const d = new frappe.ui.Dialog({
-						title: __("Chat already linked"),
-						fields: [
-							{
-								fieldtype: "HTML",
-								fieldname: "message",
-								options: `
-									<div style="padding: 8px 0;">
-										<div style="margin-bottom: 8px;">
-											${__("This chat already has another topic/document:")}
-										</div>
-										<div class="text-muted">${refs_text}</div>
-										<div style="margin-top: 12px;">
-											${__("Choose what you want to do")}
-										</div>
-									</div>
-								`
-							}
-						],
-						primary_action_label: __("Select Topic"),
-						primary_action() {
-							finish("select");
-							d.hide();
-						}
-					});
-
-		d.show();
-
-const $replace_btn = $(`
-	<button class="btn btn-secondary btn-sm" style="margin-right: 8px;">
-		${__("Start New")}
-	</button>
-`);
-
-const $cancel_btn = $(`
-	<button class="btn btn-default btn-sm">
-		${__("Cancel")}
-	</button>
-`);
-
-		d.show();
-
-
-		$replace_btn.on("click", () => {
-			finish("replace");
-			d.hide();
-		});
-
-		$cancel_btn.on("click", () => {
-			finish("cancel");
-			d.hide();
-		});
-
-	
-		const $footer = d.$wrapper.find(".modal-footer");
-						$footer.append($replace_btn);
-						$footer.append($cancel_btn);
-
-		
-		d.$wrapper.on("hidden.bs.modal", () => {
-			finish("cancel");
-		});
-	});
+function cint(value) {
+	return parseInt(value || 0, 10);
 }
+
+function build_current_doc_reference(frm) {
+	const doctypeSlug = frappe.router?.slug
+		? frappe.router.slug(frm.doctype)
+		: frm.doctype.replace(/\s+/g, "-").toLowerCase();
+
+	const route = `/app/${doctypeSlug}/${encodeURIComponent(frm.doc.name)}`;
+	const absolute_url = `${window.location.origin}${route}`;
+
+	return {
+		doctype: frm.doctype,
+		docname: frm.doc.name,
+
+		// Keep old names for backend compatibility
+		reference_doctype: frm.doctype,
+		reference_name: frm.doc.name,
+
+		// Link fields
+		route,
+		link: route,
+		reference_link: route,
+		url: absolute_url,
+
+		// Display fields
+		label: `${frm.doctype} / ${frm.doc.name}`,
+		title: frm.doc.title || frm.doc.subject || frm.doc.name
+	};
+}
+
 async function replace_topic_references(chat_topic, chat_channel, current_ref) {
 	const r = await frappe.call({
 		method: "clefincode_chat.api.api_1_3_4.api.replace_topic_references",
@@ -533,111 +453,143 @@ async function replace_topic_references(chat_topic, chat_channel, current_ref) {
 			chat_channel,
 			user_email: frappe.session.user,
 			user_name: frappe.session.user_fullname || frappe.session.user,
-			mention_doctypes: JSON.stringify([
-				{
-					doctype: current_ref.doctype,
-					docname: current_ref.docname
-				}
-			])
+			mention_doctypes: JSON.stringify([current_ref])
 		}
 	});
 
 	return r.message?.results?.[0] || r.message || {};
 }
-function get_topic_references(topicRow) {
-	console.log(topicRow);
-	if (!topicRow) return [];
 
+function ensure_chat_widget_open() {
+	const app = window.erpnext_chat_app;
+	if (!app) return false;
 
-	if (Array.isArray(topicRow.reference_doctypes)) {
-		
-		return topicRow.reference_doctypes.map((r) => ({
-			doctype: r.doctype,
-			docname: r.docname,
-		
-		})).filter(r => r.doctype && r.docname);
+	if (typeof app.show_chat_widget === "function") {
+		app.show_chat_widget();
+		return true;
 	}
 
+	if (app.$chat_element?.length) {
+		app.$chat_element.show();
+	}
 
-	if (typeof topicRow.reference_doctypes === "string" && topicRow.reference_doctypes.trim()) {
-		try {
-			const parsed = JSON.parse(topicRow.reference_doctypes);
-			if (Array.isArray(parsed)) {
-				return parsed.map((r) => ({
-					doctype: r.doctype_link,
-					docname: r.docname,
-					active: cint(r.active || 0)
-				})).filter(r => r.doctype && r.docname);
+	if (app.$chat_bubble?.length) {
+		app.$chat_bubble.hide();
+	}
+
+	return true;
+}
+
+async function pick_topic_for_room(room, opts = {}) {
+	if (!window.CCOpenChannelTopicPicker) {
+		frappe.msgprint({
+			title: __("Error"),
+			message: __("Topic picker is not available."),
+			indicator: "red"
+		});
+		return null;
+	}
+
+	let externalResolve;
+
+	const externalAction = new Promise((resolve) => {
+		externalResolve = resolve;
+	});
+
+	const pickerPromise = window.CCOpenChannelTopicPicker({
+		chatChannel: room,
+		topicStatus: "Open",
+		title: __("Select Topic"),
+		selectLabel: __("Select"),
+		showAddNew: false
+	});
+
+	if (opts.showTopActions || opts.compact) {
+		decorate_open_topic_picker_dialog(externalResolve, opts);
+	}
+
+	return await Promise.race([pickerPromise, externalAction]);
+}
+
+function decorate_open_topic_picker_dialog(resolve, opts = {}) {
+	let tries = 0;
+	const maxTries = 80;
+
+	const timer = setInterval(() => {
+		tries += 1;
+
+		const $modal = $(".modal.show").filter(function () {
+			return $(this).find(".modal-title").text().trim() === __("Select Topic");
+		}).last();
+
+		if (!$modal.length) {
+			if (tries >= maxTries) {
+				clearInterval(timer);
 			}
-		} catch (e) {
-			console.warn("Failed to parse references", e);
+			return;
 		}
-	}
 
-	return [];
-}
+		clearInterval(timer);
 
-function cint(value) {
-	return parseInt(value || 0, 10);
-}
-function ensure_chat_widget_open() {
-	const app = window.erpnext_chat_app;
-	if (!app) return false;
+		$modal.addClass("cc-open-topic-picker-modal");
 
+		if (opts.compact) {
+			$modal.find(".modal-dialog").css({
+				"max-width": "560px",
+				"width": "560px"
+			});
+		}
 
-	if (typeof app.show_chat_widget === "function") {
-		app.show_chat_widget();
-		return true;
-	}
+		if ($modal.find(".cc-topic-picker-top-actions").length) {
+			return;
+		}
 
-	if (app.$chat_element?.length) {
-		app.$chat_element.show();
-	}
+		const $topActions = $(`
+			<div class="cc-topic-picker-top-actions" style="
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				padding: 10px 16px 0;
+			">
+				<div class="cc-topic-picker-left-actions" style="
+					display: flex;
+					align-items: center;
+					gap: 8px;
+				">
+					<button type="button" class="btn btn-primary btn-sm cc-topic-picker-create-new">
+						${__("Create New Topic")}
+					</button>
+				</div>
 
+				<div class="cc-topic-picker-right-actions" style="
+					display: flex;
+					align-items: center;
+					gap: 8px;
+				">
+					<button type="button" class="btn btn-default btn-sm cc-topic-picker-cancel">
+						${__("Cancel")}
+					</button>
+				</div>
+			</div>
+		`);
 
-	if (app.$chat_bubble?.length) {
-		app.$chat_bubble.hide();
-	}
+		$modal.find(".modal-header").after($topActions);
 
-	return true;
-}
-function ensure_chat_widget_open() {
-	const app = window.erpnext_chat_app;
-	if (!app) return false;
+		$topActions.find(".cc-topic-picker-cancel").on("click", () => {
+			resolve(null);
+			$modal.modal("hide");
+		});
 
-	
-	if (typeof app.show_chat_widget === "function") {
-		app.show_chat_widget();
-		return true;
-	}
+		$topActions.find(".cc-topic-picker-create-new").on("click", () => {
+			resolve({ __action: "create_new" });
+			$modal.modal("hide");
+		});
 
-	if (app.$chat_element?.length) {
-		app.$chat_element.show();
-	}
-
-	if (app.$chat_bubble?.length) {
-		app.$chat_bubble.hide();
-	}
-
-	return true;
-}
-async function pick_topic_for_room(room) {
-  if (!window.CCOpenChannelTopicPicker) {
-    frappe.msgprint({
-      title: __("Error"),
-      message: __("Topic picker is not available."),
-      indicator: "red"
-    });
-    return null;
-  }
-
-  return await window.CCOpenChannelTopicPicker({
-    chatChannel: room,
-    topicStatus: "Open",
-    title: __("Select Topic"),
-    selectLabel: __("Select"),
-    showAddNew: false
-  });
+		$modal.one("hidden.bs.modal", () => {
+			resolve(null);
+		});
+	}, 50);
 }
 
 function open_chat_room(profile, chat_status = null) {
@@ -648,16 +600,14 @@ function open_chat_room(profile, chat_status = null) {
 		return;
 	}
 
-
 	if (app.$chat_element?.length) {
 		app.$chat_element.show();
 	}
 
-
-if (!profile.chat_topic && window.CCCheckIfChatWindowOpen(profile.room, "room")) {
-	$(".expand-chat-window[data-id|='" + profile.room + "']").click();
-	return;
-}
+	if (!profile.chat_topic && window.CCCheckIfChatWindowOpen(profile.room, "room")) {
+		$(".expand-chat-window[data-id|='" + profile.room + "']").click();
+		return;
+	}
 
 	const chat_window = new window.CCChatWindow({
 		profile: { room: profile.room }
@@ -674,6 +624,7 @@ if (!profile.chat_topic && window.CCCheckIfChatWindowOpen(profile.room, "room"))
 		chatSpaceOpts.chat_topic_channel = profile.room;
 		chatSpaceOpts.chat_topic_subject = profile.chat_topic_subject || null;
 		chatSpaceOpts.topic_write_mode = true;
+		 chatSpaceOpts.is_topic_window = true;
 	}
 
 	new window.CCChatSpace(chatSpaceOpts);

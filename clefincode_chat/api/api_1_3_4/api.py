@@ -10889,18 +10889,32 @@ def _normalize_reference_row(row):
 
 def _normalize_topic_doc(topic_doc):
     refs = []
-    for row in (topic_doc.references or []):
-        parsed = _normalize_reference_row(row)
-        if parsed:
-            refs.append(parsed)
 
-    if not topic_doc.topic_color:
-        topic_doc.topic_color = get_random_topic_color()
-        topic_doc.save(ignore_permissions=True)
+    try:
+        for row in (topic_doc.references or []):
+            parsed = _normalize_reference_row(row)
+            if parsed:
+                refs.append(parsed)
+    except Exception:
+        frappe.log_error(
+            title="Failed to normalize topic references",
+            message=frappe.get_traceback()
+        )
+        refs = []
+
+    try:
+        if not topic_doc.topic_color:
+            topic_doc.topic_color = get_random_topic_color()
+            topic_doc.save(ignore_permissions=True)
+    except Exception:
+        frappe.log_error(
+            title=f"Failed to set topic color for {topic_doc.name}",
+            message=frappe.get_traceback()
+        )
 
     return {
         "name": topic_doc.name,
-        "date":str(topic_doc.creation),
+        "date": str(topic_doc.creation),
         "subject": topic_doc.subject,
         "chat_channel": topic_doc.chat_channel,
         "topic_status": topic_doc.topic_status,
@@ -10949,30 +10963,91 @@ def remove_message_topic(message_name):
     }
 
 @frappe.whitelist()
-def get_channel_topics(chat_channel, topic_status=None):
- 
+def get_channel_topics(chat_channel, topic_status=None, limit=10, offset=0, query=None):
     if not chat_channel:
         frappe.throw(_("chat_channel is required"))
 
-    filters = {"chat_channel": chat_channel}
+    limit = cint(limit) if limit is not None else 10
+    offset = cint(offset) if offset is not None else 0
+
+    if limit <= 0:
+        limit = 10
+
+    if offset < 0:
+        offset = 0
+
+    filters = {
+        "chat_channel": chat_channel
+    }
 
     if topic_status and topic_status != "All":
         filters["topic_status"] = topic_status
 
+    or_filters = []
+
+    if query:
+        query = query.strip()
+
+        if query:
+            reference_rows = frappe.get_all(
+                "ClefinCode Chat Topic Reference",
+                filters={
+                    "parenttype": "ClefinCode Chat Topic",
+                },
+                or_filters=[
+                    ["ClefinCode Chat Topic Reference", "doctype_link", "like", f"%{query}%"],
+                    ["ClefinCode Chat Topic Reference", "docname", "like", f"%{query}%"],
+                ],
+                fields=["parent"],
+                distinct=True,
+            )
+
+            reference_topic_names = [row.parent for row in reference_rows if row.parent]
+
+            or_filters = [
+               
+                ["ClefinCode Chat Topic", "subject", "like", f"%{query}%"],
+            ]
+
+            if reference_topic_names:
+                or_filters.append(
+                    ["ClefinCode Chat Topic", "name", "in", reference_topic_names]
+                )
+
+    count_rows = frappe.get_all(
+        "ClefinCode Chat Topic",
+        filters=filters,
+        or_filters=or_filters,
+        fields=["count(name) as count"],
+    )
+
+    total_count = count_rows[0].count if count_rows else 0
+
     topic_names = frappe.get_all(
         "ClefinCode Chat Topic",
         filters=filters,
+        or_filters=or_filters,
         fields=["name"],
         order_by="modified desc",
+        limit_start=offset,
+        limit_page_length=limit,
     )
 
     topics = []
+
     for row in topic_names:
         doc = frappe.get_doc("ClefinCode Chat Topic", row.name)
         topics.append(_normalize_topic_doc(doc))
 
+    next_offset = offset + len(topics)
+
     return {
         "chat_channel": chat_channel,
         "count": len(topics),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "next_offset": next_offset,
+        "has_more": next_offset < total_count,
         "topics": topics,
     }
