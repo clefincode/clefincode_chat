@@ -1532,84 +1532,57 @@ async openMessageInfoDialog(messageName) {
   const linkedTopic = await this.getLinkedTopicInfo(cached);
   const linkedTopicReferences = linkedTopic?.references || [];
 
-const linkedTopicReferencesHtml = linkedTopicReferences.length
-  ? `
-    <div style="margin-top:6px;">
-      <div style="font-size:12px; opacity:.65; margin-bottom:2px;">
-        ${__("References")}
-      </div>
+  const linkedTopicReferencesHtml = renderReferenceLinksHtml(linkedTopicReferences, {
+        wrapperClass: "message-info-references",
+        linkClass: "message-info-doctype-link",
+        title: __("References")
+      });
+  
+  const linkedTopicName = linkedTopic?.name || "";
+  const linkedTopicSubject = linkedTopic?.subject || linkedTopicName || "—";
+  const linkedTopicColor =
+    linkedTopic?.topic_color ||
+    linkedTopic?.color ||
+    this.topicColorMap?.get(linkedTopicName) ||
+    "";
 
-      ${linkedTopicReferences.map(ref => {
-        const doctype = ref.doctype || ref.reference_doctype || "";
-        const docname = ref.docname || ref.reference_docname || "";
-
-        if (!doctype || !docname) return "";
-
-        return `
-          <a href="#"
-             class="message-info-doctype-link"
-             data-doctype="${frappe.utils.escape_html(doctype)}"
-             data-docname="${frappe.utils.escape_html(docname)}"
-             style="
-               display:block;
-               font-size:12px;
-               color:#007bff;
-               text-decoration:underline;
-               word-break:break-word;
-               margin-top:2px;
-             ">
-            ${frappe.utils.escape_html(doctype)} / ${frappe.utils.escape_html(docname)}
-          </a>
-        `;
-      }).join("")}
-    </div>
-  `
-  : "";
-const linkedTopicName = linkedTopic?.name || "";
-const linkedTopicSubject = linkedTopic?.subject || linkedTopicName || "—";
-const linkedTopicColor =
-  linkedTopic?.topic_color ||
-  linkedTopic?.color ||
-  this.topicColorMap?.get(linkedTopicName) ||
-  "";
-
-const safeLinkedTopicName = frappe.utils.escape_html(linkedTopicName);
-const safeLinkedTopicSubject = frappe.utils.escape_html(linkedTopicSubject);
-const safeLinkedTopicColor = frappe.utils.escape_html(linkedTopicColor || "");
-const linkedTopicHtml = linkedTopic
-  ? `
-    <div>
-      <div style="opacity:.65;">${__("Linked Topic")}</div>
-      <a href="#"
-         class="message-info-topic-link"
-         data-topic-name="${safeLinkedTopicName}"
-         data-topic-subject="${safeLinkedTopicSubject}"
-         data-topic-color="${safeLinkedTopicColor}"
-         style="
-           font-weight:600;
-           color:#007bff;
-           text-decoration:underline;
-           cursor:pointer;
-           word-break:break-word;
-           display:inline-block;
-         ">
-        ${safeLinkedTopicSubject}
-      </a>
-      ${
-        linkedTopic.name && linkedTopic.subject && linkedTopic.name !== linkedTopic.subject
-          ? `<div style="font-size:12px; opacity:.7; word-break:break-all;">
-              ${frappe.utils.escape_html(linkedTopic.name)}
-            </div>`
-          : ``
-      }
-      ${
-  linkedTopic.status
-    ? `<div style="font-size:12px; opacity:.7;">
-        ${__("Status")}: ${frappe.utils.escape_html(linkedTopic.status)}
-        ${linkedTopic.is_private ? " • " + __("Private") : ""}
-      </div>`
-    : ``
-}
+  const safeLinkedTopicName = frappe.utils.escape_html(linkedTopicName);
+  const safeLinkedTopicSubject = frappe.utils.escape_html(linkedTopicSubject);
+  const safeLinkedTopicColor = frappe.utils.escape_html(linkedTopicColor || "");
+  const linkedTopicHtml = linkedTopic
+    ? `
+      <div>
+        <div style="opacity:.65;">${__("Linked Topic")}</div>
+        <a href="#"
+          class="message-info-topic-link"
+          data-topic-name="${safeLinkedTopicName}"
+          data-topic-subject="${safeLinkedTopicSubject}"
+          data-topic-color="${safeLinkedTopicColor}"
+          style="
+            font-weight:600;
+            color:#007bff;
+            text-decoration:underline;
+            cursor:pointer;
+            word-break:break-word;
+            display:inline-block;
+          ">
+          ${safeLinkedTopicSubject}
+        </a>
+        ${
+          linkedTopic.name && linkedTopic.subject && linkedTopic.name !== linkedTopic.subject
+            ? `<div style="font-size:12px; opacity:.7; word-break:break-all;">
+                ${frappe.utils.escape_html(linkedTopic.name)}
+              </div>`
+            : ``
+        }
+        ${
+    linkedTopic.status
+      ? `<div style="font-size:12px; opacity:.7;">
+          ${__("Status")}: ${frappe.utils.escape_html(linkedTopic.status)}
+          ${linkedTopic.is_private ? " • " + __("Private") : ""}
+        </div>`
+      : ``
+  }
 ${linkedTopicReferencesHtml}
     </div>
   `
@@ -1725,26 +1698,10 @@ ${linkedTopicReferencesHtml}
       topic_color: topicColor
     });
   });
-  d.$wrapper.off("click", ".message-info-doctype-link")
-  .on("click", ".message-info-doctype-link", function(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const doctype = $(this).attr("data-doctype");
-    const docname = $(this).attr("data-docname");
-
-    if (doctype && docname) {
-      d.hide();
-
-   
-
-    const url = getFormUrl(doctype, docname);
-    console.log("Dsdsdsds");
-
-    window.open(url, "_blank", "noopener,noreferrer");
-     
-    }
-  });
+  bindReferenceLinks(d.$wrapper, ".message-info-doctype-link", {
+        dialog: d,
+        hideDialog: true
+      });
 }
 openEmojiMenu({ $bubble, messageName }) {
   this.closeEmojiMenu();
@@ -2704,7 +2661,7 @@ async fetch_single_message(messageName) {
       );
       await this.setup_messages(res.results || []);
       await this.setup_actions();
-      await this.applySavedActiveTopic();
+      // await this.applySavedActiveTopic();
       this.render();
       this.checkAndShowTopicInactiveNotice?.();
     } catch (error) {
@@ -4964,7 +4921,7 @@ async setup_messages(messages_list) {
     }
 
 getOutgoingTopicInfo() {
-  const isTopicWindow = this.is_topic_window || this.profile.room_type === "Topic";
+  const isTopicWindow = this.is_topic_window ;
 
   const topicName = isTopicWindow
     ? this.chat_topic_space || this.profile.chat_topic || this.chat_topic
@@ -7824,7 +7781,7 @@ if (!is_deleted && type !== "info-message") {
           is_document: this.is_document,
           is_voice_clip: this.is_voice_clip,
           file_id: file_id,
-          chat_topic: topicReferenceTarget ? topicReferenceTarget.name : this.chat_topic,
+          chat_topic: topicReferenceTarget ? topicReferenceTarget.name : null,
           chat_topic_subject: topicReferenceTarget ? topicReferenceTarget.subject : null,
           topic_color: topicReferenceTarget ? topicReferenceTarget.color : null,
         };
@@ -7953,118 +7910,118 @@ if (!is_deleted && type !== "info-message") {
           });
       }
       // =========================================================================
-      else if (mention_doctypes.length > 0) {
-        const topicReferenceTarget = this.getTopicReferenceTargetForSend();
+     else if (mention_doctypes.length > 0) {
+  const isTopicContext = this.isDedicatedTopicContext?.();
 
-        let message_info = {
-          content:
-            content && content.length == 1
-              ? content.prop("outerHTML")
-              : content,
-          user: this.profile.user,
-          room: chat_room,
-          email: this.profile.user_email,
-          is_first_message: this.is_first_message,
-          attachment: attachment,
-          sub_channel:
-            this.last_active_sub_channel == chat_room
-              ? ""
-              : this.last_active_sub_channel,
-          is_link: this.is_link,
-          is_media: this.is_media,
-          is_document: this.is_document,
-          is_voice_clip: this.is_voice_clip,
-          file_id: file_id,
+  const topicReferenceTarget = isTopicContext
+    ? this.getTopicReferenceTargetForSend()
+    : null;
 
-          chat_topic: topicReferenceTarget ? topicReferenceTarget.name : null,
-          chat_topic_subject: topicReferenceTarget ? topicReferenceTarget.subject : null,
-          topic_color: topicReferenceTarget ? topicReferenceTarget.color : null,
-        };
+  let message_info = {
+    content:
+      content && content.length == 1
+        ? content.prop("outerHTML")
+        : content,
+    user: this.profile.user,
+    room: chat_room,
+    email: this.profile.user_email,
+    is_first_message: this.is_first_message,
+    attachment: attachment,
+    sub_channel:
+      this.last_active_sub_channel == chat_room
+        ? ""
+        : this.last_active_sub_channel,
+    is_link: this.is_link,
+    is_media: this.is_media,
+    is_document: this.is_document,
+    is_voice_clip: this.is_voice_clip,
+    file_id: file_id,
 
-        if (topicReferenceTarget) {
-          this.showMentionWillBeAddedToTopicMessage(
-            topicReferenceTarget,
-            mention_doctypes
-          );
+    
+    chat_topic: topicReferenceTarget ? topicReferenceTarget.name : null,
+    chat_topic_subject: topicReferenceTarget ? topicReferenceTarget.subject : null,
+    topic_color: topicReferenceTarget ? topicReferenceTarget.color : null,
+  };
 
-          this.last_chat_space_message = await send_message(message_info);
+ 
+  if (topicReferenceTarget) {
+    this.showMentionWillBeAddedToTopicMessage(
+      topicReferenceTarget,
+      mention_doctypes
+    );
 
-          await add_reference_doctype(
-            mention_doctypes,
-            topicReferenceTarget.name,
-            this.last_active_sub_channel
-          );
+    this.last_chat_space_message = await send_message(message_info);
 
-          this.mergeTopicReferencesLocally(
-            topicReferenceTarget.name,
-            mention_doctypes
-          );
+    await add_reference_doctype(
+      mention_doctypes,
+      topicReferenceTarget.name,
+      this.last_active_sub_channel
+    );
 
-          this.clearTopicMentionReferenceHint?.();
-          this.chat_info?.refreshTopicReferencesSection?.();
+    this.mergeTopicReferencesLocally(
+      topicReferenceTarget.name,
+      mention_doctypes
+    );
 
-          await this.send_add_document_message(mention_doctypes, chat_room);
+    this.clearTopicMentionReferenceHint?.();
+    this.chat_info?.refreshTopicReferencesSection?.();
 
-          return;
-        }
+    await this.send_add_document_message(mention_doctypes, chat_room);
+    const topicToClear = this.activeMessageTopic || this.chat_topic || createdTopicName || null;
 
-        // No selected/current topic: keep old behavior and create a new topic.
-        let results = await create_chat_topic(
-          mention_doctypes,
-          chat_room,
-          this.last_active_sub_channel
-        );
+      this.clearMessageTopic(false);
+      await this.clearUserActiveChatTopic(topicToClear);
 
-        const createdTopicName = results[0].chat_topic;
-        const createdTopicColor = results[0].topic_color || null;
-
-        if (createdTopicName) {
-          this.topicColorMap.set(
-            createdTopicName,
-            createdTopicColor || this.getTopicColor(createdTopicName)
-          );
-
-          this.activeMessageTopic = createdTopicName;
-          this.activeMessageTopicSubject =
-            mention_doctypes[0].docname || createdTopicName;
-
-          this.activeMessageTopicColor =
-            createdTopicColor || this.getTopicColor(createdTopicName);
-
-          this.updatePlusTopicButton?.();
-          this.saveUserActiveChatTopic(createdTopicName);
-        }
-
-        message_info.chat_topic = createdTopicName;
-        message_info.chat_topic_subject =
-          mention_doctypes[0].docname || createdTopicName;
-        message_info.topic_color = createdTopicColor;
-
-        this.last_chat_space_message = await send_message(message_info);
-
-        if (this.last_chat_space_message && createdTopicName) {
-          setTimeout(() => {
-            this.applyTopicToRenderedMessage(
-              this.last_chat_space_message,
-              createdTopicName,
-              this.activeMessageTopicSubject,
-              createdTopicColor
-            );
-          }, 150);
-        }
-
-        await this.send_set_topic_message(
-          mention_doctypes[0].docname,
-          chat_room
-        );
-        if (createdTopicName) {
-        await this.openTopicChatWindow(createdTopicName, this.activeMessageTopicSubject, {
-          topic_color: createdTopicColor
-        });
+      if (!this.isDedicatedTopicContext?.()) {
+        this.chat_topic = null;
+        this.chat_topic_subject = null;
+        this.updateActiveTopicButton?.(null);
+        this.updatePlusTopicButton?.();
       }
 
-        return;
-      }
+    return;
+  }
+
+ 
+  let results = await create_chat_topic(
+    mention_doctypes,
+    chat_room,
+    this.last_active_sub_channel
+  );
+
+  const createdTopicName = results?.[0]?.chat_topic || results?.[0]?.name || null;
+  const createdTopicSubject = mention_doctypes?.[0]?.docname || createdTopicName;
+  const createdTopicColor = results?.[0]?.topic_color || null;
+
+
+  this.activeMessageTopic = null;
+  this.activeMessageTopicSubject = null;
+  this.activeMessageTopicColor = null;
+
+  this.clearMessageTopic(false);
+  this.updatePlusTopicButton?.();
+  await this.clearUserActiveChatTopic?.(createdTopicName);
+
+
+  message_info.chat_topic = null;
+  message_info.chat_topic_subject = null;
+  message_info.topic_color = null;
+
+  this.last_chat_space_message = await send_message(message_info);
+
+  await this.send_set_topic_message(
+    createdTopicSubject,
+    chat_room
+  );
+
+  if (createdTopicName) {
+    await this.openTopicChatWindow(createdTopicName, createdTopicSubject, {
+      topic_color: createdTopicColor
+    });
+  }
+
+  return;
+}
     }
     // ================= End Handling with Mentions ===========================
 
@@ -8089,7 +8046,7 @@ if (!is_deleted && type !== "info-message") {
       is_document: this.is_document,
       is_voice_clip: this.is_voice_clip,
       file_id: file_id,
-      chat_topic: finalOutgoingTopic ? finalOutgoingTopic.chat_topic : (this.chat_topic || messageChatTopic),
+      chat_topic: finalOutgoingTopic ? finalOutgoingTopic.chat_topic :null,// (this.chat_topic || messageChatTopic),
       chat_topic_subject: finalOutgoingTopic ? finalOutgoingTopic.chat_topic_subject : null,
       topic_color: finalOutgoingTopic ? finalOutgoingTopic.topic_color : null,
       is_screenshot: is_screenshot,
@@ -10571,8 +10528,121 @@ function show_doctype_selector(doctype, callback) {
 
   return `${getDeskBasePath()}/${routeDoctype}/${encodeURIComponent(docname)}`;
 }
+function normalizeTopicReferences(refsOrTopic = {}) {
+  const refs =
+    Array.isArray(refsOrTopic)
+      ? refsOrTopic
+      : refsOrTopic.reference_doctypes ||
+        refsOrTopic.references ||
+        refsOrTopic.mention_doctypes ||
+        [];
 
-window.CCOpenChannelTopicPicker = async function ({ chatChannel, topicStatus = "All", title = __("Select Topic"), selectLabel = __("Select"), showAddNew = false, addNewHandler = null, getTopicColor = null } = {}) {
+  if (typeof refs === "string") {
+    try {
+      return normalizeTopicReferences(JSON.parse(refs));
+    } catch (e) {
+      console.warn("Failed to parse topic references", e);
+      return [];
+    }
+  }
+
+  if (!Array.isArray(refs)) return [];
+
+  return refs
+    .map(ref => ({
+      doctype: ref.doctype || ref.reference_doctype || "",
+      docname:
+        ref.docname ||
+        ref.reference_docname ||
+        ref.reference_name ||
+        ""
+    }))
+    .filter(ref => ref.doctype && ref.docname);
+}
+
+function renderReferenceLinksHtml(refsOrTopic = {}, options = {}) {
+  const references = normalizeTopicReferences(refsOrTopic);
+
+  if (!references.length) return "";
+
+  const wrapperClass = options.wrapperClass || "topic-reference-links";
+  const linkClass = options.linkClass || "topic-reference-link";
+  const title = options.title || __("References");
+
+  return `
+    <div class="${wrapperClass}" style="margin-top:6px;">
+      <div style="font-size:12px; opacity:.65; margin-bottom:2px;">
+        ${title}
+      </div>
+
+      ${references.map(ref => {
+        const url = getFormUrl(ref.doctype, ref.docname);
+
+        return `
+          <a href="${frappe.utils.escape_html(url)}"
+             class="${linkClass}"
+             data-doctype="${frappe.utils.escape_html(ref.doctype)}"
+             data-docname="${frappe.utils.escape_html(ref.docname)}"
+             target="_blank"
+             rel="noopener noreferrer"
+             style="
+               display:block;
+               font-size:12px;
+               color:#007bff;
+               text-decoration:underline;
+               word-break:break-word;
+               margin-top:2px;
+             ">
+            ${frappe.utils.escape_html(ref.doctype)} / ${frappe.utils.escape_html(ref.docname)}
+          </a>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+function bindReferenceLinks($wrapper, selector = ".topic-reference-link", opts = {}) {
+  $wrapper
+    .off("click.referenceLinks", selector)
+    .on("click.referenceLinks", selector, function (e) {
+      // Let browser handle open in new tab/window:
+      // middle click, Ctrl/Cmd click, Shift click, Alt click
+      if (
+        e.which === 2 ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.shiftKey ||
+        e.altKey
+      ) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const url = $(this).attr("href");
+
+      if (!url || url === "#") return;
+
+      if (opts.dialog && opts.hideDialog) {
+        opts.dialog.hide();
+      }
+
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
+}
+
+
+
+
+window.CCOpenChannelTopicPicker = async function ({
+  chatChannel,
+  topicStatus = "All",
+  title = __("Select Topic"),
+  selectLabel = __("Select"),
+  showAddNew = false,
+  addNewHandler = null,
+  getTopicColor = null
+} = {}) {
   if (!chatChannel) {
     frappe.msgprint({
       title: __("Error"),
@@ -10585,12 +10655,23 @@ window.CCOpenChannelTopicPicker = async function ({ chatChannel, topicStatus = "
   return new Promise((resolve) => {
     let settled = false;
 
+    const state = {
+      limit: 10,
+      offset: 0,
+      hasMore: true,
+      loading: false,
+      query: "",
+      topicStatus: topicStatus || "All"
+    };
+
     const d = new frappe.ui.Dialog({
       title,
-      size: "large",
+      size: "small",
       fields: [{ fieldtype: "HTML", fieldname: "topics_html" }],
       primary_action_label: __("Close"),
-      primary_action() { d.hide(); }
+      primary_action() {
+        d.hide();
+      }
     });
 
     d.$wrapper.on("hidden.bs.modal", () => {
@@ -10600,107 +10681,298 @@ window.CCOpenChannelTopicPicker = async function ({ chatChannel, topicStatus = "
     });
 
     d.show();
+    
 
-    const renderTopics = async () => {
-      d.fields_dict.topics_html.$wrapper.html(`<div style="padding:16px; text-align:center; opacity:.7;">${__("Loading topics...")}</div>`);
+    const makeTopicRowHtml = (topic) => {
+      const topicName = topic.name || topic.chat_topic || "";
+      const subject = (topic.subject || topic.chat_topic_subject || "").trim();
+      const displayTitle = subject || topicName;
+
+      const safeDisplayTitle = frappe.utils.escape_html(displayTitle || "");
+      const safeTopicName = frappe.utils.escape_html(topicName || "");
+
+      const topicColor =
+        typeof getTopicColor === "function"
+          ? getTopicColor(topic)
+          : topic.topic_color || topic.color || null;
+
+      const rawDate =
+        topic.creation ||
+        topic.date ||
+        topic.created_on ||
+        topic.creation_date ||
+        topic.created_date ||
+        null;
+
+      let createdAt = "—";
+
+      if (rawDate) {
+        try {
+          const tz =
+            frappe.boot?.time_zone?.system ||
+            frappe.boot?.time_zone?.user ||
+            "UTC";
+
+          createdAt =
+            get_date_from_now(rawDate, "space", tz) +
+            " " +
+            get_time(rawDate, tz);
+        } catch (e) {
+          createdAt = String(rawDate);
+        }
+      }
+
+      const topicNameHtml =
+        subject && topicName && subject !== topicName
+          ? `<div style="font-size:12px; opacity:.65; margin-top:2px; word-break:break-all;">${safeTopicName}</div>`
+          : "";
+
+      const refsHtml = renderReferenceLinksHtml(topic, {
+        wrapperClass: "topic-picker-references",
+        linkClass: "topic-picker-reference-link",
+        title: __("References")
+      });
+
+      const colorDotHtml = topicColor
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${frappe.utils.escape_html(topicColor)};margin-right:6px;"></span>`
+        : "";
+
+      return `
+        <div class="topic-picker-row"
+             style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #eee;">
+          <div style="min-width:0; flex:1;">
+            <div style="font-weight:600;">${colorDotHtml}${safeDisplayTitle}</div>
+
+            ${topicNameHtml}
+
+            <div style="font-size:12px; opacity:.7; margin-top:2px;">
+              ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
+              ${topic.is_private ? " • " + __("Private") : ""}
+            </div>
+
+            <div style="font-size:12px; opacity:.7; margin-top:2px;">
+              ${__("Created At")}: ${frappe.utils.escape_html(createdAt)}
+            </div>
+
+            ${
+              refsHtml ||
+              `<div style="font-size:12px; opacity:.6; margin-top:6px;">
+                ${__("No references")}
+              </div>`
+            }
+          </div>
+
+          <button type="button"
+                  class="btn btn-sm btn-primary pick-topic-btn"
+                  data-topic-name="${safeTopicName}"
+                  data-topic-subject="${safeDisplayTitle}"
+                  data-topic-color="${frappe.utils.escape_html(topicColor || "")}">
+            ${selectLabel}
+          </button>
+        </div>
+      `;
+    };
+
+    const renderShell = () => {
+      d.fields_dict.topics_html.$wrapper.html(`
+        <div class="topic-picker-dialog">
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px;">
+            <input type="text"
+                   class="form-control topic-picker-search"
+                   placeholder="${__("Search by topic name or subject")}"
+                   style="flex:1;" />
+
+            <select class="form-control topic-picker-status" style="width:140px;">
+              <option value="All" ${state.topicStatus === "All" ? "selected" : ""}>${__("All")}</option>
+              <option value="Open" ${state.topicStatus === "Open" ? "selected" : ""}>${__("Open")}</option>
+              <option value="Closed" ${state.topicStatus === "Closed" ? "selected" : ""}>${__("Closed")}</option>
+            </select>
+
+            ${
+              showAddNew
+                ? `<button type="button" class="btn btn-sm btn-secondary add-new-topic-btn">${__("Add New Topic")}</button>`
+                : ""
+            }
+          </div>
+
+          <div class="topic-picker-list"
+               style="max-height:420px; overflow-y:auto; padding-right:6px;">
+          </div>
+
+          <div class="topic-picker-loading"
+               style="display:none; padding:12px; text-align:center; opacity:.7;">
+            ${__("Loading topics...")}
+          </div>
+
+          <div class="topic-picker-empty"
+               style="display:none; padding:16px; text-align:center; opacity:.7;">
+            ${__("No topics found for this channel.")}
+          </div>
+        </div>
+      `);
+    };
+
+    const resetState = () => {
+      state.offset = 0;
+      state.hasMore = true;
+      state.loading = false;
+
+      d.$wrapper.find(".topic-picker-list").empty();
+      d.$wrapper.find(".topic-picker-empty").hide();
+      d.$wrapper.find(".topic-picker-loading").hide();
+    };
+
+    const renderTopics = async ({ reset = false } = {}) => {
+      if (state.loading) return;
+      if (!state.hasMore && !reset) return;
+
+      if (reset) {
+        resetState();
+      }
+
+      state.loading = true;
+      d.$wrapper.find(".topic-picker-loading").show();
 
       try {
         const r = await frappe.call({
           method: "clefincode_chat.api.api_1_3_4.api.get_channel_topics",
-          args: { chat_channel: chatChannel, topic_status: topicStatus }
+          args: {
+            chat_channel: chatChannel,
+            topic_status: state.topicStatus,
+            query: state.query,
+            limit: state.limit,
+            offset: state.offset
+          }
         });
 
         const topics = r.message?.topics || [];
-        const rows = topics.length
-          ? topics.map((topic) => {
-              const refs = topic.references || [];
-              const topicName = topic.name || topic.chat_topic || "";
-              const subject = (topic.subject || topic.chat_topic_subject || "").trim();
-              const displayTitle = subject || topicName;
-              const safeDisplayTitle = frappe.utils.escape_html(displayTitle || "");
-              const safeTopicName = frappe.utils.escape_html(topicName || "");
+        const hasMore = Boolean(r.message?.has_more);
 
-              const topicColor = typeof getTopicColor === "function" ? getTopicColor(topic) : (topic.topic_color || topic.color || null);
+        if (topics.length) {
+          const rows = topics.map(makeTopicRowHtml).join("");
+          d.$wrapper.find(".topic-picker-list").append(rows);
+        }
 
-              const rawDate = topic.creation || topic.date || topic.created_on || topic.creation_date || topic.created_date || null;
-              let createdAt = "—";
-              if (rawDate) {
-                try {
-                  const tz = (frappe.boot?.time_zone?.system || frappe.boot?.time_zone?.user || "UTC");
-                  createdAt = get_date_from_now(rawDate, "space", tz) + " " + get_time(rawDate, tz);
-                } catch (e) { createdAt = String(rawDate); }
-              }
+        state.offset += topics.length;
+        state.hasMore = hasMore;
 
-              const topicNameHtml = subject && topicName && subject !== topicName
-                ? `<div style="font-size:12px; opacity:.65; margin-top:2px; word-break:break-all;">${safeTopicName}</div>`
-                : "";
-
-              const refsHtml = refs.length
-                ? refs.map(ref => `<div style="font-size:12px; opacity:.75; margin-top:2px;">${frappe.utils.escape_html(ref.doctype || "")} / ${frappe.utils.escape_html(ref.docname || "")}</div>`).join("")
-                : `<div style="font-size:12px; opacity:.6; margin-top:2px;">${__("No references")}</div>`;
-
-              const colorDotHtml = topicColor
-                ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${frappe.utils.escape_html(topicColor)};margin-right:6px;"></span>`
-                : "";
-
-              return `
-                <div class="topic-picker-row" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #eee;">
-                  <div style="min-width:0; flex:1;">
-                    <div style="font-weight:600;">${colorDotHtml}${safeDisplayTitle}</div>
-                    ${topicNameHtml}
-                    <div style="font-size:12px; opacity:.7; margin-top:2px;">
-                      ${__("Status")}: ${frappe.utils.escape_html(topic.topic_status || "Open")}
-                      ${topic.is_private ? " • " + __("Private") : ""}
-                    </div>
-                    <div style="font-size:12px; opacity:.7; margin-top:2px;">
-                      ${__("Created At")}: ${frappe.utils.escape_html(createdAt)}
-                    </div>
-                    <div style="margin-top:6px;">
-                      <div style="font-size:12px; opacity:.65; margin-bottom:2px;">${__("References")}:</div>
-                      ${refsHtml}
-                    </div>
-                  </div>
-                  <button type="button" class="btn btn-sm btn-primary pick-topic-btn"
-                    data-topic-name="${safeTopicName}"
-                    data-topic-subject="${safeDisplayTitle}"
-                    data-topic-color="${frappe.utils.escape_html(topicColor || "")}">
-                    ${selectLabel}
-                  </button>
-                </div>`;
-            }).join("")
-          : `<div style="padding:16px; text-align:center; opacity:.7;">${__("No topics found for this channel.")}</div>`;
-
-        d.fields_dict.topics_html.$wrapper.html(`
-          <div class="topic-picker-dialog">
-            ${showAddNew ? `<div style="display:flex; justify-content:flex-end; margin-bottom:12px;"><button type="button" class="btn btn-sm btn-secondary add-new-topic-btn">${__("Add New Topic")}</button></div>` : ""}
-            <div class="topic-picker-list">${rows}</div>
-          </div>`);
+        const hasAnyRows = d.$wrapper.find(".topic-picker-row").length > 0;
+        d.$wrapper.find(".topic-picker-empty").toggle(!hasAnyRows);
       } catch (e) {
         console.error("Failed to load channel topics", e);
-        d.fields_dict.topics_html.$wrapper.html(`<div style="padding:16px; text-align:center; color:#d9534f;">${__("Failed to load topics.")}</div>`);
+
+        if (reset) {
+          d.$wrapper.find(".topic-picker-list").html(`
+            <div style="padding:16px; text-align:center; color:#d9534f;">
+              ${__("Failed to load topics.")}
+            </div>
+          `);
+        }
+      } finally {
+        state.loading = false;
+        d.$wrapper.find(".topic-picker-loading").hide();
       }
     };
+    const bindTopicListScroll = () => {
+          const $list = d.$wrapper.find(".topic-picker-list");
 
-    renderTopics();
+          $list.off("scroll.topicPicker").on("scroll.topicPicker", function () {
+            const el = this;
+
+            if (state.loading || !state.hasMore) return;
+
+            const reachedBottom =
+              el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+
+            if (reachedBottom) {
+              renderTopics();
+            }
+          });
+        };
+
+    renderShell();
+    bindTopicListScroll();
+    renderTopics({ reset: true });
+
+    d.$wrapper
+      .off("input", ".topic-picker-search")
+      .on(
+        "input",
+        ".topic-picker-search",
+        frappe.utils.debounce(function () {
+          state.query = ($(this).val() || "").trim();
+          renderTopics({ reset: true });
+        }, 300)
+      );
+
+    d.$wrapper
+      .off("change", ".topic-picker-status")
+      .on("change", ".topic-picker-status", function () {
+        state.topicStatus = $(this).val() || "All";
+        renderTopics({ reset: true });
+      });
+
+    d.$wrapper
+      .off("scroll", ".topic-picker-list")
+      .on("scroll", ".topic-picker-list", function () {
+        const el = this;
+
+        if (state.loading || !state.hasMore) return;
+
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) {
+          renderTopics();
+        }
+      });
 
     if (showAddNew && typeof addNewHandler === "function") {
-      d.$wrapper.off("click", ".add-new-topic-btn").on("click", ".add-new-topic-btn", async (e) => {
-        e.stopPropagation();
-        await addNewHandler({ dialog: d, renderTopics });
-      });
+      d.$wrapper
+        .off("click", ".add-new-topic-btn")
+        .on("click", ".add-new-topic-btn", async (e) => {
+          e.stopPropagation();
+
+          await addNewHandler({
+            dialog: d,
+            renderTopics: async () => {
+              await renderTopics({ reset: true });
+            }
+          });
+        });
     }
 
-    d.$wrapper.off("click", ".pick-topic-btn").on("click", ".pick-topic-btn", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const $btn = $(e.currentTarget);
-      const topicName = $btn.attr("data-topic-name");
-      const topicSubject = $btn.attr("data-topic-subject") || topicName;
-      const topicColor = $btn.attr("data-topic-color") || null;
-      if (!topicName) return;
-      settled = true;
-      resolve({ name: topicName, chat_topic: topicName, subject: topicSubject, chat_topic_subject: topicSubject, topic_color: topicColor });
-      d.hide();
+    d.$wrapper
+      .off("click", ".pick-topic-btn")
+      .on("click", ".pick-topic-btn", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const $btn = $(e.currentTarget);
+
+        const topicName = $btn.attr("data-topic-name");
+        const topicSubject = $btn.attr("data-topic-subject") || topicName;
+        const topicColor = $btn.attr("data-topic-color") || null;
+
+        if (!topicName) return;
+
+        settled = true;
+
+        resolve({
+          name: topicName,
+          chat_topic: topicName,
+          subject: topicSubject,
+          chat_topic_subject: topicSubject,
+          topic_color: topicColor
+        });
+
+        d.hide();
+      });
+
+    bindReferenceLinks(d.$wrapper, ".topic-picker-reference-link", {
+      dialog: d,
+      hideDialog: false
     });
   });
 };
+
+
+
+
