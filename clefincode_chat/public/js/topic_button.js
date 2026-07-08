@@ -239,20 +239,26 @@ async function link_current_doc_to_room(frm, room) {
 			}
 		});
 
+		const createdRow = createdTopic.message?.results?.[0] || createdTopic.message || {};
+
 		const new_chat_topic =
-			createdTopic.message?.results?.[0]?.chat_topic ||
-			createdTopic.message?.results?.[0]?.name ||
-			createdTopic.message?.chat_topic ||
-			createdTopic.message?.name ||
+			createdRow.chat_topic ||
+			createdRow.name ||
 			null;
 
 		if (!new_chat_topic) {
 			throw new Error("Topic was created but chat_topic was not returned");
 		}
 
+		const new_chat_topic_subject =
+			createdRow.chat_topic_subject ||
+			createdRow.subject ||
+			new_chat_topic;
+
 		return {
 			room,
 			chat_topic: new_chat_topic,
+			chat_topic_subject: new_chat_topic_subject,
 			mode: "created"
 		};
 	}
@@ -264,16 +270,23 @@ async function link_current_doc_to_room(frm, room) {
 	});
 
 	if (same_doc_exists) {
+		const existing_subject =
+			topicRow?.chat_topic_subject ||
+			topicRow?.subject ||
+			existing_topic;
+
 		return {
 			room,
 			chat_topic: existing_topic,
+			chat_topic_subject: existing_subject,
 			mode: "already_linked"
 		};
 	}
 
 	const selectedTopic = await pick_topic_for_room(room, {
 		showTopActions: true,
-		compact: true
+		compact: true,
+		frm
 	});
 
 	if (!selectedTopic) {
@@ -284,17 +297,6 @@ async function link_current_doc_to_room(frm, room) {
 		};
 	}
 
-	if (selectedTopic.__action === "create_new") {
-		const replaced = await replace_topic_references(existing_topic, room, current_ref);
-
-		return {
-			room,
-			chat_topic: replaced.chat_topic || existing_topic,
-			old_chat_topic: replaced.old_chat_topic || existing_topic,
-			mode: "replaced"
-		};
-	}
-
 	const selectedTopicName = selectedTopic.chat_topic || selectedTopic.name;
 
 	if (!selectedTopicName) {
@@ -302,20 +304,21 @@ async function link_current_doc_to_room(frm, room) {
 	}
 
 	await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype_with_message",
-		args: {
-			mention_doctypes,
-			chat_topic: selectedTopicName,
-			chat_channel: room,
-			user_email: frappe.session.user,
-			user_name: frappe.session.user_fullname || frappe.session.user
-		}
-	});
+	method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype",
+	args: {
+		mention_doctypes,
+		chat_topic: selectedTopicName
+	}
+});
 
 	return {
 		room,
 		chat_topic: selectedTopicName,
-		mode: "attached"
+		chat_topic_subject:
+			selectedTopic.chat_topic_subject ||
+			selectedTopic.subject ||
+			selectedTopicName,
+		mode: selectedTopic.mode === "created" ? "created" : "attached"
 	};
 }
 
@@ -346,12 +349,19 @@ async function link_doc_to_selected_target(frm, target) {
 		user_type: frappe.boot.user?.user_type,
 		is_limited_user: frappe.boot.user?.is_limited_user,
 		room: result.room,
-		room_name: target.name || result.room,
+		room_name:
+			result.chat_topic_subject ||
+			target.room_name ||
+			target.channel_name ||
+			target.full_name ||
+			target.name ||
+			result.room,
 		room_type: target.type === "contact" ? "Direct" : (target.room_type || "Group"),
 		contact: target.type === "contact" ? (target.name || target.email) : null,
 		is_first_message: 0,
 		platform: target.raw?.platform || "Chat",
-		chat_topic: result.chat_topic || null
+		chat_topic: result.chat_topic || null,
+		chat_topic_subject: result.chat_topic_subject || null
 	});
 
 	frappe.show_alert({
@@ -505,13 +515,145 @@ async function pick_topic_for_room(room, opts = {}) {
 	});
 
 	if (opts.showTopActions || opts.compact) {
-		decorate_open_topic_picker_dialog(externalResolve, opts);
+		decorate_open_topic_picker_dialog(externalResolve, opts, {
+			chatChannel: room,
+			frm: opts.frm || null
+		});
 	}
 
 	return await Promise.race([pickerPromise, externalAction]);
 }
 
-function decorate_open_topic_picker_dialog(resolve, opts = {}) {
+async function prompt_create_new_topic_from_picker({
+	chatChannel,
+	frm = null,
+	afterCreate,
+	parentModal = null
+}) {
+	if (!chatChannel) {
+		frappe.msgprint({
+			title: __("Error"),
+			message: __("No chat channel provided."),
+			indicator: "red"
+		});
+		return;
+	}
+
+	const currentDoctype = frm?.doctype || "";
+	const currentDocname = frm?.doc?.name || "";
+
+	if (!currentDoctype || !currentDocname) {
+		frappe.msgprint({
+			title: __("Missing document"),
+			message: __("Could not detect the current document."),
+			indicator: "red"
+		});
+		return;
+	}
+
+	const createDialog = new frappe.ui.Dialog({
+		title: __("Add New Topic"),
+		fields: [
+			{
+				label: __("Subject"),
+				fieldname: "subject",
+				fieldtype: "Data"
+			},
+			{
+				label: __("DocType"),
+				fieldname: "reference_doctype",
+				fieldtype: "Data",
+				default: currentDoctype,
+				read_only: 1
+			},
+			{
+				label: __("Document"),
+				fieldname: "reference_docname",
+				fieldtype: "Data",
+				default: currentDocname,
+				read_only: 1
+			}
+		],
+		primary_action_label: __("Create"),
+		primary_action: async (values) => {
+			try {
+				const subject = (values.subject || "").trim();
+
+				const referenceDoctype = currentDoctype;
+				const referenceDocname = currentDocname;
+
+				const finalSubject = subject || `${referenceDoctype}:${referenceDocname}`;
+
+				const mention_doctypes = JSON.stringify([
+					{
+						doctype: referenceDoctype,
+						docname: referenceDocname
+					}
+				]);
+
+				const r = await frappe.call({
+					method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic",
+					args: {
+						mention_doctypes,
+						chat_channel: chatChannel,
+						subject: finalSubject
+					}
+				});
+
+				const created = r.message?.results?.[0] || r.message || {};
+				const topicName = created.chat_topic || created.name;
+
+				if (!topicName) {
+					throw new Error("Topic name missing after creation");
+				}
+
+				const topicSubject =
+					created.chat_topic_subject ||
+					created.subject ||
+					finalSubject;
+
+				const topicColor =
+					created.topic_color ||
+					created.chat_topic_color ||
+					created.color ||
+					null;
+
+				const createdTopic = {
+					name: topicName,
+					chat_topic: topicName,
+					subject: topicSubject,
+					chat_topic_subject: topicSubject,
+					topic_color: topicColor,
+					color: topicColor,
+					reference_doctype: referenceDoctype,
+					reference_docname: referenceDocname,
+					mode: "created"
+				};
+
+				createDialog.hide();
+
+				if (parentModal) {
+					parentModal.modal("hide");
+				}
+
+				if (typeof afterCreate === "function") {
+					await afterCreate(createdTopic);
+				}
+			} catch (e) {
+				console.error("Failed to create topic", e);
+				frappe.msgprint({
+					title: __("Error"),
+					message: __("Failed to create topic"),
+					indicator: "red"
+				});
+			}
+		}
+	});
+
+	createDialog.show();
+}
+
+function decorate_open_topic_picker_dialog(resolve, opts = {}, context = {}) {
 	let tries = 0;
 	const maxTries = 80;
 
@@ -581,9 +723,15 @@ function decorate_open_topic_picker_dialog(resolve, opts = {}) {
 			$modal.modal("hide");
 		});
 
-		$topActions.find(".cc-topic-picker-create-new").on("click", () => {
-			resolve({ __action: "create_new" });
-			$modal.modal("hide");
+		$topActions.find(".cc-topic-picker-create-new").on("click", async () => {
+			await prompt_create_new_topic_from_picker({
+				chatChannel: context.chatChannel,
+				frm: context.frm,
+				parentModal: $modal,
+				afterCreate: async (createdTopic) => {
+					resolve(createdTopic);
+				}
+			});
 		});
 
 		$modal.one("hidden.bs.modal", () => {
@@ -604,14 +752,46 @@ function open_chat_room(profile, chat_status = null) {
 		app.$chat_element.show();
 	}
 
-	if (!profile.chat_topic && window.CCCheckIfChatWindowOpen(profile.room, "room")) {
-		$(".expand-chat-window[data-id|='" + profile.room + "']").click();
+	const topicKey = profile.chat_topic || null;
+
+	if (topicKey && window.CCCheckIfChatWindowOpen(topicKey, "topic")) {
+		$(".expand-chat-window[data-id='" + topicKey + "']").click();
+		return;
+	}
+
+	if (!topicKey && window.CCCheckIfChatWindowOpen(profile.room, "room")) {
+		$(".expand-chat-window[data-id='" + profile.room + "']").click();
 		return;
 	}
 
 	const chat_window = new window.CCChatWindow({
-		profile: { room: profile.room }
+		profile: topicKey
+			? { topic: topicKey }
+			: { room: profile.room }
 	});
+
+	if (topicKey) {
+		chat_window.$chat_window
+			.attr("data-topic", topicKey)
+			.data("topic", topicKey);
+	}
+
+	if (app.$chat_element?.length) {
+		app.$chat_element.show();
+	}
+
+	const topicSubject =
+		profile.chat_topic_subject ||
+		profile.subject ||
+		profile.room_name ||
+		topicKey;
+
+	if (topicKey) {
+		profile.room_type = "Topic";
+		profile.chat_topic = topicKey;
+		profile.chat_topic_subject = topicSubject;
+		profile.room_name = topicSubject;
+	}
 
 	const chatSpaceOpts = {
 		$wrapper: chat_window.$chat_window,
@@ -619,12 +799,13 @@ function open_chat_room(profile, chat_status = null) {
 		chat_status: chat_status
 	};
 
-	if (profile.chat_topic) {
-		chatSpaceOpts.chat_topic = profile.chat_topic;
+	if (topicKey) {
+		chatSpaceOpts.chat_topic = topicKey;
 		chatSpaceOpts.chat_topic_channel = profile.room;
-		chatSpaceOpts.chat_topic_subject = profile.chat_topic_subject || null;
+		chatSpaceOpts.chat_topic_subject = topicSubject;
+		chatSpaceOpts.alternative_subject = topicSubject;
 		chatSpaceOpts.topic_write_mode = true;
-		 chatSpaceOpts.is_topic_window = true;
+		chatSpaceOpts.is_topic_window = true;
 	}
 
 	new window.CCChatSpace(chatSpaceOpts);
