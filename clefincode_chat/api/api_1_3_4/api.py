@@ -6839,7 +6839,7 @@ def delete_temp_public_file(file_url,time_delay=None):
 
 # ==========================================================================================
 @frappe.whitelist()
-def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile,results,attachment=None):
+def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile,results,attachment=None ,override_variables=None ):
  
     template = None
     doctype = None
@@ -6850,7 +6850,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
     media_url = None
     link=None
     from bs4 import BeautifulSoup
-
+   
     content = new_message.content
     soup = BeautifulSoup(content, 'html.parser')
 
@@ -6888,6 +6888,15 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
 
     variables = {}
     body_preview = ""
+    override_variables = {}
+
+    if isinstance(override_variables , str):
+        try:
+            override_variables = json.loads(override_variables )
+        except Exception:
+            override_variables = {}
+    elif isinstance(override_variables , dict):
+        override_variables = override_variables  or {}
 
     if doctype == "ClefinCode WhatsApp Template":
         for idx, btn in enumerate(template.buttons, start=1):
@@ -6939,6 +6948,8 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                     else:
                         # 🔹 Normal case — get the field value from the current document
                         value = frappe.db.get_value(source_doctype, docname, source_field)
+                        value=str(value)
+                        frappe.log_error("value",[source_doctype, docname, source_field,value])
                         if value and value.startswith("/"):
                             value= urllib.parse.quote(value[1:], safe=':/')
                 # else:
@@ -6946,8 +6957,10 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
 
                 if key and value is not None:
                     variables[key] = value
-                
-       
+        for k, v in (override_variables or {}).items():
+            if v is not None:
+                        variables[str(k)] = v    
+                    
        
     #     body_preview = json.dumps(variables, indent=2)
   
@@ -7041,7 +7054,7 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
                         "content": content,
                         "is_private": 0,  # Public
                         "attached_to_doctype": template.reference_doctype,
-                        "attached_to_name": doc.name
+                        "attached_to_name": docname
                     })
 
                     new_public_file.insert(ignore_permissions=True)
@@ -7080,6 +7093,8 @@ def send_whatsapp_message_from_template(new_message, to_number, whatsapp_profile
         "doctype": doctype
     }
  
+
+
 #========================================================================================
 @frappe.whitelist()
 def get_all_whatsapp_templates():
