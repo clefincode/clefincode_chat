@@ -14,7 +14,7 @@
   "with_message_content",
   "enable_system_notification_on_mobile_app",
   "limited_roles_section",
-   "limited_roles",
+  "limited_roles",
   "column_break_jxln",
   "max_edit_time",
   "max_delete_time",
@@ -30,6 +30,8 @@
   "column_break_8",
   "chat_support_title",
   "welcome_message",
+  "topic_grouping_section",
+  "grouping_period",
   "doctype_shortcuts",
   "doctype_shortcut"
  ],
@@ -109,6 +111,18 @@
    "mandatory_depends_on": "eval: doc.enable_portal_support == 1"
   },
   {
+   "fieldname": "topic_grouping_section",
+   "fieldtype": "Section Break",
+   "label": "Topic Grouping"
+  },
+  {
+   "default": "Daily",
+   "fieldname": "grouping_period",
+   "fieldtype": "Select",
+   "label": "Grouping Period",
+   "options": "Per Topic\nDaily\nWeekly\nMonthly"
+  },
+  {
    "fieldname": "enable_mobile_notifications_section_section",
    "fieldtype": "Section Break",
    "label": "Mobile Notifications"
@@ -152,16 +166,16 @@
    "label": "Enable System Notification on Mobile App"
   },
   {
- "fieldname": "limited_roles_section",
- "fieldtype": "Section Break",
- "label": "Limited User Roles"
-},
-{
- "fieldname": "limited_roles",
- "fieldtype": "Table MultiSelect",
- "label": "Limited Roles",
- "options": "ClefinCode Limited Role"
-},
+   "fieldname": "limited_roles_section",
+   "fieldtype": "Section Break",
+   "label": "Limited User Roles"
+  },
+  {
+   "fieldname": "limited_roles",
+   "fieldtype": "Table MultiSelect",
+   "label": "Limited Roles",
+   "options": "ClefinCode Limited Role"
+  },
   {
    "default": "7",
    "fieldname": "max_delete_time",
@@ -182,7 +196,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-02-17 17:49:37.458306",
+ "modified": "2026-07-09 16:28:58.558702",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Settings",

@@ -182,6 +182,8 @@ export default class ChatSpace {
     this.initial_message_to_scroll = opts.initial_message_to_scroll || opts.scroll_to_message || null;
     this.initial_message_scroll_done = false;
 
+    this.timeline_filter_context = opts.timeline_filter_context || null;
+
     this.messageCache = new Map();
     this.ready = this.setup();
   }
@@ -451,11 +453,17 @@ dedupeAdjacentTopicSeparators() {
 }
 
 async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this.messages_limit) {
+  const timelineFilter = this.timeline_filter_context || null;
+
+  console.log(this.timeline_filter_context);
   if (this.is_topic_window) {
     if (!this.chat_topic_space) {
       console.warn("Topic window missing chat_topic_space");
       return { results: [] };
     }
+    console.log( timelineFilter?.from_date);
+    console.log( timelineFilter?.to_date);
+   
 
     return await get_messages(
       "",
@@ -464,19 +472,24 @@ async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this
       this.chat_topic_space,
       this.profile.remove_date,
       limit,
-      offset
+      offset,
+      timelineFilter?.from_date || null,
+      timelineFilter?.to_date || null
     );
   }
 
   if (this.profile.room_type === "Topic" && this.chat_topic_space) {
-    return await get_messages(
+    
+  return await get_messages(
       "",
       this.profile.user_email,
       "Topic",
       this.chat_topic_space,
       this.profile.remove_date,
       limit,
-      offset
+      offset,
+      timelineFilter?.from_date || null,
+      timelineFilter?.to_date || null
     );
   }
 
@@ -493,6 +506,7 @@ async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this
   }
 
   if (this.topic_write_mode && this.chat_topic_space) {
+    console.log("5555");
     return await get_messages(
       "",
       this.profile.user_email,
@@ -508,10 +522,12 @@ async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this
     this.profile.room,
     this.profile.user_email,
     this.profile.room_type,
-    null,
+    timelineFilter?.chat_topic || null,
     this.profile.remove_date,
     limit,
-    offset
+    offset,
+    timelineFilter?.from_date || null,
+    timelineFilter?.to_date || null
   );
 }
 
@@ -5123,12 +5139,15 @@ isDedicatedTopicContext() {
 }
 
 checkAndShowTopicInactiveNotice() {
-  if (
-    this.isDedicatedTopicContext?.() ||
-    this.is_topic_window ||
-    this.profile?.room_type === "Topic" ||
-    this.chat_topic_space
-  ) {
+  if (this.timeline_filter_context?.grouping_condition_met) {
+    this.showDateRangeFilterNotice(
+      this.timeline_filter_context.from_date,
+      this.timeline_filter_context.to_date
+    );
+    return;
+  }
+
+  if (this.isDedicatedTopicContext?.()) {
     this.hideTopicInactiveNotice?.();
     return;
   }
@@ -5197,7 +5216,59 @@ checkAndShowTopicInactiveNotice() {
 
   this.showTopicInactiveNotice(topicSubject);
 }
+showDateRangeFilterNotice(fromDate, toDate) {
+  this.hideTopicInactiveNotice?.();
 
+  const label =
+    fromDate && toDate && fromDate !== toDate
+      ? `${frappe.datetime.str_to_user(fromDate)} ${__("to")} ${frappe.datetime.str_to_user(toDate)}`
+      : frappe.datetime.str_to_user(fromDate || toDate);
+
+  const $notice = $(`
+    <div class="topic-inactive-notice date-range-filter-notice" style="font-size:12px;opacity:0.75;text-align:center;padding:4px 8px;background:var(--bg-light,#f9f9f9);border-top:1px solid var(--border-color,#eee);">
+      ${__("Showing messages from {0} only", [label])}
+    </div>
+  `);
+      // <a class="clear-date-filter-link" style="margin-inline-start:6px;cursor:pointer;text-decoration:underline;">${__("View all")}</a>
+
+  $notice.find(".clear-date-filter-link").on("click", async () => {
+    const topicName =
+      this.timeline_filter_context?.chat_topic ||
+      this.chat_topic_space ||
+      this.chat_topic ||
+      null;
+
+    if (!topicName) {
+      this.timeline_filter_context = null;
+      this.resetPagination?.();
+      this.fetchMessagesForCurrentContext?.();
+      return;
+    }
+
+    const topicSubject =
+      this.chat_topic_space_subject ||
+      this.chat_topic_subject ||
+      this.profile?.chat_topic_subject ||
+      topicName;
+
+    const topicColor =
+      this.activeMessageTopicColor ||
+      this.topicColorMap?.get(topicName) ||
+      null;
+
+    await this.openTopicChatWindow(topicName, topicSubject, {
+      topic_color: topicColor
+    });
+  });
+
+  if (this.$chat_actions && this.$chat_actions.length) {
+    this.$chat_actions.before($notice);
+  } else {
+    this.$chat_space.append($notice);
+  }
+
+  this.$topicInactiveNotice = $notice;
+}
 showTopicInactiveNotice(topicSubject) {
   this.hideTopicInactiveNotice?.();
 
@@ -10214,7 +10285,9 @@ async function get_messages(
   chat_topic_space,
   remove_date,
   limit,
-  offset
+  offset,
+  from_date,
+  to_date
 ) {
   const res = await frappe.call({
     method: "clefincode_chat.api.api_1_3_4.api.get_messages",
@@ -10226,6 +10299,8 @@ async function get_messages(
       room_type: room_type,
       limit: limit,
       offset: offset,
+      from_date: from_date || null,
+      to_date: to_date || null,
     },
   });
 

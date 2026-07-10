@@ -2,6 +2,7 @@
 # License: MIT. See LICENSE
 
 import json
+from datetime import datetime
 from urllib.parse import quote
 
 import frappe
@@ -141,48 +142,178 @@ def get_view_logs(doctype, docname):
 			logs = view_logs
 	return logs
 
+def get_topic_timeline_grouping_period(user=None):
+	settings_grouping_period = frappe.db.get_single_value(
+		"ClefinCode Chat Settings",
+		"grouping_period"
+	) or "Daily"
+
+	user = user or frappe.session.user
+
+	contact_name = frappe.db.get_value(
+		"Contact",
+		{"user": user},
+		"name"
+	)
+
+	if not contact_name:
+		return settings_grouping_period
+
+	profile_grouping_period = frappe.db.get_value(
+		"ClefinCode Chat Profile",
+		{"contact": contact_name},
+		"topic_timeline_grouping_period"
+	)
+
+	if profile_grouping_period == "Default":
+		return settings_grouping_period
+
+	return profile_grouping_period or settings_grouping_period
+
+def _format_date_for_display(dt):
+	if isinstance(dt, datetime):
+		return dt.strftime("%Y-%m-%d")
+	if dt:
+		return str(dt)[:10]
+	return ""
+
+
 def add_chat_topics(doc, docinfo):
+	grouping_period = get_topic_timeline_grouping_period()
+	if grouping_period == "Per Topic":
+		bucket_expr = "ref.parent"
+	elif grouping_period == "Weekly":
+		week_monday = "DATE_SUB(DATE(msg.send_date), INTERVAL WEEKDAY(msg.send_date) DAY)"
+		bucket_expr = week_monday
+	elif grouping_period == "Monthly":
+		bucket_expr = "DATE_FORMAT(msg.send_date, '%%Y-%%m')"
+	else:
+		bucket_expr = "DATE(msg.send_date)"
+
 	docinfo.chat_topics = []
 	chat_topics = frappe.db.sql(
-		"""
-		SELECT 
-			ref.parent, topic.chat_channel, topic.is_private, topic.subject, 
-			topic.owner, topic.creation, topic.topic_status
-		FROM 
-			`tabClefinCode Chat Topic Reference` AS ref
-		JOIN 
-			`tabClefinCode Chat Topic` AS topic ON ref.parent = topic.name
-		WHERE 
-			ref.docname = %s AND ref.active = 1
-		""", 
-		(doc.name,), as_dict=True
+		f"""
+		SELECT
+			ref.parent AS topic_name,
+			topic.chat_channel,
+			topic.is_private,
+			topic.subject,
+			topic.owner,
+			topic.creation AS topic_creation,
+			topic.topic_status,
+
+			{bucket_expr} AS period_bucket,
+
+			COALESCE(MIN(msg.send_date), topic.creation) AS period_start,
+			CASE
+				WHEN MIN(msg.send_date) IS NOT NULL
+					AND MAX(msg.send_date) IS NOT NULL
+					AND MIN(msg.send_date) = MAX(msg.send_date)
+				THEN DATE_ADD(MAX(msg.send_date), INTERVAL 1 SECOND)
+				ELSE COALESCE(MAX(msg.send_date), topic.creation)
+			END AS period_end,
+
+			MIN(msg.send_date) AS first_message_date,
+			MAX(msg.send_date) AS last_message_date,
+			SUBSTRING_INDEX(
+				GROUP_CONCAT(msg.name ORDER BY msg.send_date ASC),
+				',',
+				1
+			) AS first_message_name,
+			COUNT(msg.name) AS message_count
+
+		FROM `tabClefinCode Chat Topic Reference` AS ref
+
+		JOIN `tabClefinCode Chat Topic` AS topic
+			ON ref.parent = topic.name
+
+		LEFT JOIN `tabClefinCode Chat Message` AS msg
+			ON msg.chat_topic = topic.name
+			AND msg.chat_channel = topic.chat_channel
+			AND IFNULL(msg.is_deleted, 0) = 0
+
+		WHERE
+			ref.docname = %s
+			AND ref.active = 1
+
+		GROUP BY
+			ref.parent,
+			topic.chat_channel,
+			topic.is_private,
+			topic.subject,
+			topic.owner,
+			topic.creation,
+			topic.topic_status,
+			{bucket_expr}
+
+		ORDER BY
+			COALESCE(MIN(msg.send_date), topic.creation) DESC
+		""",
+		(doc.name,),
+		as_dict=True
 	)
 
 	for chat_topic_data in chat_topics:
 		chat_channel = chat_topic_data.chat_channel
 		is_private = chat_topic_data.is_private
 		chat_topic_subject = f'"{chat_topic_data.subject}"' if chat_topic_data.subject else ""
-		
+
 		alternative_subject = get_topic_title(chat_channel)
 		title = chat_topic_subject if chat_topic_subject else alternative_subject
 		display_subject = chat_topic_subject if chat_topic_subject else split_channel_name(alternative_subject)
-		
-		channel_name = (
-			f"<span class='topic-link' title='{title}' "
-			f"style='text-decoration:underline;cursor:pointer'>{display_subject}</span>"
-		)
+
+		period_start = chat_topic_data.period_start
+		period_end = chat_topic_data.period_end
+		period_display_start = _format_date_for_display(period_start)
+		period_display_end = _format_date_for_display(period_end)
+
+		if grouping_period == "Per Topic":
+			channel_name = (
+				f"<span class='topic-link' "
+				f"data-topic='{chat_topic_data.topic_name}' "
+				f"data-chat-channel='{chat_topic_data.chat_channel}' "
+				f"data-topic-subject='{chat_topic_subject or alternative_subject}' "
+				f"data-first-message='{chat_topic_data.first_message_name or ''}' "
+				f"title='{title}' "
+				f"style='text-decoration:underline;cursor:pointer'>{display_subject}</span>"
+			)
+		else:
+			channel_name = (
+				f"<span class='topic-link' "
+				f"data-topic='{chat_topic_data.topic_name}' "
+				f"data-chat-channel='{chat_topic_data.chat_channel}' "
+				f"data-topic-subject='{chat_topic_subject or alternative_subject}' "
+				f"data-first-message='{chat_topic_data.first_message_name or ''}' "
+				f"data-from-date='{period_start or ''}' "
+				f"data-to-date='{period_end or ''}' "
+				f"data-grouping-condition=1"
+				f"title='{title}' "
+				f"style='text-decoration:underline;cursor:pointer'>{display_subject}</span>"
+			)
 		subject = f"<b>@ClefinCode Chat Topic:</b> {channel_name}"
-		
+
 		docinfo.chat_topics.append({
-			"name": chat_topic_data.parent,
+			"name": chat_topic_data.topic_name,
 			"owner": chat_topic_data.owner,
 			"subject": subject,
-			"creation": chat_topic_data.creation,
+			"creation": chat_topic_data.first_message_date or chat_topic_data.topic_creation,
 			"topic_status": chat_topic_data.topic_status,
-			"chat_channel": chat_channel,
-			"is_private_topic": is_private,
+			"chat_channel": chat_topic_data.chat_channel,
+			"is_private_topic": chat_topic_data.is_private,
 			"chat_topic_subject": chat_topic_subject,
 			"alternative_subject": alternative_subject,
+
+			"grouping_period": grouping_period,
+			"period_bucket": chat_topic_data.period_bucket,
+			"period_start": None if grouping_period == "Per Topic" else period_start,
+			"period_end": None if grouping_period == "Per Topic" else period_end,
+			"period_display_start": "" if grouping_period == "Per Topic" else period_display_start,
+			"period_display_end": "" if grouping_period == "Per Topic" else period_display_end,
+
+			"first_message_name": chat_topic_data.first_message_name,
+			"first_message_date": chat_topic_data.first_message_date,
+			"last_message_date": chat_topic_data.last_message_date,
+			"message_count": chat_topic_data.message_count or 0,
 		})
 
 
