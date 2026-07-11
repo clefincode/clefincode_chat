@@ -1539,7 +1539,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
 
 @frappe.whitelist()
 def get_messages(room, user_email, room_type, chat_topic=None,
-                 remove_date=None, limit=10, offset=0, since_utc=None):
+                 remove_date=None, limit=10, offset=0, since_utc=None,
+                 from_date=None, to_date=None):
 
     limit = int(limit)
     offset = int(offset)
@@ -1552,12 +1553,22 @@ def get_messages(room, user_email, room_type, chat_topic=None,
         "limit": limit,
         "offset": offset,
         "since_utc": None,
+        "from_date": None,
+        "to_date": None,
     }
 
     # Convert since_utc safely
     if since_utc:
         dt = get_datetime(since_utc)
         params["since_utc"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    if from_date:
+        dt = get_datetime(from_date)
+        params["from_date"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    if to_date:
+        dt = get_datetime(to_date)
+        params["to_date"] = dt.strftime("%Y-%m-%d %H:%M:%S")
 
     where_parts = []
 
@@ -1601,6 +1612,13 @@ def get_messages(room, user_email, room_type, chat_topic=None,
     # Since filter
     if params["since_utc"]:
         where_parts.append("msg.send_date > %(since_utc)s")
+
+    # Date range filter
+    if params["from_date"]:
+        where_parts.append("msg.send_date >= %(from_date)s")
+
+    if params["to_date"]:
+        where_parts.append("msg.send_date < %(to_date)s")
 
     base_condition = " AND ".join(where_parts) if where_parts else "1=1"
 

@@ -114,44 +114,156 @@ class FormTimeline extends BaseTimeline {
 setup_topic_click_event() {
   this.timeline_items_wrapper
     .off("click.cc-chat-topic", ".topic-link, .topic-card")
-    .on("click.cc-chat-topic", ".topic-link, .topic-card", async function (e) {
+    .on("click.cc-chat-topic", ".topic-link, .topic-card", async (e) => {
       e.preventDefault();
       e.stopPropagation();
 
-      const $el = $(this);
-      const $timeline_content = $el.closest(".timeline-content");
-
-      const timeline_id = $timeline_content.attr("id") || "";
+      const $el = $(e.currentTarget);
+      const $timeline_item = $el.closest(".timeline-item");
 
       const chat_topic =
         $el.data("topic") ||
         $el.data("chat-topic") ||
-        $timeline_content.data("topic") ||
-        $timeline_content.data("chat-topic") ||
-        timeline_id.replace(/^chat-topic-/, "");
+        $timeline_item.data("name");
 
-      const chat_topic_subject =
-        $el.data("subject") ||
-        $timeline_content.data("subject") ||
-        $el.attr("title") ||
-        $el.text().trim();
+        const chat_channel = $el.data("chat-channel");
+      const first_message_name = $el.data("first-message");
+      const from_date = $el.data("from-date");
+      const to_date = $el.data("to-date");
+      const grouping_condition_met = Boolean($el.data("grouping-condition"));
 
-      if (!chat_topic || chat_topic === timeline_id) {
-        console.warn("[ClefinCode Chat] Missing topic name", {
-          element: $el.prop("outerHTML"),
-          timeline_content: $timeline_content.prop("outerHTML"),
-          timeline_id,
+      if (!chat_topic || !chat_channel) {
+
+        frappe.msgprint({
+          title: __("Error"),
+          message: __("No chat channel found for this topic."),
+          indicator: "red",
         });
         return;
       }
 
-      await open_topic_chat_window_from_context({
+      await this.open_filtered_topic_chat_from_timeline({
         chat_topic,
-        chat_topic_subject,
+        chat_channel,
+        first_message_name,
+        from_date,
+        to_date,
+        grouping_condition_met,
       });
     });
 }
 
+async open_filtered_topic_chat_from_timeline(ctx) {
+  const room = ctx.chat_channel;
+  const topicKey = ctx.chat_topic;
+  const chatChannel = ctx.chat_channel;
+  const topicSubject = ctx.chat_topic_subject || ctx.chat_topic;
+
+  const timeline_filter_context = {
+    chat_topic: ctx.chat_topic,
+    from_date: ctx.from_date,
+    to_date: ctx.to_date,
+    first_message_name: ctx.first_message_name,
+    grouping_condition_met: ctx.grouping_condition_met,
+  };
+
+  if (!ctx.first_message_name) {
+    frappe.msgprint({
+      title: __("No Messages"),
+      message: __("No message found for this topic time range."),
+      indicator: "orange",
+    });
+    return;
+  }
+
+  if (window.CCCheckIfChatWindowOpen && window.CCCheckIfChatWindowOpen(topicKey, "topic")) {
+    $(`.expand-chat-window[data-id|='${room}']`).click();
+
+    setTimeout(() => {
+      const instances = window.CCChatSpaceInstances || [];
+
+      for (const cs of instances) {
+        if (cs && cs.profile?.room === room) {
+          cs.timeline_filter_context = timeline_filter_context;
+
+          if (typeof cs.resetPagination === "function") {
+            cs.resetPagination();
+          } else {
+            if ("offset" in cs) cs.messages_offset = 0;
+          }
+
+          const refresh = cs.fetchMessagesForCurrentContext?.();
+
+          Promise.resolve(refresh).then(() => {
+            if (ctx.first_message_name && typeof cs.jumpToMessage === "function") {
+              cs.jumpToMessage(ctx.first_message_name);
+            }
+            cs.checkAndShowTopicInactiveNotice?.();
+          });
+
+          break;
+        }
+      }
+    }, 300);
+
+    return;
+  }
+
+  const profile = {
+    is_admin: true,
+    user: frappe.session.user,
+    user_email: frappe.session.user_email || frappe.session.user,
+    room: room,
+    room_name: room,
+    room_type: "Group",
+    platform: "Chat",
+  };
+
+ const chat_window = new window.CCChatWindow({
+  profile: {
+    topic: ctx.chat_topic,
+    chat_topic: ctx.chat_topic,
+  },
+});
+const topicKeyWithDate = ctx.from_date
+  ? `${ctx.chat_topic}_${ctx.from_date}`
+  : ctx.chat_topic;
+chat_window.$chat_window
+  .attr("data-topic", topicKeyWithDate)
+  .data("topic", ctx.chat_topic);
+
+new window.CCChatSpace({
+  $wrapper: chat_window.$chat_window,
+
+  profile: {
+    is_admin: true,
+    user: frappe.session.user,
+    user_email: frappe.session.user_email || frappe.session.user,
+
+    room: ctx.chat_channel,
+    room_type: "Topic",
+    room_name: ctx.chat_topic_subject || ctx.chat_topic,
+
+    chat_topic: ctx.chat_topic,
+    chat_topic_subject: ctx.chat_topic_subject || ctx.chat_topic,
+
+    platform: "Chat",
+  },
+
+  chat_topic: ctx.chat_topic,
+  chat_topic_channel: ctx.chat_channel,
+  chat_topic_subject: ctx.chat_topic_subject || ctx.chat_topic,
+  alternative_subject: ctx.chat_topic_subject || ctx.chat_topic,
+
+  is_topic_window: true,
+
+  topic_write_mode: true,
+  topic_read_only: false,
+
+  initial_message_to_scroll: ctx.first_message_name,
+  timeline_filter_context,
+});
+}
   render_timeline_items() {
   super.render_timeline_items();
   this.set_document_info();
@@ -279,21 +391,53 @@ setup_topic_click_event() {
   }
 
   get_chat_topics_timeline_contents() {
-    let chat_topics_timeline_contents = [];
-    (this.doc_info.chat_topics || []).forEach((topic) => {
-      chat_topics_timeline_contents.push({
-        icon: "tag",
-        icon_size: "md",
-        creation: topic.creation,
-        is_card: true,
-        content: topic.subject,
-        doctype: "ClefinCode Chat Topic",
-        id: `chat-topic-${topic.name}`,
-        name: topic.name,
-        topic_status: topic.topic_status,
-      });
+  let chat_topics_timeline_contents = [];
+
+  const getPeriodLabel = (topic) => {
+    const start = topic.period_display_start;
+    const end = topic.period_display_end;
+    if (!start && !end) return "";
+    if (start && end && start !== end) {
+      return `${start} to ${end}`;
+    }
+    return start || end;
+  };
+
+  (this.doc_info.chat_topics || []).forEach((topic) => {
+    const periodText = getPeriodLabel(topic);
+
+    const periodLabel = periodText
+      ? ` <span class="text-muted">· ${periodText}</span>`
+      : "";
+
+    const messageCount = parseInt(topic.message_count || 0, 10) || 0;
+    const countLabel = messageCount
+      ? ` <span class="text-muted">· ${messageCount} ${
+          messageCount === 1 ? __("message") : __("messages")
+        }</span>`
+      : "";
+
+    chat_topics_timeline_contents.push({
+      icon: "tag",
+      icon_size: "md",
+      creation: topic.first_message_date || topic.creation,
+      is_card: true,
+      content: `${topic.subject}${periodLabel}${countLabel}`,
+      doctype: "ClefinCode Chat Topic",
+      id: `chat-topic-${topic.name}-${topic.period_bucket || "no-messages"}`,
+      name: topic.name,
+      topic_status: topic.topic_status,
+
+      chat_topic: topic.name,
+      period_bucket: topic.period_bucket,
+      first_message_name: topic.first_message_name,
+      first_message_date: topic.first_message_date,
+      last_message_date: topic.last_message_date,
+      message_count: messageCount,
     });
-    return chat_topics_timeline_contents;
+  });
+
+  return chat_topics_timeline_contents;
   }
 
   get_communication_timeline_content(doc, allow_reply = true) {
