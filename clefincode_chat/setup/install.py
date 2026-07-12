@@ -18,6 +18,7 @@ def after_install():
     create_roles()   
     create_users_profiles()
     install_ffmpeg()
+    add_default_limited_roles()
 # =================================================================================
 def create_roles():
     if not frappe.db.exists("Role", "Chat Support"):
@@ -107,3 +108,34 @@ def install_ffmpeg():
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
 # =================================================================================
+
+def add_default_limited_roles():
+    """Add default roles without removing or duplicating existing roles."""
+    DEFAULT_LIMITED_ROLES =  ["Customer", "Supplier", "Student", "Instructor", "Sales Partner", "Member", "Shareholder", "Guardian"]
+    settings = frappe.get_single("ClefinCode Chat Settings")
+
+    existing_roles = {
+        row.role
+        for row in settings.get("limited_roles", [])
+        if row.role
+    }
+
+    changed = False
+
+    for role in DEFAULT_LIMITED_ROLES:
+   
+        if not frappe.db.exists("Role", role):
+            continue
+
+        if role in existing_roles:
+            continue
+
+        settings.append("limited_roles", {
+            "role": role,
+        })
+
+        existing_roles.add(role)
+        changed = True
+
+    if changed:
+        settings.save(ignore_permissions=True)

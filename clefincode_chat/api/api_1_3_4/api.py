@@ -468,16 +468,16 @@ def get_social_config_for_user(user):
     }
 # ==========================================================================================
 
-DEFAULT_LIMITED_ROLES = [
-    "Customer",
-    "Supplier",
-    "Student",
-    "Instructor",
-    "Sales Partner",
-    "Member",
-    "Shareholder",
-    "Guardian",
-]
+# DEFAULT_LIMITED_ROLES = [
+#     "Customer",
+#     "Supplier",
+#     "Student",
+#     "Instructor",
+#     "Sales Partner",
+#     "Member",
+#     "Shareholder",
+#     "Guardian",
+# ]
 def is_limited_user(user):
     user_roles = frappe.get_roles(user)
 
@@ -490,7 +490,7 @@ def is_limited_user(user):
     ]
 
     if not limited_roles:
-        limited_roles = DEFAULT_LIMITED_ROLES
+        limited_roles = []
 
     return any(role in user_roles for role in limited_roles)
 # ==========================================================================================

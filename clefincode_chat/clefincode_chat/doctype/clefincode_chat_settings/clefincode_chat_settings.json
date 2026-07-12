@@ -116,7 +116,7 @@
    "label": "Topic Grouping"
   },
   {
-   "default": "Daily",
+   "default": "Per Topic",
    "fieldname": "grouping_period",
    "fieldtype": "Select",
    "label": "Grouping Period",
@@ -171,6 +171,7 @@
    "label": "Limited User Roles"
   },
   {
+   "description": "Roles assigned to external limited users, such as Customers, Suppliers, Students, Instructors, Sales Partners, Members, Shareholders, and Guardians.\n",
    "fieldname": "limited_roles",
    "fieldtype": "Table MultiSelect",
    "label": "Limited Roles",
@@ -196,7 +197,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-09 16:28:58.558702",
+ "modified": "2026-07-12 16:35:12.849028",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Settings",
