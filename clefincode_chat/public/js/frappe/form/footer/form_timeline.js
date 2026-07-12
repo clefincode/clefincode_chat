@@ -4,6 +4,84 @@ import BaseTimeline from "./base_timeline";
 import { get_version_timeline_content } from "./version_timeline_content_builder";
 import { open_topic_chat_window_from_context } from "../../../components/topic_open_helper";
 
+function buildTopicWindowKey({
+  source = "base",
+  chatChannel = "",
+  chatTopic = "",
+  fromDate = "",
+  toDate = "",
+  firstMessageName = "",
+} = {}) {
+  const parts = [
+    "topic-window",
+    source,
+    chatChannel,
+    chatTopic,
+  ];
+
+  if (source === "timeline") {
+    parts.push(
+      fromDate || "",
+      toDate || "",
+      firstMessageName || ""
+    );
+  }
+
+  return parts
+    .map((value) =>
+      encodeURIComponent(String(value || "").trim())
+    )
+    .join("::");
+}
+
+function findTopicWindowInstance(windowKey) {
+  if (!windowKey) {
+    return null;
+  }
+
+  const instances = window.CCChatSpaceInstances || [];
+
+  return (
+    instances.find((instance) => {
+      if (!instance) {
+        return false;
+      }
+
+      const instanceKey =
+        instance.topic_window_key ||
+        instance.profile?.topic_window_key ||
+        instance.$wrapper?.attr?.(
+          "data-topic-window-key"
+        ) ||
+        "";
+
+      return String(instanceKey) === String(windowKey);
+    }) || null
+  );
+}
+
+function showTopicWindowInstance(instance) {
+  if (!instance?.$wrapper?.length) {
+    return;
+  }
+
+  const $window = instance.$wrapper.closest(".chat-window");
+
+  if (!$window.length) {
+    return;
+  }
+
+  const $expandButton = $window.find(
+    ".expand-chat-window"
+  );
+
+  if ($expandButton.length) {
+    $expandButton.trigger("click");
+  }
+
+  $window.show();
+}
+
 class FormTimeline extends BaseTimeline {
   make() {
     super.make();
@@ -154,10 +232,48 @@ setup_topic_click_event() {
 }
 
 async open_filtered_topic_chat_from_timeline(ctx) {
+    let topicContext = {};
+
+  try {
+    const response = await frappe.call({
+      method:
+        "clefincode_chat.api.api_1_3_4.api.get_topic_open_context",
+      args: {
+        chat_topic: ctx.chat_topic
+      }
+    });
+
+    topicContext = response.message || {};
+  } catch (error) {
+    console.error(
+      "[Timeline] Failed to load topic access context",
+      error
+    );
+
+    frappe.msgprint({
+      title: __("Error"),
+      message: __("Unable to verify topic access."),
+      indicator: "red"
+    });
+
+    return;
+  }
+
+  const isPrivateTopic =
+  Number(topicContext.is_private_topic || 0) === 1;
   const room = ctx.chat_channel;
   const topicKey = ctx.chat_topic;
   const chatChannel = ctx.chat_channel;
   const topicSubject = ctx.chat_topic_subject || ctx.chat_topic;
+
+  const topicWindowKey = buildTopicWindowKey({
+    source: "timeline",
+    chatChannel: ctx.chat_channel,
+    chatTopic: ctx.chat_topic,
+    fromDate: ctx.from_date,
+    toDate: ctx.to_date,
+    firstMessageName: ctx.first_message_name,
+  });
 
   const timeline_filter_context = {
     chat_topic: ctx.chat_topic,
@@ -176,93 +292,111 @@ async open_filtered_topic_chat_from_timeline(ctx) {
     return;
   }
 
-  if (window.CCCheckIfChatWindowOpen && window.CCCheckIfChatWindowOpen(topicKey, "topic")) {
-    $(`.expand-chat-window[data-id|='${room}']`).click();
+  const existingTimelineWindow =
+    findTopicWindowInstance(topicWindowKey);
 
-    setTimeout(() => {
-      const instances = window.CCChatSpaceInstances || [];
+  if (existingTimelineWindow) {
+    showTopicWindowInstance(
+      existingTimelineWindow
+    );
 
-      for (const cs of instances) {
-        if (cs && cs.profile?.room === room) {
-          cs.timeline_filter_context = timeline_filter_context;
+    if (existingTimelineWindow.ready) {
+      await existingTimelineWindow.ready;
+    }
 
-          if (typeof cs.resetPagination === "function") {
-            cs.resetPagination();
-          } else {
-            if ("offset" in cs) cs.messages_offset = 0;
-          }
+    existingTimelineWindow.timeline_filter_context =
+      timeline_filter_context;
 
-          const refresh = cs.fetchMessagesForCurrentContext?.();
+    existingTimelineWindow.messages_offset = 0;
 
-          Promise.resolve(refresh).then(() => {
-            if (ctx.first_message_name && typeof cs.jumpToMessage === "function") {
-              cs.jumpToMessage(ctx.first_message_name);
-            }
-            cs.checkAndShowTopicInactiveNotice?.();
-          });
+    if (
+      ctx.first_message_name &&
+      typeof existingTimelineWindow.jumpToMessage ===
+        "function"
+    ) {
+      await existingTimelineWindow.jumpToMessage(
+        ctx.first_message_name,
+        50,
+        0
+      );
+    }
 
-          break;
-        }
-      }
-    }, 300);
+    existingTimelineWindow
+      .checkAndShowTopicInactiveNotice?.();
 
     return;
   }
 
-  const profile = {
-    is_admin: true,
-    user: frappe.session.user,
-    user_email: frappe.session.user_email || frappe.session.user,
-    room: room,
-    room_name: room,
-    room_type: "Group",
-    platform: "Chat",
-  };
+  const chat_window =
+    new window.CCChatWindow({
+      profile: {
+        topic: topicWindowKey,
+        chat_topic: ctx.chat_topic,
+        topic_window_key: topicWindowKey,
+        topic_window_source: "timeline",
+      },
+    });
 
- const chat_window = new window.CCChatWindow({
-  profile: {
-    topic: ctx.chat_topic,
-    chat_topic: ctx.chat_topic,
-  },
-});
-const topicKeyWithDate = ctx.from_date
-  ? `${ctx.chat_topic}_${ctx.from_date}`
-  : ctx.chat_topic;
-chat_window.$chat_window
-  .attr("data-topic", topicKeyWithDate)
-  .data("topic", ctx.chat_topic);
+  chat_window.$chat_window
+    .attr( "data-topic-window-key", topicWindowKey )
+    .attr( "data-topic-source", "timeline")
+    .attr("data-topic", ctx.chat_topic)
+    .attr("data-chat-channel", ctx.chat_channel)
+    .attr("data-from-date", ctx.from_date || "" )
+    .attr( "data-to-date", ctx.to_date || "" )
+    .attr( "data-first-message", ctx.first_message_name || "" )
+    .data("topic-window-key", topicWindowKey )
+    .data( "topic", ctx.chat_topic );
 
-new window.CCChatSpace({
-  $wrapper: chat_window.$chat_window,
+  const topicChatSpace =
+    new window.CCChatSpace({
+      $wrapper:
+        chat_window.$chat_window,
 
-  profile: {
-    is_admin: true,
-    user: frappe.session.user,
-    user_email: frappe.session.user_email || frappe.session.user,
+      profile: {
+        is_admin: true,
+        user: frappe.session.user,
+        user_email:
+          frappe.session.user_email ||
+          frappe.session.user,
 
-    room: ctx.chat_channel,
-    room_type: "Topic",
-    room_name: ctx.chat_topic_subject || ctx.chat_topic,
+        room: ctx.chat_channel,
+        room_type: "Topic",
+        room_name: ctx.chat_topic_subject || ctx.chat_topic,
 
-    chat_topic: ctx.chat_topic,
-    chat_topic_subject: ctx.chat_topic_subject || ctx.chat_topic,
+        chat_topic: ctx.chat_topic,
+        chat_topic_subject: ctx.chat_topic_subject || ctx.chat_topic,
 
-    platform: "Chat",
-  },
+        topic_window_key:topicWindowKey,
+        topic_window_source:"timeline",
 
-  chat_topic: ctx.chat_topic,
-  chat_topic_channel: ctx.chat_channel,
-  chat_topic_subject: ctx.chat_topic_subject || ctx.chat_topic,
-  alternative_subject: ctx.chat_topic_subject || ctx.chat_topic,
+        platform: "Chat",
+      },
 
-  is_topic_window: true,
+      chat_topic: ctx.chat_topic,
+      chat_topic_channel: ctx.chat_channel,
+      chat_topic_subject: ctx.chat_topic_subject || ctx.chat_topic,
+      alternative_subject: ctx.chat_topic_subject || ctx.chat_topic,
 
-  topic_write_mode: true,
-  topic_read_only: false,
+      topic_window_key:topicWindowKey,
+      topic_window_source:"timeline",
+      is_private_topic: isPrivateTopic ? 1 : 0,
 
-  initial_message_to_scroll: ctx.first_message_name,
-  timeline_filter_context,
-});
+      is_topic_window: true,
+      topic_write_mode: true,
+      topic_read_only: true,
+      topic_can_reopen: false,
+
+      initial_message_to_scroll: ctx.first_message_name,
+
+      timeline_filter_context,
+    });
+
+  window.CCChatSpaceInstances = window.CCChatSpaceInstances || [];
+
+  if (!window.CCChatSpaceInstances.includes( topicChatSpace)) {
+    window.CCChatSpaceInstances.push(topicChatSpace);
+  }
 }
   render_timeline_items() {
   super.render_timeline_items();

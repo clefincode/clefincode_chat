@@ -38,10 +38,122 @@ import ChatContactList from "./erpnext_chat_contact_list";
 
 import { add_group_member, create_group } from "./erpnext_chat_contact_list";
 
+function buildTopicWindowKey({
+  source = "base",
+  chatChannel = "",
+  chatTopic = "",
+  fromDate = "",
+  toDate = "",
+  firstMessageName = "",
+} = {}) {
+  const parts = [
+    "topic-window",
+    source,
+    chatChannel,
+    chatTopic,
+  ];
+
+  if (source === "timeline") {
+    parts.push(
+      fromDate || "",
+      toDate || "",
+      firstMessageName || ""
+    );
+  }
+
+  return parts
+    .map((value) =>
+      encodeURIComponent(String(value || "").trim())
+    )
+    .join("::");
+}
+
+function findTopicWindowInstance(windowKey) {
+  if (!windowKey) {
+    return null;
+  }
+
+  const instances = window.CCChatSpaceInstances || [];
+
+  return (
+    instances.find((instance) => {
+      if (!instance) {
+        return false;
+      }
+
+      const instanceKey =
+        instance.topic_window_key ||
+        instance.profile?.topic_window_key ||
+        instance.$wrapper?.attr?.(
+          "data-topic-window-key"
+        ) ||
+        "";
+
+      return String(instanceKey) === String(windowKey);
+    }) || null
+  );
+}
+
+function showTopicWindowInstance(instance) {
+  if (!instance?.$wrapper?.length) {
+    return;
+  }
+
+  const $window = instance.$wrapper.closest(".chat-window");
+
+  if (!$window.length) {
+    return;
+  }
+
+  const $expandButton = $window.find(
+    ".expand-chat-window"
+  );
+
+  if ($expandButton.length) {
+    $expandButton.trigger("click");
+  }
+
+  $window.show();
+}
+
 export default class ChatSpace {
   constructor(opts) {
     this.$wrapper = opts.$wrapper;
     this.profile = opts.profile;
+
+    this.topic_window_key =
+      opts.topic_window_key ||
+      this.profile?.topic_window_key ||
+      null;
+
+    this.topic_window_source =
+      opts.topic_window_source ||
+      this.profile?.topic_window_source ||
+      "base";
+
+    if (this.topic_window_key) {
+      this.profile.topic_window_key =
+        this.topic_window_key;
+    }
+
+    this.profile.topic_window_source =
+      this.topic_window_source;
+
+    if (
+      this.topic_window_key &&
+      this.$wrapper?.length
+    ) {
+      this.$wrapper
+        .attr(
+          "data-topic-window-key",
+          this.topic_window_key
+        )
+        .attr(
+          "data-topic-source",
+          this.topic_window_source
+        );
+    }
+
     this.$chat_room = opts.$chat_room;
     this.new_group = opts.new_group;
     this.chat_list = opts.chat_list;
@@ -356,16 +468,47 @@ isRealTopicTimelineMessage(message = {}) {
   return true;
 }
 
-makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
+makeTopicStartSeparatorHtml(
+  topicName,
+  topicSubject = null,
+  topicColor = null
+) {
   if (!topicName) return "";
-  if (this.isDedicatedTopicContext?.()) return "";
-  const color = topicColor || this.getTopicColor(topicName);
-  const safeTopicName = frappe.utils.escape_html(String(topicName));
+
+  if (this.shouldHideTopicSeparators()) {
+    return "";
+  }
+
+  const color =
+    topicColor ||
+    this.getTopicColor(topicName);
+
+  const safeTopicName =
+    frappe.utils.escape_html(String(topicName));
+
   const displaySubject = this.formatTopicSeparatorSubject
-    ? this.formatTopicSeparatorSubject(topicSubject, topicName)
-    : String(topicSubject || topicName || __("Topic")).replace(/^topic\s*:\s*/i, "").trim();
-  const safeSubject = frappe.utils.escape_html(displaySubject || topicName || __("Topic"));
-  const safeColor = frappe.utils.escape_html(color || "");
+    ? this.formatTopicSeparatorSubject(
+        topicSubject,
+        topicName
+      )
+    : String(
+        topicSubject ||
+        topicName ||
+        __("Topic")
+      )
+        .replace(/^topic\s*:\s*/i, "")
+        .trim();
+
+  const safeSubject =
+    frappe.utils.escape_html(
+      displaySubject ||
+      topicName ||
+      __("Topic")
+    );
+
+  const safeColor =
+    frappe.utils.escape_html(color || "");
+
   return `
     <div
       class="chat-topic-separator topic-start-separator"
@@ -374,7 +517,9 @@ makeTopicStartSeparatorHtml(topicName, topicSubject = null, topicColor = null) {
       data-topic-color="${safeColor}"
       style="--topic-color:${safeColor};"
     >
-      <span class="topic-separator-title">${safeSubject}</span>
+      <span class="topic-separator-title">
+        ${safeSubject}
+      </span>
 
       <button
         type="button"
@@ -402,50 +547,72 @@ dedupeAdjacentTopicSeparators() {
     }
   });
 }
+isTimelineTopicWindow() {
+  return (
+    this.topic_window_source === "timeline" ||
+    this.profile?.topic_window_source === "timeline"
+  );
+}
 
-  makeTopicSystemSeparatorHtml({
-    messageName = "",
-    topicName = "",
-    topicSubject = null,
-    topicColor = null,
-    templateType = "Set Topic",
-    sendDate = null,
-    action = "set"
-  } = {}) {
-    if (!topicName) return "";
-    if (this.isDedicatedTopicContext?.()) return "";
+shouldHideTopicSeparators() {
+  return (
+    this.isDedicatedTopicContext?.() &&
+    !this.isTimelineTopicWindow()
+  );
+}
+ makeTopicSystemSeparatorHtml({
+  messageName = "",
+  topicName = "",
+  topicSubject = null,
+  topicColor = null,
+  templateType = "Set Topic",
+  sendDate = null,
+  action = "set"
+} = {}) {
+  if (!topicName) return "";
 
-    const html = this.makeTopicStartSeparatorHtml(
-      topicName,
-      topicSubject || topicName,
-      topicColor
-    );
-
-    if (!html) return "";
-
-    const $separator = $(html);
-
-    $separator
-      .addClass("topic-system-separator")
-      .attr("data-message-name", messageName || "")
-      .attr("data-message-type", "topic-separator")
-      .attr("data-message-template-type", templateType || "")
-      .attr("data-send-date", sendDate || "");
-
-    if (messageName) {
-      $separator.attr("id", `msg-${messageName}`);
-    }
-
-    if (action === "remove") {
-      const label = topicSubject || topicName;
-      $separator.find(".topic-separator-title").text(
-        label ? `${__("Topic removed")}: ${label}` : __("Topic removed")
-      );
-    }
-
-    return $separator.prop("outerHTML");
+  if (this.shouldHideTopicSeparators()) {
+    return "";
   }
 
+  const html = this.makeTopicStartSeparatorHtml(
+    topicName,
+    topicSubject || topicName,
+    topicColor
+  );
+
+  if (!html) return "";
+
+  const $separator = $(html);
+
+  $separator
+    .addClass("topic-system-separator")
+    .attr("data-message-name", messageName || "")
+    .attr("data-message-type", "topic-separator")
+    .attr(
+      "data-message-template-type",
+      templateType || ""
+    )
+    .attr("data-send-date", sendDate || "");
+
+  if (messageName) {
+    $separator.attr("id", `msg-${messageName}`);
+  }
+
+  if (action === "remove") {
+    const label = topicSubject || topicName;
+
+    $separator
+      .find(".topic-separator-title")
+      .text(
+        label
+          ? `${__("Topic removed")}: ${label}`
+          : __("Topic removed")
+      );
+  }
+
+  return $separator.prop("outerHTML");
+}
   getCurrentChatChannel() {
   return this.profile.room_type === "Contributor"
     ? this.profile.parent_channel
@@ -455,15 +622,11 @@ dedupeAdjacentTopicSeparators() {
 async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this.messages_limit) {
   const timelineFilter = this.timeline_filter_context || null;
 
-  console.log(this.timeline_filter_context);
   if (this.is_topic_window) {
     if (!this.chat_topic_space) {
       console.warn("Topic window missing chat_topic_space");
       return { results: [] };
     }
-    console.log( timelineFilter?.from_date);
-    console.log( timelineFilter?.to_date);
-   
 
     return await get_messages(
       "",
@@ -506,7 +669,6 @@ async fetchMessagesForCurrentContext(offset = this.messages_offset, limit = this
   }
 
   if (this.topic_write_mode && this.chat_topic_space) {
-    console.log("5555");
     return await get_messages(
       "",
       this.profile.user_email,
@@ -558,6 +720,12 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
     return;
   }
 
+  const topicWindowKey = buildTopicWindowKey({
+    source: "base",
+    chatChannel,
+    chatTopic: topicKey,
+  });
+
   const canWrite = Boolean(ctx.can_write) && String(ctx.topic_status || "").toLowerCase() !== "closed";
 
   const safeTopicSubject = this.normalizeTopicSubject
@@ -569,33 +737,57 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
     this.topicColorMap?.get(topicKey) ||
     null;
 
-  if (check_if_chat_window_open(topicKey, "topic")) {
-    $(`.expand-chat-window[data-id|='${topicKey}']`).click();
+  const existingBaseWindow =
+    findTopicWindowInstance(topicWindowKey);
 
-    let existingInstance = null;
-    $(".chat-window").each(function () {
-      const inst = $(this).find(".chat-space").data("chat-space-instance");
-      if (inst && String(inst.chat_topic_space || inst.chat_topic || "") === topicKey) {
-        existingInstance = inst;
-        return false;
-      }
-    });
+  if (existingBaseWindow) {
+    showTopicWindowInstance(
+      existingBaseWindow
+    );
 
-    if (existingInstance?.ready) {
-      await existingInstance.ready;
+    if (existingBaseWindow.ready) {
+      await existingBaseWindow.ready;
     }
 
-    return existingInstance;
+    return existingBaseWindow;
   }
 
   const chat_window = new ChatWindow({
     profile: {
-      topic: topicKey
+      topic: topicWindowKey,
+      chat_topic: topicKey,
+      topic_window_key:
+        topicWindowKey,
+      topic_window_source:
+        "base",
     }
   });
+
   chat_window.$chat_window
-  .attr("data-topic", topicKey)
-  .data("topic", topicKey);
+    .attr(
+      "data-topic-window-key",
+      topicWindowKey
+    )
+    .attr(
+      "data-topic-source",
+      "base"
+    )
+    .attr(
+      "data-topic",
+      topicKey
+    )
+    .attr(
+      "data-chat-channel",
+      chatChannel
+    )
+    .data(
+      "topic-window-key",
+      topicWindowKey
+    )
+    .data(
+      "topic",
+      topicKey
+    );
 
   const topicChatSpace = new ChatSpace({
     $wrapper: chat_window.$chat_window,
@@ -606,6 +798,12 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
       room_name: safeTopicSubject,
       chat_topic: topicKey,
       chat_topic_subject: safeTopicSubject,
+
+      topic_window_key:
+        topicWindowKey,
+      topic_window_source:
+        "base",
+
       is_admin: this.profile.is_admin,
       user: this.profile.user,
       user_email: this.profile.user_email,
@@ -617,6 +815,12 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
     chat_topic_channel: chatChannel,
     chat_topic_subject: safeTopicSubject,
     alternative_subject: safeTopicSubject,
+
+    topic_window_key:
+      topicWindowKey,
+    topic_window_source:
+      "base",
+
     topic_color: topicColor,
     is_private_topic: ctx.is_private_topic || 0,
 
@@ -630,6 +834,19 @@ async openTopicChatWindow(topicName, topicSubject = null, opts = {}) {
     chat_topic_status: ctx.topic_status,
     original_room_type: ctx.room_type || this.profile.room_type
   });
+
+  window.CCChatSpaceInstances =
+    window.CCChatSpaceInstances || [];
+
+  if (
+    !window.CCChatSpaceInstances.includes(
+      topicChatSpace
+    )
+  ) {
+    window.CCChatSpaceInstances.push(
+      topicChatSpace
+    );
+  }
 
   if (topicChatSpace.ready) {
     await topicChatSpace.ready;
@@ -2020,56 +2237,71 @@ async prepareReplyToMessage(messageName) {
     if ($editor?.length) $editor.trigger("focus");
   }, 0);
 }
-async jumpToMessage(messageName, maxTries = 50) {
 
-  const limit = this.messages_limit || 10;
+async jumpToMessage(messageName, maxTries = 50, startOffset = null) {
+  const limit = Number(this.messages_limit) || 10;
   let tries = 0;
 
-
   let $msg = this.$chat_space.find(`#msg-${messageName}`);
+
   if ($msg.length) {
     this.highlightAndScroll($msg);
-    return;
+    return true;
   }
 
-  
+  const hasTimelineFilter = Boolean(
+    this.timeline_filter_context?.from_date ||
+    this.timeline_filter_context?.to_date
+  );
+
+  let offset;
+
+  if (startOffset !== null) {
+    offset = Math.max(0, Number(startOffset) || 0);
+  } else if (hasTimelineFilter) {
+    offset = 0;
+  } else {
+    offset = (Number(this.messages_offset) || 0) + limit;
+  }
+
   while (tries < maxTries) {
     tries++;
-    this.messages_offset += limit;
 
-    const res = await this.fetchMessagesForCurrentContext(
-      this.messages_offset,
-      limit
-    );
+    const res = await this.fetchMessagesForCurrentContext(offset, limit);
+    const results = res?.results || [];
 
-    
-    if (!res.results || res.results.length === 0) {
+    if (!results.length) {
       break;
     }
 
-    
-    await this.make_messages_html(res.results, 1);
+    await this.make_messages_html(results, 1);
     this.$chat_space_container.prepend(this.message_html);
-    this.normalizeTopicSeparators();
+
+    this.normalizeTopicSeparators?.();
 
     if (!this.chat_topic_space) {
-      this.buildTopicMetaMap();
-      this.applyTopicVisibility();
+      this.buildTopicMetaMap?.();
+      this.applyTopicVisibility?.();
     }
 
     this.checkAndShowTopicInactiveNotice?.();
 
+    this.messages_offset = offset;
+
     $msg = this.$chat_space.find(`#msg-${messageName}`);
-    
- 
+
     if ($msg.length) {
       this.highlightAndScroll($msg);
-      return;
+      return true;
     }
+
+    offset += results.length;
   }
 
   frappe.msgprint("Original message not found.");
+  return false;
 }
+
 highlightAndScroll($msg) {
   if (!$msg || !$msg.length || !this.$chat_space_container?.length) return;
 
@@ -3410,6 +3642,16 @@ async handleBulkDelete() {
     }
   );
 }
+unregisterChatSpaceInstance() {
+  if (!Array.isArray(window.CCChatSpaceInstances)) {
+    return;
+  }
+
+  window.CCChatSpaceInstances =
+    window.CCChatSpaceInstances.filter(
+      (instance) => instance && instance !== this
+    );
+}
   setup_events() {
     const me = this;
 
@@ -4035,7 +4277,7 @@ this.$chat_space.on("click", ".reply-link", async function () {
             (item) => item != me.profile.room
           );
       }
-
+      me.unregisterChatSpaceInstance();
       $(this).closest(".chat-window").remove();
 
 const app = window.erpnext_chat_app;
@@ -4850,7 +5092,15 @@ async setup_messages(messages_list) {
 
   makeTopicSeparatorHtml(topicName, topicSubject) {
   if (!topicName) return "";
-  if (this.isDedicatedTopicContext?.()) return "";
+  const isTimelineWindow =
+  this.topic_window_source === "timeline" ||
+  this.profile?.topic_window_source === "timeline";
+     if (
+      this.isDedicatedTopicContext?.() &&
+      !isTimelineWindow
+    ) {
+           return "";
+    }
 
   const color = this.getTopicColor(topicName);
   const safeTopicName = frappe.utils.escape_html(String(topicName));
@@ -5723,7 +5973,7 @@ applyRelinkedTopicToMessages(messageNames = [], topicName, topicSubject = null, 
 insertTopicSeparatorBeforeMessage(messageName, topicName, topicSubject = null, topicColor = null) {
   const $msg = this.$chat_space.find(`[data-message-name="${messageName}"]`);
   if (!$msg.length || !topicName) return;
-  if (this.isDedicatedTopicContext?.()) return;
+  if (this.shouldHideTopicSeparators()) return;
 
   const $prev = $msg.prev();
 
@@ -5744,60 +5994,84 @@ insertTopicSeparatorBeforeMessage(messageName, topicName, topicSubject = null, t
 }
 
 normalizeTopicSeparators() {
-  if (!this.$chat_space_container || !this.$chat_space_container.length) return;
-
-  if (this.isDedicatedTopicContext?.()) {
-    this.$chat_space_container.find(".chat-topic-separator, .topic-start-separator").remove();
+  if (
+    !this.$chat_space_container ||
+    !this.$chat_space_container.length
+  ) {
     return;
   }
 
-  const $container = this.$chat_space_container;
 
-  $container.find(".chat-topic-separator:not(.topic-system-separator)").remove();
+  if (this.shouldHideTopicSeparators()) {
+    this.$chat_space_container
+      .find(".chat-topic-separator")
+      .remove();
+
+    return;
+  }
+
+  const $container =
+    this.$chat_space_container;
+
+  $container
+    .find(
+      ".chat-topic-separator:not(.topic-system-separator)"
+    )
+    .remove();
 
   const seenTopics = new Set();
 
-  $container.find(".topic-system-separator[data-topic-name]").each((_, el) => {
-    const topicName = $(el).attr("data-topic-name");
-    if (topicName) {
+  $container
+    .find(
+      ".topic-system-separator[data-topic-name]"
+    )
+    .each((_, el) => {
+      const topicName =
+        $(el).attr("data-topic-name");
+
+      if (topicName) {
+        seenTopics.add(topicName);
+      }
+    });
+
+  $container
+    .find(
+      ".topic-message-item[data-topic-name]"
+    )
+    .each((_, el) => {
+      const $msg = $(el);
+      const topicName =
+        $msg.attr("data-topic-name");
+
+      if (
+        !topicName ||
+        seenTopics.has(topicName)
+      ) {
+        return;
+      }
+
       seenTopics.add(topicName);
-    }
-  });
 
-  $container.find(".topic-message-item[data-topic-name]").each((_, el) => {
-    const $msg = $(el);
-    const topicName = $msg.attr("data-topic-name");
+      const topicSubject =
+        $msg.attr("data-topic-subject") ||
+        topicName;
 
-    if (!topicName || seenTopics.has(topicName)) return;
+      const topicColor =
+        $msg.attr("data-topic-color") ||
+        this.topicColorMap?.get(topicName) ||
+        this.getTopicColor(topicName);
 
-    const messageType = String($msg.attr("data-message-type") || "").toLowerCase();
-    const templateType = String($msg.attr("data-message-template-type") || "").toLowerCase();
+      const html =
+        this.makeTopicStartSeparatorHtml(
+          topicName,
+          topicSubject,
+          topicColor
+        );
 
-    if (
-      messageType === "information" ||
-      templateType === "set topic" ||
-      templateType === "set-topic" ||
-      templateType === "settopic"
-    ) {
-      return;
-    }
-
-    seenTopics.add(topicName);
-
-    const topicSubject = $msg.attr("data-topic-subject") || topicName;
-    const topicColor =
-      $msg.attr("data-topic-color") ||
-      this.topicColorMap?.get(topicName) ||
-      this.getTopicColor(topicName);
-
-    const html = this.makeTopicStartSeparatorHtml
-      ? this.makeTopicStartSeparatorHtml(topicName, topicSubject, topicColor)
-      : "";
-
-    if (html) {
-      $msg.before(html);
-    }
-  });
+      if (html) {
+        $msg.before(html);
+      }
+    });
 }
 
 normalizeTopicSubject(value, fallback = "") {

@@ -192,67 +192,96 @@ def add_chat_topics(doc, docinfo):
 
 	docinfo.chat_topics = []
 	chat_topics = frappe.db.sql(
-		f"""
-		SELECT
-			ref.parent AS topic_name,
-			topic.chat_channel,
-			topic.is_private,
-			topic.subject,
-			topic.owner,
-			topic.creation AS topic_creation,
-			topic.topic_status,
+					f"""
+					SELECT
+						ref.parent AS topic_name,
+						topic.chat_channel,
+						topic.is_private,
+						topic.subject,
+						topic.owner,
+						topic.creation AS topic_creation,
+						topic.topic_status,
 
-			{bucket_expr} AS period_bucket,
+						{bucket_expr} AS period_bucket,
 
-			COALESCE(MIN(msg.send_date), topic.creation) AS period_start,
-			CASE
-				WHEN MIN(msg.send_date) IS NOT NULL
-					AND MAX(msg.send_date) IS NOT NULL
-					AND MIN(msg.send_date) = MAX(msg.send_date)
-				THEN DATE_ADD(MAX(msg.send_date), INTERVAL 1 SECOND)
-				ELSE COALESCE(MAX(msg.send_date), topic.creation)
-			END AS period_end,
+						COALESCE(MIN(msg.send_date), topic.creation) AS period_start,
 
-			MIN(msg.send_date) AS first_message_date,
-			MAX(msg.send_date) AS last_message_date,
-			SUBSTRING_INDEX(
-				GROUP_CONCAT(msg.name ORDER BY msg.send_date ASC),
-				',',
-				1
-			) AS first_message_name,
-			COUNT(msg.name) AS message_count
+						CASE
+							WHEN MAX(msg.send_date) IS NOT NULL
+							THEN DATE_ADD(
+								MAX(msg.send_date),
+								 INTERVAL 1 SECOND
+							)
+							ELSE topic.creation
+						END AS period_end,
 
-		FROM `tabClefinCode Chat Topic Reference` AS ref
+						MIN(msg.send_date) AS first_message_date,
+						MAX(msg.send_date) AS last_message_date,
 
-		JOIN `tabClefinCode Chat Topic` AS topic
-			ON ref.parent = topic.name
+						SUBSTRING_INDEX(
+							GROUP_CONCAT(
+								msg.name
+								ORDER BY msg.send_date ASC, msg.creation ASC
+							),
+							',',
+							1
+						) AS first_message_name,
 
-		LEFT JOIN `tabClefinCode Chat Message` AS msg
-			ON msg.chat_topic = topic.name
-			AND msg.chat_channel = topic.chat_channel
-			AND IFNULL(msg.is_deleted, 0) = 0
+						COUNT(msg.name) AS message_count
 
-		WHERE
-			ref.docname = %s
-			AND ref.active = 1
+					FROM `tabClefinCode Chat Topic Reference` AS ref
 
-		GROUP BY
-			ref.parent,
-			topic.chat_channel,
-			topic.is_private,
-			topic.subject,
-			topic.owner,
-			topic.creation,
-			topic.topic_status,
-			{bucket_expr}
+					JOIN `tabClefinCode Chat Topic` AS topic
+						ON ref.parent = topic.name
 
-		ORDER BY
-			COALESCE(MIN(msg.send_date), topic.creation) DESC
-		""",
-		(doc.name,),
-		as_dict=True
-	)
+					LEFT JOIN `tabClefinCode Chat Message` AS msg
+						ON msg.chat_topic = topic.name
+						AND msg.chat_channel = topic.chat_channel
+						AND IFNULL(msg.is_deleted, 0) = 0
 
+						AND LOWER(
+							TRIM(IFNULL(msg.message_type, ''))
+						) != 'information'
+
+						AND LOWER(
+							REPLACE(
+								REPLACE(
+									TRIM(IFNULL(msg.message_template_type, '')),
+									'-',
+									' '
+								),
+								'_',
+								' '
+							)
+						) NOT IN (
+							'set topic',
+							'remove topic',
+							'close topic',
+							'reopen topic'
+						)
+
+					WHERE
+						ref.docname = %s
+						AND ref.active = 1
+
+					GROUP BY
+						ref.parent,
+						topic.chat_channel,
+						topic.is_private,
+						topic.subject,
+						topic.owner,
+						topic.creation,
+						topic.topic_status,
+						{bucket_expr}
+
+					HAVING COUNT(msg.name) > 0
+
+					ORDER BY
+						MIN(msg.send_date) DESC
+					""",
+					(doc.name,),
+					as_dict=True
+				)
 	for chat_topic_data in chat_topics:
 		chat_channel = chat_topic_data.chat_channel
 		is_private = chat_topic_data.is_private
