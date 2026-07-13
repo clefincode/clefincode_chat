@@ -816,7 +816,7 @@ save_all_contacts(dialog) {
 
     this.$chat_info.find(".exitMe").on("click", function () {
       me.chat_space.$wrapper.find(".chat-space").show();
-      me.chat_space.get_topic_info(channel);
+      // me.chat_space.get_topic_info(channel);
       me.chat_space.$wrapper.find(".chat-info").remove();
     });
 

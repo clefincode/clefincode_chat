@@ -111,6 +111,7 @@
    "label": "Chat Platform"
   },
   {
+   "default": "Default",
    "description": "Leave empty to use default value from ClefinCode Chat Settings",
    "fieldname": "topic_timeline_grouping_period",
    "fieldtype": "Select",
@@ -132,7 +133,7 @@
    "link_fieldname": "name"
   }
  ],
- "modified": "2026-07-09 16:35:23.074746",
+ "modified": "2026-07-12 13:12:09.524068",
  "modified_by": "Administrator",
  "module": "ClefinCode Chat",
  "name": "ClefinCode Chat Profile",
