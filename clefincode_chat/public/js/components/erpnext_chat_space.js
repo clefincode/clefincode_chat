@@ -1162,19 +1162,25 @@ async openCreateTopicFromPlusDialog() {
 }
 
 async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parentDialog = null }) {
+  if (!frappe.ui.form.make_control) {
+    await frappe.require("controls.bundle.js");
+  }
   const createDialog = new frappe.ui.Dialog({
     title: __("Add New Topic"),
     fields: [
       {
         label: __("Subject"),
         fieldname: "subject",
-        fieldtype: "Data"
+        fieldtype: "Data",
+        reqd: !this.is_disk
       },
       {
         label: __("DocType"),
         fieldname: "reference_doctype",
         fieldtype: "Link",
-        options: "DocType"
+        options: "DocType",
+        filters: { issingle: 0 },
+        onchange: () => createDialog.set_value("reference_docname", "")
       },
       {
         label: __("Document"),
@@ -1182,7 +1188,7 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
         fieldtype: "Dynamic Link",
         options: "reference_doctype"
       }
-    ],
+    ].filter(field => this.is_disk || field.fieldname === "subject"),
     primary_action_label: __("Create"),
     primary_action: async (values) => {
       try {
@@ -1288,6 +1294,9 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
     }
   });
 
+  if (!this.is_disk) {
+    createDialog.$wrapper.find(".tooltip-content").hide();
+  }
   createDialog.show();
 }
  parseReactionsFromReactionsJson(reactions_json) {
@@ -4559,8 +4568,8 @@ this.$chat_space.on("click", ".message-reactions", async function (e) {
 // });
 
 // ================= Plus Menu & Topic Select Events =================
-if (!me.chat_topic_space) {
-  me.$chat_space.on("click", ".chat-plus-attach", function (e) {
+  me.$chat_space.off("click.chat_attach", ".chat-plus-attach");
+  me.$chat_space.on("click.chat_attach", ".chat-plus-attach", function (e) {
     e.preventDefault();
     e.stopPropagation();
     me.closePlusMenu();
@@ -4580,6 +4589,7 @@ if (!me.chat_topic_space) {
     }
   });
 
+if (!me.chat_topic_space) {
   me.$chat_space.on("click", ".chat-plus-topics", function (e) {
     e.preventDefault();
     e.stopPropagation();

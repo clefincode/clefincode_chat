@@ -11051,7 +11051,11 @@ def get_channel_topics(chat_channel, topic_status=None, limit=10, offset=0, quer
         "ClefinCode Chat Topic",
         filters=filters,
         or_filters=or_filters,
-        fields=["count(name) as count"],
+        fields=(
+            [{"COUNT": "name", "as": "count"}]
+            if cint(frappe_version.split(".")[0]) >= 16
+            else ["count(name) as count"]
+        ),
     )
 
     total_count = count_rows[0].count if count_rows else 0
