@@ -4807,8 +4807,6 @@ $(document).on("click.topicSelectClose", function (e) {
       form_data.append('file', file.file_obj, file.name);
       form_data.append('is_private', +false);
 
-      form_data.append('doctype', 'ClefinCode Chat Message');
-      form_data.append('docname', this.profile.room);
       form_data.append('optimize', +true);
       xhr.send(form_data);
     });
