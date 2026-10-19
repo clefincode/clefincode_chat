@@ -1040,7 +1040,7 @@ async openRelinkTopicsDialog(messageNames = []) {
 
   const selectedTopic = await this.openChannelTopicPicker({
     chatChannel,
-    topicStatus: "All",
+    topicStatus: "Open",
     title: __("ReLink Topic"),
     selectLabel: __("Select"),
     showAddNew: true,
@@ -1162,19 +1162,26 @@ async openCreateTopicFromPlusDialog() {
 }
 
 async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parentDialog = null }) {
+
+  if (!frappe.ui.form.make_control) {
+    await frappe.require("controls.bundle.js");
+  }
   const createDialog = new frappe.ui.Dialog({
     title: __("Add New Topic"),
     fields: [
       {
         label: __("Subject"),
         fieldname: "subject",
-        fieldtype: "Data"
+        fieldtype: "Data",
+        reqd: !this.is_disk
       },
       {
         label: __("DocType"),
         fieldname: "reference_doctype",
         fieldtype: "Link",
-        options: "DocType"
+        options: "DocType",
+        filters: { issingle: 0 },
+        onchange: () => createDialog.set_value("reference_docname", "")
       },
       {
         label: __("Document"),
@@ -1182,7 +1189,7 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
         fieldtype: "Dynamic Link",
         options: "reference_doctype"
       }
-    ],
+    ].filter(field => this.is_disk || field.fieldname === "subject"),
     primary_action_label: __("Create"),
     primary_action: async (values) => {
       try {
@@ -1287,6 +1294,9 @@ async promptCreateNewTopic({ chatChannel, messageNames = [], afterCreate, parent
       }
     }
   });
+  if (!this.is_disk) {
+    createDialog.$wrapper.find(".tooltip-content").hide();
+  }
 
   createDialog.show();
 }
@@ -4559,26 +4569,28 @@ this.$chat_space.on("click", ".message-reactions", async function (e) {
 // });
 
 // ================= Plus Menu & Topic Select Events =================
+me.$chat_space.on("click", ".chat-plus-attach", function (e) {
+  e.preventDefault();
+  e.stopPropagation();
+  me.closePlusMenu();
+
+  if (!me.is_disk) {
+    me.$chat_actions.find('#chat-file-uploader').click();
+  } else {
+    new frappe.ui.FileUploader({
+      allow_multiple: false,
+      async on_success(file) {
+        await me.handle_send_message(
+          file.file_url,
+          file.file_name,
+          file.name
+        );
+      },
+    });
+  }
+});
+
 if (!me.chat_topic_space) {
-  me.$chat_space.on("click", ".chat-plus-attach", function (e) {
-    e.preventDefault();
-    e.stopPropagation();
-    me.closePlusMenu();
-    if(!me.is_disk){
-      me.$chat_actions.find('#chat-file-uploader').click();
-    }else{
-      new frappe.ui.FileUploader({
-        allow_multiple: false,
-        async on_success(file) {
-          await me.handle_send_message(
-            file.file_url,
-            file.file_name,
-            file.name
-          );
-        },
-      });
-    }
-  });
 
   me.$chat_space.on("click", ".chat-plus-topics", function (e) {
     e.preventDefault();
@@ -4604,7 +4616,11 @@ if (!me.chat_topic_space) {
 
   });
 
+    
+    
+  }
   me.$chat_space.on("click", ".chat-read-more-btn", function (e) {
+    if (!me.$chat_space || !me.$chat_space.has(this).length) return;
     e.preventDefault();
     e.stopPropagation();
     const $btn = $(this);
@@ -4626,6 +4642,7 @@ if (!me.chat_topic_space) {
     }
   });
 
+  if (!me.chat_topic_space) {
   me.$chat_space.on("input", ".topic-select-search", function () {
     const query = $(this).val() || "";
     me.renderTopicSelectList(query);
@@ -7430,6 +7447,24 @@ async getFirstRealTopicMessageName(topicName) {
               "</button>"
           );
           $message_element.append($readMoreBtn);
+          $readMoreBtn.on("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $textBody = $(this).siblings(".message-text-body").first();
+            if (!$textBody.length) return;
+
+            const step = parseInt($textBody.attr("data-read-more-step") || "0", 10);
+            const nextStep = step + 1;
+
+            if (nextStep >= 2) {
+              $textBody.removeClass("long-message-body").addClass("long-message-expanded");
+              $(this).remove();
+            } else {
+              const heights = [320, 640, 960];
+              $textBody.css("max-height", heights[nextStep] + "px");
+              $textBody.attr("data-read-more-step", nextStep);
+            }
+          });
         }
 
 // ================= Message Topic Badge =================
