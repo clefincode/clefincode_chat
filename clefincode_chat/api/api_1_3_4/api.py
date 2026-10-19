@@ -10100,6 +10100,9 @@ def relink_messages_to_topic(topic_name, message_names):
 
     if not frappe.db.exists("ClefinCode Chat Topic", topic_name):
         frappe.throw(_("Selected topic does not exist"))
+    topic_status = frappe.db.get_value("ClefinCode Chat Topic", topic_name, "topic_status")
+    if topic_status == "Closed":
+        frappe.throw(_("This topic is closed. You cannot relink messages to it."))
 
     updated = []
 
@@ -11053,7 +11056,7 @@ def get_channel_topics(chat_channel, topic_status=None, limit=10, offset=0, quer
         or_filters=or_filters,
         fields=(
             [{"COUNT": "name", "as": "count"}]
-            if cint(frappe_version.split(".")[0]) >= 16
+            if cint(frappe.__version__.split(".")[0]) >= 16
             else ["count(name) as count"]
         ),
     )

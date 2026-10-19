@@ -476,6 +476,8 @@ $height: 582px;
 .show-contributors {
   position: absolute;
   right: 55px;
+  top: auto;
+  bottom: 10px;
   display: flex;
   flex-direction: column;
 }
