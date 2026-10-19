@@ -1,6 +1,6 @@
 import frappe
 import subprocess
-
+import shutil
 def ensure_contact_custom_fields():
     from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 
@@ -18,6 +18,7 @@ def after_install():
     create_roles()   
     create_users_profiles()
     install_ffmpeg()
+    check_ffmpeg()
     add_default_limited_roles()
 # =================================================================================
 def create_roles():
@@ -107,6 +108,10 @@ def install_ffmpeg():
         subprocess.run(["sudo", "apt", "install", "ffmpeg", "--fix-missing" , "-y"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"An error occurred: {e}")
+
+def check_ffmpeg():
+    if not shutil.which("ffmpeg"):
+        print("Warning: FFmpeg is not installed. Install it manually to enable audio and video processing.")
 # =================================================================================
 
 def add_default_limited_roles():
