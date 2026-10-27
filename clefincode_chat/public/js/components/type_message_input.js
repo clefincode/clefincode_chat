@@ -1,6 +1,4 @@
 import Quill from "quill";
-import "quill/dist/quill.bubble.css";
-import "quill/dist/quill.snow.css";
 import Mention from "../quill-mention/quill.mention";
 
 Quill.register("modules/mention", Mention, true);
