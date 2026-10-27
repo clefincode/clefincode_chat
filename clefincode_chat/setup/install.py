@@ -1,6 +1,6 @@
 import frappe
 import subprocess
-
+import shutil
 def ensure_contact_custom_fields():
     from frappe.custom.doctype.custom_field.custom_field import create_custom_field
 
@@ -17,7 +17,6 @@ def after_install():
     ensure_contact_custom_fields()
     create_roles()   
     create_users_profiles()
-
     add_default_limited_roles()
 
 # =================================================================================
@@ -101,7 +100,6 @@ def create_users_profiles():
                         }).insert(ignore_permissions=True)
                 
     frappe.db.commit()       
-
 # =================================================================================
 
 def add_default_limited_roles():
