@@ -25,7 +25,7 @@ export default class ChatList {
     this.is_limited_user = opts.is_limited_user;
     this.is_pined = this.get_pin_cookie();
     this.is_open = 1;
-    this.limit = 10;
+    this.limit = 20;
     this.offset = 0;
     this.last_scroll_top = 0;
     this.num_of_results = 0;
@@ -79,10 +79,10 @@ export default class ChatList {
     );
 
     // 2) seed our pagination state
-    this.room_groups    = message.results;
-    this.num_of_results = message.num_of_results;
-    this.offset         = message.results.length;
-    this.rest_of_results = message.num_of_results - this.offset;
+    this.room_groups = this.normalize_channel_rows(message.results);
+    this.num_of_results = Number(message.num_of_results || 0);
+    this.offset = Array.isArray(message.results) ? message.results.length : 0;
+    this.rest_of_results = Math.max(0, this.num_of_results - this.offset);
 
     // 3) render just like a normal load
     await this.setup_rooms();
@@ -94,37 +94,27 @@ export default class ChatList {
 
   // 4) New helper: load the next page of search results
   async get_and_loading_more_search_contents() {
-    if (this._loading) return;
+    if (this._loading || this.rest_of_results <= 0 || !this.search_query) return;
     this._loading = true;
-
-    const message = await search_in_rooms(
-      this.user_email,
-      this.search_query,
-      this.limit,
-      this.offset
-    );
-
-    // remove old loader
-    this.$chat_rooms_group_container.find(".loading-more").remove();
-
-    // append new rooms
-    await this.render_new_content(message.results);
-
-    // bump pagination
-    this.offset += message.results.length;
-    this.num_of_results = message.num_of_results;
-    this.rest_of_results = message.num_of_results - this.offset;
-
-    // maybe add loader again
-    if (this.rest_of_results > 0) {
-      this.$chat_rooms_group_container.append(
-        `<div class="loading-more">Loading Chats...</div>`
+    try {
+      const message = await search_in_rooms(
+        this.user_email, this.search_query, this.limit, this.offset
       );
+      const rows = Array.isArray(message.results) ? message.results : [];
+      const consumed = rows.length;
+      this.offset += consumed;
+      this.num_of_results = Number(message.num_of_results || 0);
+      // Some customized APIs may report a count larger than the rows available.
+      if (!consumed) this.num_of_results = this.offset;
+      this.rest_of_results = Math.max(0, this.num_of_results - this.offset);
+      await this.render_new_content(rows);
+      this.check_if_more_results();
+    } catch (error) {
+      console.error("[ClefinCode Chat] Unable to load more searched rooms", error);
+    } finally {
+      this._loading = false;
+      this.check_and_load_if_space_available();
     }
-
-    this._loading = false;
-    // After loading more, check if there's still space to load additional content
-    this.check_and_load_if_space_available();
   }
 
   setup_header() {
@@ -276,12 +266,12 @@ export default class ChatList {
       );
 
       // 2) Store data + total count
-      this.room_groups    = results_info.results;
-      this.num_of_results = results_info.num_of_results;
+      this.room_groups = this.normalize_channel_rows(results_info.results);
+      this.num_of_results = Number(results_info.num_of_results || 0);
 
-      // 3) Advance offset & compute “remaining”
-      this.offset += this.limit;
-      this.rest_of_results = this.num_of_results - this.offset;
+      // Count records actually received from the API (not the page size).
+      this.offset = Array.isArray(results_info.results) ? results_info.results.length : 0;
+      this.rest_of_results = Math.max(0, this.num_of_results - this.offset);
 
       // 4) If no channels, show empty state and bind events once
       if (this.num_of_results == 0) {
@@ -338,6 +328,54 @@ export default class ChatList {
 
 
 
+  // A room's display title is NOT its identity. Multiple old accounts can
+  // legitimately have the title "Deleted Account".
+  normalize_channel_rows(rows) {
+    const seen = new Set();
+    return (Array.isArray(rows) ? rows : []).filter((entry) => {
+      if (!entry || !entry.room) return false;
+      const id = String(entry.room);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
+  build_room_profile(element) {
+    const isDeleted = Number(
+      element.other_profile_is_deleted ?? element.deleted_account ?? element.is_deleted ?? 0
+    ) === 1;
+    const serverName = element.room_name || element.channel_name || "";
+    const roomName = (isDeleted && element.type === "Direct")
+      ? __("Deleted Account")
+      : (serverName || String(element.room));
+
+    return {
+      user: this.user,
+      user_email: this.user_email,
+      is_admin: this.is_admin,
+      time_zone: this.time_zone,
+      user_type: this.user_type,
+      is_limited_user: this.is_limited_user,
+      room: element.room,
+      parent_channel: element.parent_channel,
+      room_name: roomName,
+      room_type: element.type,
+      last_message: element.last_message,
+      send_date: element.send_date,
+      contact: element.contact,
+      last_message_number: element.last_message_number,
+      user_unread_messages: element.user_unread_messages,
+      is_removed: element.is_removed,
+      remove_date: element.remove_date,
+      last_message_media_type: element.last_message_media_type,
+      last_message_voice_duration: element.last_message_voice_duration,
+      is_website_support_group: element.is_website_support_group,
+      platform: element.platform,
+      is_deleted: isDeleted,
+    };
+  }
+
   async setup_rooms(signal) {
     if (signal && signal.aborted) {
       return;
@@ -354,29 +392,7 @@ export default class ChatList {
     await this.setup_search();
     this.chat_room_groups = [];
     this.room_groups.forEach((element) => {
-      let profile = {
-        user: this.user,
-        user_email: this.user_email,
-        is_admin: this.is_admin,
-        time_zone: this.time_zone,
-        user_type: this.user_type,
-        is_limited_user: this.is_limited_user,
-        room: element.room,
-        parent_channel: element.parent_channel,
-        room_name: element.room_name,
-        room_type: element.type,
-        last_message: element.last_message,
-        send_date: element.send_date,
-        contact: element.contact,
-        last_message_number: element.last_message_number,
-        user_unread_messages: element.user_unread_messages,
-        is_removed: element.is_removed,
-        remove_date: element.remove_date,
-        last_message_media_type: element.last_message_media_type,
-        last_message_voice_duration: element.last_message_voice_duration,
-        is_website_support_group: element.is_website_support_group,
-        platform: element.platform
-      };
+      const profile = this.build_room_profile(element);
 
       this.chat_room_groups.push([
         profile.room,
@@ -710,7 +726,11 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
             res.room_type === "Direct" &&
             me.user_email === res.sender_email
           ) {
-            res.room_name = res.contact_name;
+            // Do not overwrite the title of a deleted conversation with an
+              // old name arriving in a realtime message.
+              if (res.room_name !== "Deleted Account" && res.contact_name) {
+                res.room_name = res.contact_name;
+              }
           }
 
           if (!me.chat_room_groups) {
@@ -780,6 +800,7 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
 
         let chat_room_item = findChatRoomItem();
         if (chat_room_item) {
+          chat_room_item[1].profile.room_name = res.new_group_name;
           chat_room_item[1].$chat_room
             .find(".chat-name")
             .text(
@@ -839,68 +860,49 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
   }
 
   async get_and_loading_more_contents() {
-    if (this._loading) return;
+    if (this._loading || this.rest_of_results <= 0 || this.search_query) return;
     this._loading = true;
-    // 1) fetch next page
-    const { results, num_of_results } = await get_channels_list(
-      this.user_email,
-      this.limit,
-      this.offset
-    );
-
-    // 2) remove the old “loading-more” indicator
-    this.$chat_rooms_group_container.find(".loading-more").remove();
-
-    // 3) append the new rooms
-    await this.render_new_content(results);
-
-    // 4) bump offset & update total
-    this.offset  += this.limit;
-    this.num_of_results  = num_of_results;
-    this.rest_of_results = this.num_of_results - this.offset;
-
-    // 5) re-insert loader if there’s still more
-    if (this.rest_of_results > 0) {
-      this.$chat_rooms_group_container.append(
-        `<div class="loading-more">Loading Chats...</div>`
+    try {
+      const { results, num_of_results } = await get_channels_list(
+        this.user_email, this.limit, this.offset
       );
+      const rows = Array.isArray(results) ? results : [];
+      const consumed = rows.length;
+      this.offset += consumed;
+      this.num_of_results = Number(num_of_results || 0);
+      // Some customized APIs may report a count larger than the rows available.
+      if (!consumed) this.num_of_results = this.offset;
+      this.rest_of_results = Math.max(0, this.num_of_results - this.offset);
+      await this.render_new_content(rows);
+      this.check_if_more_results();
+    } catch (error) {
+      console.error("[ClefinCode Chat] Unable to load more rooms", error);
+    } finally {
+      this._loading = false;
+      this.check_and_load_if_space_available();
     }
-    this._loading = false;
-    // After loading more, check if there's still space to load additional content
-    this.check_and_load_if_space_available();
   }
 
-
-
   async render_new_content(rooms) {
-    for (const element of rooms) {
-      // build the same profile object you do in setup_rooms…
-      let profile = {
-        contact: element.contact,
-        user: this.user,
-        user_email: this.user_email,
-        is_admin: this.is_admin,
-        room: element.room,
-        room_type: element.type,
-        last_message: element.last_message,
-        send_date: element.send_date,
-        platform: element.platform,
-        room_name: element.room_name,
-        last_message_number: element.last_message_number,
-        user_unread_messages: element.user_unread_messages
-      };
-
-      // instantiate & render
+    if (!this.$chat_rooms_group_container) return;
+    const knownRoomIds = new Set(
+      (this.chat_room_groups || []).map(([room]) => String(room))
+    );
+    for (const element of this.normalize_channel_rows(rooms)) {
+      const roomId = String(element.room);
+      if (knownRoomIds.has(roomId)) continue;
+      knownRoomIds.add(roomId);
+      const profile = this.build_room_profile(element);
       const chatRoom = new ChatRoom({
         $wrapper: this.$wrapper,
         $chat_rooms_container: this.$chat_rooms_group_container,
         element: profile,
+        chat_status: element.chat_status,
       });
       chatRoom.render("append");
       this.chat_room_groups.push([profile.room, chatRoom]);
     }
   }
-
 
   check_if_more_results() {
     // recalc how many remain
@@ -953,6 +955,11 @@ this.$chat_list.on("click", ".toggle-webview-mode", function () {
   }
 
   create_new_room(profile) {
+    if (!profile?.room) return;
+    if (this.chat_room_groups?.some(([id]) => String(id) === String(profile.room))) {
+      return;
+    }
+    profile = { ...profile, ...this.build_room_profile({ ...profile, type: profile.room_type || profile.type }) };
     if (profile.sender_email != this.user_email) {
       profile.user_unread_messages = 1;
     }

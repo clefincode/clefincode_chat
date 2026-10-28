@@ -146,7 +146,15 @@ doc_events = {
         ],
         "on_update": [
             "clefincode_chat.api.api_1_3_1.api.sync_with_chat_profile",
-        ]
+        ],
+        "on_trash": "clefincode_chat.utils.deleted_accounts.on_contact_trash",
+    },
+    
+    "Supplier": {
+        "on_trash": "clefincode_chat.utils.deleted_accounts.on_party_trash",
+    },
+    "Customer": {
+        "on_trash": "clefincode_chat.utils.deleted_accounts.on_party_trash",
     },
     "Notification Log": {
     "after_insert": [

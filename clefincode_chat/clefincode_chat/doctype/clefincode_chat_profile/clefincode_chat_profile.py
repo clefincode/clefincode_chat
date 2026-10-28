@@ -5,15 +5,8 @@ import frappe
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
-class ClefinCodeChatProfile(Document):
-    def before_save(self):
-        if self.is_guest == 1 or self.is_support == 1:
-            self.token = frappe.generate_hash()  
-        if getattr(frappe.flags, "skip_migrate_fcm_devices_contact_sync", False):
-            return
 
-        self.update_contact_from_details()
-    
+class ClefinCodeChatProfile(Document):
     def before_insert(self):
         if self.is_guest == 1:
             self.name = make_autoname("Guest .######")
@@ -23,129 +16,131 @@ class ClefinCodeChatProfile(Document):
             if not self.contact:
                 self.create_contact()
             self.name = self.contact
+
+    def validate(self):
+        # Deleted profiles are permanent tombstones, not reusable identities.
+        if self.get("is_deleted") and self.contact:
+            frappe.throw("A deleted Chat Profile cannot be linked to a Contact.")
+
+    def before_save(self):
+        # Never re-create a Contact or restore old identifiers on a tombstone.
+        if self.get("is_deleted"):
+            return
+
+        if self.is_guest == 1 or self.is_support == 1:
+            self.token = frappe.generate_hash()
+
+        if getattr(frappe.flags, "skip_migrate_fcm_devices_contact_sync", False):
+            return
+
+        self.update_contact_from_details()
+
     def create_contact(self):
-
-            # Create base Contact document
-            frappe.flags.skip_profile_sync = True
-            
-
+        previous_flag = getattr(frappe.flags, "skip_profile_sync", False)
+        frappe.flags.skip_profile_sync = True
+        try:
             contact = frappe.get_doc({
                 "doctype": "Contact",
                 "first_name": self.full_name or "Unknown",
-                "platform": None
+                "platform": None,
             })
             contact.insert(ignore_permissions=True)
 
-            # Map child table (contact_details) into Contact fields
             for detail in self.contact_details:
-
                 info = detail.contact_info
-                t = detail.type
+                contact_type = detail.type
 
-                # Email + Chat → email_ids
-                # Chat is treated like Email as requested
-                if t in ["Email", "Chat"]:
+                if contact_type in ("Email", "Chat"):
                     contact.append("email_ids", {
                         "email_id": info,
-                        "is_primary": detail.default
+                        "is_primary": detail.default,
                     })
-
-                elif t == "WhatsApp":
-                        contact.append("phone_nos", {
-                            "phone": info,
-                            "is_primary": detail.default,
-                            "phone_type": "Mobile"
+                elif contact_type == "WhatsApp":
+                    contact.append("phone_nos", {
+                        "phone": info,
+                        "is_primary": detail.default,
+                        "phone_type": "Mobile",
+                    })
+                elif contact_type in ("Instagram", "Messenger", "Telegram"):
+                    if has_field(contact, "social_contact"):
+                        contact.append("social_contact", {
+                            "platform": contact_type,
+                            "social_id": info,
                         })
 
-                # WhatsApp + Social networks → social_contact table
-                elif t in ["Instagram", "Messenger", "Telegram"]:
-                        if has_field(contact, "social_contact"):
-                            contact.append("social_contact", {
-                                "platform": t,
-                                "social_id": info,
-                            })
-
-                # If marked as default, set Contact.platform
                 if detail.default:
-                    contact.platform = t
+                    contact.platform = contact_type
 
-            
             contact.save(ignore_permissions=True)
-
-            # Link the created Contact back to the profile
             self.contact = contact.name
-            frappe.flags.skip_profile_sync = False
+        finally:
+            frappe.flags.skip_profile_sync = previous_flag
+
     def update_contact_from_details(self):
-        frappe.flags.skip_profile_sync = True
         if not self.contact:
             return
 
-        contact = frappe.get_doc("Contact", self.contact)
+        previous_flag = getattr(frappe.flags, "skip_profile_sync", False)
+        frappe.flags.skip_profile_sync = True
+        try:
+            contact = frappe.get_doc("Contact", self.contact)
 
-        for detail in self.contact_details:
-            info = detail.contact_info
-            t = detail.type
-            is_default = detail.default
+            for detail in self.contact_details:
+                info = detail.contact_info
+                contact_type = detail.type
+                is_default = detail.default
 
-            # Email + Chat
-            if t in ["Email", "Chat"]:
-                existing = next(
-                    (e for e in contact.email_ids if e.email_id == info),
-                    None
-                )
-
-                if existing:
-                    existing.is_primary = is_default
-                else:
-                    contact.append("email_ids", {
-                        "email_id": info,
-                        "is_primary": is_default
-                    })
-
-            # WhatsApp (Phone)
-            elif t == "WhatsApp":
-                existing = next(
-                    (p for p in contact.phone_nos if p.phone == info),
-                    None
-                )
-
-                if existing:
-                    existing.is_primary = is_default
-                else:
-                    contact.append("phone_nos", {
-                        "phone": info,
-                        "is_primary": is_default,
-                        "phone_type": "Mobile"
-                    })
-
-            # Social platforms
-            elif t in ["Instagram", "Messenger", "Telegram"]:
-                if has_field(contact, "social_contact"):
+                if contact_type in ("Email", "Chat"):
                     existing = next(
-                        (
-                            s for s in contact.social_contact
-                            if s.platform == t and s.social_id == info
-                        ),
-                        None
+                        (email for email in contact.email_ids if email.email_id == info),
+                        None,
                     )
-
                     if existing:
-                        existing.is_default = is_default
+                        existing.is_primary = is_default
                     else:
-                        contact.append("social_contact", {
-                            "platform": t,
-                            "social_id": info,
-                            "is_default": is_default
+                        contact.append("email_ids", {
+                            "email_id": info,
+                            "is_primary": is_default,
                         })
 
-            # Set platform if default
-            if is_default:
-                if t=="Email":
-                     t="Chat"
-                contact.platform = t
+                elif contact_type == "WhatsApp":
+                    existing = next(
+                        (phone for phone in contact.phone_nos if phone.phone == info),
+                        None,
+                    )
+                    if existing:
+                        existing.is_primary = is_default
+                    else:
+                        contact.append("phone_nos", {
+                            "phone": info,
+                            "is_primary": is_default,
+                            "phone_type": "Mobile",
+                        })
 
-        contact.save(ignore_permissions=True)
-        frappe.flags.skip_profile_sync = False
+                elif contact_type in ("Instagram", "Messenger", "Telegram"):
+                    if has_field(contact, "social_contact"):
+                        existing = next(
+                            (
+                                social for social in contact.social_contact
+                                if social.platform == contact_type and social.social_id == info
+                            ),
+                            None,
+                        )
+                        if existing:
+                            existing.is_default = is_default
+                        else:
+                            contact.append("social_contact", {
+                                "platform": contact_type,
+                                "social_id": info,
+                                "is_default": is_default,
+                            })
+
+                if is_default:
+                    contact.platform = "Chat" if contact_type == "Email" else contact_type
+
+            contact.save(ignore_permissions=True)
+        finally:
+            frappe.flags.skip_profile_sync = previous_flag
 
 
 def has_field(doc, fieldname):
