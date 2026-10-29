@@ -2610,6 +2610,10 @@ async fetch_single_message(messageName) {
   async setup_header() {
     let header_title;
     let header_full_name;
+    const isDeletedDirect = this.profile.room_type === "Direct" &&
+      (Number(this.profile.is_deleted || 0) === 1 ||
+       this.profile.room_name === "Deleted Account");
+    if (isDeletedDirect) this.profile.room_name = __("Deleted Account");
 
     if (this.chat_topic_space) {
         this.avatar_html = "";
@@ -2639,7 +2643,7 @@ async fetch_single_message(messageName) {
     let last_active = "";
     let user_datetime = "";
 
-    if (this.profile.room_type === "Direct") {
+    if (this.profile.room_type === "Direct" && !isDeletedDirect) {
         const last_active_value = await get_last_active(this.profile.contact, this.profile.user_email);
         if (last_active_value) {
             last_active =
@@ -2661,7 +2665,7 @@ async fetch_single_message(messageName) {
         <div class='chat-header'>
             ${this.avatar_html}
             <div class='chat-profile-info'>
-                <div class='chat-profile-name' title="${header_full_name}">${header_title}</div>
+                <div class='chat-profile-name' title="${frappe.utils.escape_html(String(header_full_name || ""))}">${frappe.utils.escape_html(String(header_title || ""))}</div>
                 <div class='chat-profile-status'>${last_active !== user_datetime ? last_active : ""}</div>
             </div>
             

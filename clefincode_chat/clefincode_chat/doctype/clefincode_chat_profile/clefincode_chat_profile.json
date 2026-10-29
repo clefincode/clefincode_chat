@@ -10,6 +10,7 @@
  "field_order": [
   "is_guest",
   "is_support",
+  "is_deleted",
   "full_name",
   "domain",
   "contact",
@@ -46,7 +47,7 @@
    "label": "Is Guest"
   },
   {
-   "depends_on": "eval: doc.is_guest == 0 && doc.is_client == 0",
+   "depends_on": "eval:doc.is_guest == 0 && doc.is_support == 0 && doc.is_deleted == 0",
    "fieldname": "contact",
    "fieldtype": "Link",
    "label": "Contact",
@@ -87,6 +88,14 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Is Support"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_deleted",
+   "fieldtype": "Check",
+   "label": "Deleted Account",
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "fcm_devices",

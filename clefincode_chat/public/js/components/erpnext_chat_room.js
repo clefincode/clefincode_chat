@@ -41,6 +41,8 @@ export default class ChatRoom {
   
 
   async setup() {
+  
+    this.profile.room_name = String(this.profile.room_name || this.profile.room || "");
     const chat_channel =
       this.profile.room_type == "Contributor"
         ? this.profile.parent_channel
@@ -54,6 +56,9 @@ export default class ChatRoom {
     
     this.$chat_room.attr("data-room", chat_channel);
     this.$chat_room.attr("data-room-name", this.profile.room_name);
+    if (this.profile.is_deleted || this.profile.room_name === "Deleted Account") {
+      this.$chat_room.addClass("deleted-account-conversation");
+    }
   
     this.avatar_html = get_avatar_html(
       this.profile.room_name,
@@ -70,12 +75,14 @@ export default class ChatRoom {
   
     const icon_html = await this.get_platform_icon(); 
   
+    const safeName = frappe.utils.escape_html(this.profile.room_name);
+    const shortName = this.profile.room_name.length > 20
+      ? this.profile.room_name.substring(0, 20) + "..."
+      : this.profile.room_name;
     const info_html = `
       <div class='chat-profile-info'>
-        <div class='chat-name' title = "${this.profile.room_name}">
-        ${this.profile.room_name.length > 20
-          ? this.profile.room_name.substring(0, 20) + "..."
-          : this.profile.room_name}
+        <div class='chat-name' title="${safeName}">
+        ${frappe.utils.escape_html(shortName)}
           <div class='chat-latest' style='display: ${
             this.profile.user_unread_messages > 0 ? "flex" : "none"
           }'>
