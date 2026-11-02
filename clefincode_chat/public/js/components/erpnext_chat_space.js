@@ -4573,7 +4573,8 @@ this.$chat_space.on("click", ".message-reactions", async function (e) {
 // });
 
 // ================= Plus Menu & Topic Select Events =================
-me.$chat_space.on("click", ".chat-plus-attach", function (e) {
+me.$chat_space.off("click.chat_attach", ".chat-plus-attach");
+me.$chat_space.on("click.chat_attach", ".chat-plus-attach", function (e) {
   e.preventDefault();
   e.stopPropagation();
   me.closePlusMenu();
