@@ -237,7 +237,7 @@ async open_filtered_topic_chat_from_timeline(ctx) {
   try {
     const response = await frappe.call({
       method:
-        "clefincode_chat.api.api_1_3_4.api.get_topic_open_context",
+        "clefincode_chat.api.api_1_4_1.api.get_topic_open_context",
       args: {
         chat_topic: ctx.chat_topic
       }

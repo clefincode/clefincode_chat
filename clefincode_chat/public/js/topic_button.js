@@ -166,7 +166,7 @@ async function ensure_room_from_target(target) {
 	}
 
 	const check = await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.check_if_contact_has_chat",
+		method: "clefincode_chat.api.api_1_4_1.api.check_if_contact_has_chat",
 		args: {
 			user_email: frappe.session.user,
 			contact: contact_email,
@@ -191,7 +191,7 @@ async function ensure_room_from_target(target) {
 	]);
 
 	const created = await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.create_channel",
+		method: "clefincode_chat.api.api_1_4_1.api.create_channel",
 		args: {
 			channel_name: target.full_name || target.name || contact_email,
 			users,
@@ -216,7 +216,7 @@ async function ensure_room_from_target(target) {
 
 async function link_current_doc_to_room(frm, room) {
 	const topicInfo = await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.get_topic_info",
+		method: "clefincode_chat.api.api_1_4_1.api.get_topic_info",
 		args: {
 			chat_channel: room
 		}
@@ -230,7 +230,7 @@ async function link_current_doc_to_room(frm, room) {
 
 	if (!existing_topic) {
 		const createdTopic = await frappe.call({
-			method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic_with_message",
+			method: "clefincode_chat.api.api_1_4_1.api.create_chat_topic_with_message",
 			args: {
 				mention_doctypes,
 				chat_channel: room,
@@ -304,7 +304,7 @@ async function link_current_doc_to_room(frm, room) {
 	}
 
 	await frappe.call({
-	method: "clefincode_chat.api.api_1_3_4.api.add_reference_doctype",
+	method: "clefincode_chat.api.api_1_4_1.api.add_reference_doctype",
 	args: {
 		mention_doctypes,
 		chat_topic: selectedTopicName
@@ -457,7 +457,7 @@ function build_current_doc_reference(frm) {
 
 async function replace_topic_references(chat_topic, chat_channel, current_ref) {
 	const r = await frappe.call({
-		method: "clefincode_chat.api.api_1_3_4.api.replace_topic_references",
+		method: "clefincode_chat.api.api_1_4_1.api.replace_topic_references",
 		args: {
 			chat_topic,
 			chat_channel,
@@ -469,7 +469,6 @@ async function replace_topic_references(chat_topic, chat_channel, current_ref) {
 
 	return r.message?.results?.[0] || r.message || {};
 }
-
 function ensure_chat_widget_open() {
 	const app = window.erpnext_chat_app;
 	if (!app) return false;
@@ -592,7 +591,7 @@ async function prompt_create_new_topic_from_picker({
 				]);
 
 				const r = await frappe.call({
-					method: "clefincode_chat.api.api_1_3_4.api.create_chat_topic",
+					method: "clefincode_chat.api.api_1_4_1.api.create_chat_topic",
 					args: {
 						mention_doctypes,
 						chat_channel: chatChannel,

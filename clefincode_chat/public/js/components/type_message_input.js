@@ -70,7 +70,7 @@ export default class TypeMessageInput {
       defaultMenuOrientation: "top",
       source: frappe.utils.debounce(async function (search_term, renderList) {
         const method =
-          "clefincode_chat.api.api_1_3_4.api.get_names_for_mentions";
+          "clefincode_chat.api.api_1_4_1.api.get_names_for_mentions";
 
         const values = await frappe.xcall(method, {
           search_term: search_term,

@@ -36,7 +36,7 @@ export default class ChatInfo {
     const me = this;
 
     frappe.call({
-        method: "clefincode_chat.api.api_1_3_4.api.get_contact_by_profile",
+        method: "clefincode_chat.api.api_1_4_1.api.get_contact_by_profile",
         args: { profile_id: me.roomname },
         callback(r) {
             if (r.message && r.message.results) {
@@ -867,7 +867,7 @@ save_all_contacts(dialog) {
 
       try {
         await frappe.call({
-          method: "clefincode_chat.api.api_1_3_4.api.update_chat_topic_info",
+          method: "clefincode_chat.api.api_1_4_1.api.update_chat_topic_info",
           args: {
             chat_topic: topicName,
             topic_status: "Closed"
@@ -1769,7 +1769,7 @@ save_all_contacts(dialog) {
 
         try {
           const r = await frappe.call({
-            method: "clefincode_chat.api.api_1_3_4.api.update_chat_topic_info",
+            method: "clefincode_chat.api.api_1_4_1.api.update_chat_topic_info",
             args: {
               chat_topic: topicName,
               subject: values.subject,
@@ -2210,7 +2210,7 @@ save_all_contacts(dialog) {
 
         try {
           const r = await frappe.call({
-            method: "clefincode_chat.api.api_1_3_4.api.add_chat_topic_reference",
+            method: "clefincode_chat.api.api_1_4_1.api.add_chat_topic_reference",
             args: {
               chat_topic: topicName,
               reference_doctype: values.reference_doctype,
@@ -2284,7 +2284,7 @@ save_all_contacts(dialog) {
       async () => {
         try {
           const r = await frappe.call({
-            method: "clefincode_chat.api.api_1_3_4.api.remove_chat_topic_reference",
+            method: "clefincode_chat.api.api_1_4_1.api.remove_chat_topic_reference",
             args: {
               chat_topic: topicName,
               reference_doctype: referenceDoctype,

@@ -24,9 +24,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.set_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.set_registration_token"]
         },
         "headers": [
           {
@@ -64,9 +64,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.set_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.set_registration_token"]
         },
         "headers": [
           {
@@ -104,9 +104,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.set_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.set_registration_token"]
         },
         "headers": [
           {
@@ -144,9 +144,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.check_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.check_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.check_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.check_registration_token"]
         },
         "headers": [
           {
@@ -184,9 +184,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.check_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.check_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.check_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.check_registration_token"]
         },
         "headers": [
           {
@@ -224,9 +224,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.remove_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.remove_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.remove_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.remove_registration_token"]
         },
         "headers": [
           {
@@ -264,9 +264,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.remove_registration_token",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.remove_registration_token",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.remove_registration_token"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.remove_registration_token"]
         },
         "headers": [
           {
@@ -290,9 +290,9 @@
       "request": {
         "method": "POST",
         "url": {
-          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_3_4.api.set_platform",
+          "raw": "{{base_url}}/api/method/clefincode_chat.api.api_1_4_1.api.set_platform",
           "host": ["{{base_url}}"],
-          "path": ["api", "method", "clefincode_chat.api.api_1_3_4.api.set_platform"]
+          "path": ["api", "method", "clefincode_chat.api.api_1_4_1.api.set_platform"]
         },
         "headers": [
           {

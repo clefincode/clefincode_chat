@@ -11,6 +11,7 @@
   "is_guest",
   "is_support",
   "is_deleted",
+  "is_ai_bot",
   "full_name",
   "domain",
   "contact",
@@ -24,7 +25,10 @@
   "platform",
   "fcm_devices",
   "support_token",
-  "support_channel"
+  "support_channel",
+  "ai_agent_profile",
+  "instruction_tamplate",
+  "instruction"
  ],
  "fields": [
   {
@@ -131,7 +135,29 @@
    "fieldname": "app_language",
    "fieldtype": "Link",
    "label": "App Language ",
-   "options": "Language"
+   "options": "Language",
+   "default": "0",
+   "fieldname": "is_ai_bot",
+   "fieldtype": "Check",
+   "label": "is AI bot"
+  },
+  {
+   "depends_on": "eval:doc.is_ai_bot == 1",
+   "fieldname": "ai_agent_profile",
+   "fieldtype": "Link",
+   "label": "Ai Agent Profile",
+   "options": "ClefinCode AI Agent Profile"
+  },
+  {
+   "fieldname": "instruction_tamplate",
+   "fieldtype": "Link",
+   "label": "instruction tamplate ",
+   "options": "ClefinCode AI Instructions Template"
+  },
+  {
+   "fieldname": "instruction",
+   "fieldtype": "Long Text",
+   "label": "instruction"
   }
  ],
  "index_web_pages_for_search": 1,

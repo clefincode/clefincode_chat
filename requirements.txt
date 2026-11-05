@@ -4,3 +4,5 @@ pydub~=0.25.1
 firebase-admin
 audioop-lts; python_version >= "3.13"
 twilio
+tiktoken
+openai
