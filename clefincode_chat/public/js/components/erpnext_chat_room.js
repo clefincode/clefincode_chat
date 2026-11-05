@@ -643,7 +643,7 @@ async function get_last_message_type(
   remove_date
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.get_last_message_type",
+    method: "clefincode_chat.api.api_1_4_1.api.get_last_message_type",
     args: {
       room_type: room_type,
       user_email: user_email,

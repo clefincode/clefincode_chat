@@ -1249,6 +1249,176 @@ def _contributor_matches_thread(contributor, parent_channel, sub_channel):
     return False
 
 
+AI_REPLY_JOB = "clefincode_chat.api.api_1_4_1.api.process_ai_reply_for_message"
+
+
+def _ai_redis_lock(key, timeout=900, blocking_timeout=120):
+    """Compatible with both callable and property-style Frappe Redis caches."""
+    cache = frappe.cache() if callable(frappe.cache) else frappe.cache
+    return cache.lock(key, timeout=timeout, blocking_timeout=blocking_timeout)
+
+
+def _call_ai_with_rate_limit_retry(**kwargs):
+    """Retry transient provider HTTP 429; never retry exhausted billing quotas."""
+    attempts = 5
+    for attempt in range(attempts):
+        try:
+            return call_ai_service(**kwargs)
+        except Exception as exc:
+            error = str(exc).lower()
+            is_rate_limit = "429" in error or "rate limit" in error
+            exhausted_quota = "insufficient_quota" in error or "quota has been exceeded" in error
+            if not is_rate_limit or exhausted_quota or attempt == attempts - 1:
+                raise
+            delay = min(2 ** (attempt + 1), 16)
+            log_ai_event("ai_provider_rate_limit_retry", attempt=attempt + 1,
+                         backoff_seconds=delay)
+            time.sleep(delay)
+
+
+def _ai_reply_already_exists(msg, bot_profile_id):
+    """An existing, non-deleted response in the exact topic/thread is final."""
+    replies = frappe.get_all(
+        "ClefinCode Chat Message",
+        filters={
+            "chat_channel": msg.chat_channel,
+            "reply_to_message": msg.name,
+            "sender": bot_profile_id,
+            "is_deleted": 0,
+        },
+        fields=["name", "chat_topic", "sub_channel"],
+        limit_page_length=0,
+    )
+    return any(
+        (row.chat_topic or None) == (msg.chat_topic or None)
+        and (row.sub_channel or None) == (msg.sub_channel or None)
+        for row in replies
+    )
+
+
+def _queue_ai_replies_for_message(channel_doc, msg):
+    """Enqueue every eligible AI bot independently, without blocking send()."""
+    if msg.message_type == "information":
+        return
+
+    sender_profile_id = get_profile_id(msg.sender_email) or getattr(msg, "sender", None)
+    if not sender_profile_id:
+        return
+    if cint(frappe.db.get_value(
+        "ClefinCode Chat Profile", sender_profile_id, "is_ai_bot"
+    ) or 0):
+        return  # An AI response must not trigger another bot response.
+
+    sub_channel = getattr(msg, "sub_channel", None) or None
+    candidates = {}  # profile ID -> is_contributor (keep first, avoid duplicates)
+
+    if not sub_channel:
+        for member in channel_doc.members or []:
+            if (member.platform == "Chat"
+                    and not cint(getattr(member, "is_removed", 0))
+                    and member.profile_id):
+                candidates.setdefault(member.profile_id, False)
+
+    for contributor in channel_doc.contributors or []:
+        if _contributor_matches_thread(contributor, channel_doc.name, sub_channel):
+            candidates.setdefault(contributor.profile_id, True)
+
+    if not candidates:
+        return
+
+    bots = frappe.get_all(
+        "ClefinCode Chat Profile",
+        filters={"name": ["in", list(candidates)], "is_ai_bot": 1},
+        fields=["name"],
+        limit_page_length=0,
+    )
+    bot_ids = {row.name for row in bots}
+    for bot_profile_id, is_contributor in candidates.items():
+        if bot_profile_id not in bot_ids:
+            continue
+        try:
+            # Register BEFORE the message transaction commits; the worker
+            # starts only after that commit, with a fresh persisted message.
+            frappe.enqueue(
+                AI_REPLY_JOB,
+                queue="default",
+                timeout=900,
+                enqueue_after_commit=True,
+                job_id=f"cc_ai_reply::{msg.name}::{bot_profile_id}",
+                deduplicate=True,
+                chat_message_name=msg.name,
+                bot_profile_id=bot_profile_id,
+                is_contributor=is_contributor,
+            )
+            log_ai_event(
+                "ai_queued", chat_message=msg.name,
+                chat_channel=msg.chat_channel, chat_topic=msg.chat_topic,
+                sub_channel=sub_channel, bot_profile=bot_profile_id,
+                is_contributor=is_contributor,
+            )
+        except Exception:
+            frappe.log_error(
+                title="AI reply queue failed",
+                message=frappe.get_traceback(),
+            )
+
+
+def process_ai_reply_for_message(chat_message_name, bot_profile_id, is_contributor=False):
+    """Frappe RQ worker entrypoint: reload exact message and reply in its topic."""
+    if not frappe.db.exists("ClefinCode Chat Message", chat_message_name):
+        return
+    msg = frappe.get_doc("ClefinCode Chat Message", chat_message_name)
+    if cint(getattr(msg, "is_deleted", 0)) or msg.message_type == "information":
+        return
+
+    channel = frappe.get_doc("ClefinCode Chat Channel", msg.chat_channel)
+    is_contributor = bool(cint(is_contributor))
+    if is_contributor:
+        member = next(
+            (row for row in (channel.contributors or [])
+             if row.profile_id == bot_profile_id
+             and _contributor_matches_thread(row, channel.name, msg.sub_channel)),
+            None,
+        )
+    else:
+        if msg.sub_channel:
+            return  # Normal members cannot answer contributor-only messages.
+        member = next(
+            (row for row in (channel.members or [])
+             if row.profile_id == bot_profile_id
+             and row.platform == "Chat"
+             and not cint(getattr(row, "is_removed", 0))),
+            None,
+        )
+    if not member:
+        log_ai_event(
+            "ai_skip", chat_message=msg.name, bot_profile=bot_profile_id,
+            reason="bot_membership_changed",
+        )
+        return
+
+    sender_profile_id = get_profile_id(msg.sender_email) or getattr(msg, "sender", None)
+    if not sender_profile_id:
+        log_ai_event("ai_skip", chat_message=msg.name, reason="sender_profile_missing")
+        return
+
+    # The lock and persisted-reply check protect against duplicate queue jobs
+    # and re-deliveries for the *same* trigger; different topics have different
+    # message IDs and do not block each other's model requests.
+    lock_name = f"cc_ai_trigger:{frappe.local.site}:{chat_message_name}:{bot_profile_id}"
+    with _ai_redis_lock(lock_name, timeout=900, blocking_timeout=120):
+        if _ai_reply_already_exists(msg, bot_profile_id):
+            log_ai_event(
+                "ai_skip", chat_message=msg.name, bot_profile=bot_profile_id,
+                chat_topic=msg.chat_topic, reason="reply_already_exists",
+            )
+            return
+        process_ai_reply_job(
+            member, sender_profile_id, channel.name, msg,
+            is_contributor=is_contributor, raise_on_error=True,
+        )
+
+
 @frappe.whitelist()
 def send(content, user, room , email, send_date = None , is_first_message = 0,is_forwarded=0, attachment = None , sub_channel = None , is_link = None , is_media = None , is_document = None, is_voice_clip = None , file_id = None , message_type = "" , message_template_type= "", only_receive_by = None , id_message_local_from_app = None , id_channel_local_from_app = None , chat_topic = None, is_screenshot = 0,reply_to_message_name=None,forwarded_from=None,whatsapp_message_id=None,override_variables=None ):
     
@@ -1417,7 +1587,15 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                         
                     member.unread_messages = 0 
         channel_doc.save(ignore_permissions=True)
-        frappe.db.commit()   
+
+        # Queue bots before the explicit commit so each trigger is persisted
+        # before its worker loads it. Never run a provider request in send().
+        if not only_receive_by and channel_doc.type != "Guest":
+            try:
+                _queue_ai_replies_for_message(channel_doc, new_message)
+            except Exception:
+                frappe.log_error(title="AI dispatch failed", message=frappe.get_traceback())
+        frappe.db.commit()
         
         results = {
             "file_type": file_type ,
@@ -1449,9 +1627,9 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
         
         if chat_topic:
             try:
-                topic_info = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, ["topic_subject", "topic_color"], as_dict=True)
+                topic_info = frappe.db.get_value("ClefinCode Chat Topic", chat_topic, ["subject", "topic_color"], as_dict=True)
                 if topic_info:
-                    results["chat_topic_subject"] = topic_info.topic_subject
+                    results["chat_topic_subject"] = topic_info.subject
                     results["topic_color"] = topic_info.topic_color
             except Exception:
                 pass
@@ -1547,12 +1725,8 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
 
                        
                     send_notification(member.user , results, "send_message", room_name if channel_doc.type == "Group" else get_contact_full_name(email), message_template_type)   
-                    if not sub_channel:
-                        # A member bot handles the regular parent chat, not a
-                        # separate contributor-only discussion.
-                        process_ai_reply_job(
-                            member, get_profile_id(email), room, new_message
-                        ) 
+                    # AI replies are independently queued before the commit,
+                    # not synchronously inside the notification loop.
                 elif member.platform == "WhatsApp" and email != member.user and message_template_type not in ["Rename Group" , "Send Confirmation"]  and not is_mention(content) and member.is_removed == 0:
                     process_whatsapp_message(member.platform_gateway, member.user , email, channel_doc, last_responder_user, new_message, file_type, attachment, content, is_voice_clip, is_screenshot,results,is_forwarded,override_variables )
                     if member.pending_messages >= 1:
@@ -1572,40 +1746,6 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
         
             for contributor in channel_doc.contributors:
                 bot_thread = (getattr(contributor, "channel", None) or "").strip()
-                eligible = _contributor_matches_thread(
-                    contributor, room, sub_channel
-                )
-                log_ai_event(
-                    "contributor_candidate", chat_message=new_message.name,
-                    bot_profile=contributor.profile_id,
-                    contributor_user=contributor.user,
-                    active=contributor.active,
-                    platform=contributor.platform,
-                    contributor_sub_channel=bot_thread,
-                    message_sub_channel=sub_channel,
-                    matched=eligible,
-                )
-                # If a bot appears in both parent members and contributors,
-                # send() already handled it as a normal member. Reply only once.
-                already_processed_as_member = not sub_channel and any(
-                    member_row.profile_id == contributor.profile_id
-                    and member_row.platform == "Chat"
-                    and not cint(getattr(member_row, "is_removed", 0))
-                    for member_row in (channel_doc.members or [])
-                )
-                if eligible and not already_processed_as_member:
-                    # Trigger independently of notification delivery.
-                    # process_ai_reply_job checks if this is an AI profile.
-                    process_ai_reply_job(
-                        contributor, get_profile_id(email), room, new_message,
-                        is_contributor=True
-                    )
-                elif eligible and already_processed_as_member:
-                    log_ai_event(
-                        "contributor_duplicate_member_skipped",
-                        chat_message=new_message.name,
-                        bot_profile=contributor.profile_id,
-                    )
                 if int(contributor.active or 0) == 1 and contributor.platform == "Chat" and (
                     not sub_channel or bot_thread == sub_channel
                 ):
@@ -2053,27 +2193,67 @@ def get_latest_channels_updates(user_email, last_message_date):
 
 # ==========================================================================================
 @frappe.whitelist()
-def mark_messsages_as_read(user , channel = None, parent_channel = None):
-    if channel:
-        last_message_number = frappe.db.get_value("ClefinCode Chat Channel" , channel , "last_message_number")
-        frappe.db.sql(f"""
-        UPDATE `tabClefinCode Chat Channel User`
-        SET last_message_read = {last_message_number} , unread_messages = 0 
-        WHERE user = '{user}' AND parent = '{channel}'""")
+
+@frappe.whitelist()
+def mark_messsages_as_read(user, channel=None, parent_channel=None):
+
+    def lock_channel(channel_name):
+        frappe.db.sql("""
+            SELECT name
+            FROM `tabClefinCode Chat Channel`
+            WHERE name = %s
+            FOR UPDATE
+        """, (channel_name,))
 
     if parent_channel:
-        sub_channels = frappe.db.sql(f"""SELECT ChatChannel.name , last_message_number 
-        FROM `tabClefinCode Chat Channel` AS ChatChannel INNER JOIN `tabClefinCode Chat Channel User` AS ChatChannelUser
-        WHERE parent_channel = '{parent_channel}'
-        AND ChatChannelUser.user = '{user}'
-        ORDER BY modified_date DESC
-        """ , as_dict = True)
+        lock_channel(parent_channel)
 
-        for c in sub_channels:
-            frappe.db.sql(f"""
-            UPDATE `tabClefinCode Chat Channel User`
-            SET last_message_read = {c.last_message_number} , unread_messages = 0
-            WHERE user = '{user}' AND parent = '{c.name}'""")
+    if channel:
+        lock_channel(channel)
+
+        frappe.db.sql("""
+            UPDATE `tabClefinCode Chat Channel User` cu
+            INNER JOIN `tabClefinCode Chat Channel` ch
+                ON ch.name = cu.parent
+            SET
+                cu.last_message_read = GREATEST(
+                    COALESCE(cu.last_message_read, 0),
+                    COALESCE(ch.last_message_number, 0)
+                ),
+                cu.unread_messages = 0
+            WHERE cu.user = %s
+              AND cu.parent = %s
+        """, (user, channel))
+
+    if parent_channel:
+        sub_channels = frappe.db.sql("""
+            SELECT ch.name
+            FROM `tabClefinCode Chat Channel` ch
+            INNER JOIN `tabClefinCode Chat Channel User` cu
+                ON cu.parent = ch.name
+            WHERE ch.parent_channel = %s
+              AND cu.user = %s
+            ORDER BY ch.name
+        """, (parent_channel, user), as_dict=True)
+
+        for sub in sub_channels:
+            lock_channel(sub.name)
+
+            frappe.db.sql("""
+                UPDATE `tabClefinCode Chat Channel User` cu
+                INNER JOIN `tabClefinCode Chat Channel` ch
+                    ON ch.name = cu.parent
+                SET
+                    cu.last_message_read = GREATEST(
+                        COALESCE(cu.last_message_read, 0),
+                        COALESCE(ch.last_message_number, 0)
+                    ),
+                    cu.unread_messages = 0
+                WHERE cu.user = %s
+                  AND cu.parent = %s
+            """, (user, sub.name))
+
+
 # ==========================================================================================
 @frappe.whitelist()
 def update_sub_channel_for_last_message(user , user_email , mentioned_users_emails , last_chat_space_message , last_active_sub_channel , content , chat_room , old_sub_channel = None):
@@ -5894,6 +6074,13 @@ def share_doctype(doctype, docname, user = None, everyone = 0):
 #=======================================================================================================
 def get_room_name(room, room_type, sender_email = None):
     room_name = ""
+    frappe.db.sql("""
+    SELECT name
+    FROM `tabClefinCode Chat Channel`
+    WHERE name = %s
+    FOR UPDATE
+""", (room,))
+
     channel_doc = frappe.get_doc("ClefinCode Chat Channel", room)
     if not channel_doc.channel_name or channel_doc.channel_name == "":
         if room_type == "Direct":
@@ -6814,7 +7001,7 @@ def upload_media_to_server(file_path):
     return f"{site_url}/files/{file_name}"
 #===============================================================================================
 
-def process_ai_reply_job(member, sender, channel, msg, is_contributor=False):
+def process_ai_reply_job(member, sender, channel, msg, is_contributor=False, raise_on_error=False):
     """Reply as a member or contributor bot in the message's exact scope."""
     import uuid
 
@@ -6935,7 +7122,7 @@ def process_ai_reply_job(member, sender, channel, msg, is_contributor=False):
             model=model, system_prompt=system_prompt, messages=messages,
         )
 
-        reply = call_ai_service(
+        reply = _call_ai_with_rate_limit_retry(
             profile_key=ai_agent.name,
             profile_doctype="ClefinCode AI Agent Profile",
             messages=messages,  # Flat list: NOT [messages].
@@ -6962,18 +7149,32 @@ def process_ai_reply_job(member, sender, channel, msg, is_contributor=False):
                 reply = after.strip()
         reply, has_link = linkify_and_detect(reply)
 
-        result = send(
-            content=f"<p>{reply}</p>",
-            user=member.profile_id,
-            room=channel,
-            email=getattr(member, "user", None),
-            is_first_message=0,
-            is_screenshot=0,
-            is_link=has_link,
-            chat_topic=chat_topic,  # Reply stays in the same topic.
-            sub_channel=sub_channel if is_contributor else None,
-            reply_to_message_name=msg.name,  # Associate AI response with its trigger.
-        )
+        # End the context-read transaction before acquiring the channel write
+        # lock: concurrent topics must see the latest parent channel version.
+        frappe.db.commit()
+        with _ai_redis_lock(
+            f"cc_ai_channel_send:{frappe.local.site}:{channel}",
+            timeout=900, blocking_timeout=600,
+        ):
+            # Recheck under the parent-channel lock as other bot jobs may have
+            # saved a response while this job was awaiting the provider.
+            if _ai_reply_already_exists(msg, member.profile_id):
+                log_ai_event("ai_skip", chat_message=msg.name,
+                             bot_profile=member.profile_id,
+                             reason="reply_already_saved_before_send")
+                return
+            result = send(
+                content=f"<p>{reply}</p>",
+                user=member.profile_id,
+                room=channel,
+                email=getattr(member, "user", None),
+                is_first_message=0,
+                is_screenshot=0,
+                is_link=has_link,
+                chat_topic=chat_topic,  # Reply stays in the same topic.
+                sub_channel=sub_channel if is_contributor else None,
+                reply_to_message_name=msg.name,  # Associate AI response with its trigger.
+            )
         log_ai_event(
             "ai_reply_saved", trace_id=trace_id, chat_message=msg.name,
             chat_topic=chat_topic, sub_channel=sub_channel, result=result,
@@ -6983,7 +7184,7 @@ def process_ai_reply_job(member, sender, channel, msg, is_contributor=False):
                 title="AI reply send failed",
                 message=f"Message {msg.name}: {result}",
             )
-            return
+            raise RuntimeError(f"Failed to save AI reply to message {msg.name}")
 
         summarize_channel_if_needed(
             channel, ai_agent.name, chat_topic=chat_topic,
@@ -7003,6 +7204,8 @@ def process_ai_reply_job(member, sender, channel, msg, is_contributor=False):
         frappe.log_error(
             title="process_ai_reply_job failed", message=frappe.get_traceback()
         )
+        if raise_on_error:
+            raise
 
 
 def send_whatsapp_message_twilio(new_message_doc, sender, receiver, message, message_type="text", is_voice_clip=False):

@@ -242,7 +242,7 @@ export default class VoiceClip {
           let base64data = reader.result;
           // send base64 data to server
           fetch(
-            "/api/method/clefincode_chat.api.api_1_2_1.api.save_voice_clip",
+            "/api/method/clefincode_chat.api.api_1_4_1.api.save_voice_clip",
             {
               method: "POST",
               headers: {

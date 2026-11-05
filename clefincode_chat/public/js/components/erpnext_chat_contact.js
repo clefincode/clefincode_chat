@@ -931,7 +931,7 @@ get_icon(contact_type) {
 export async function check_if_contact_has_chat(user_email, contact, platform) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.check_if_contact_has_chat",
+    method: "clefincode_chat.api.api_1_4_1.api.check_if_contact_has_chat",
     args: {
       user_email: user_email,
       contact: contact,
@@ -944,7 +944,7 @@ export async function check_if_contact_has_chat(user_email, contact, platform) {
 export async function check_if_contact_has_whatsapp_chat(default_whatsapp_number, default_whatsapp_type, contact, platform, user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.check_if_contact_has_whatsapp_chat",
+    method: "clefincode_chat.api.api_1_4_1.api.check_if_contact_has_whatsapp_chat",
     args: {
       default_whatsapp_number: default_whatsapp_number,
       default_whatsapp_type: default_whatsapp_type,

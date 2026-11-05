@@ -16,7 +16,7 @@ from frappe.model.utils import is_virtual_doctype
 from frappe.model.utils.user_settings import get_user_settings
 from frappe.permissions import get_doc_permissions
 from frappe.utils.data import cstr
-from clefincode_chat.api.api_1_2_1.api import get_contact_full_name, check_if_user_has_permission_to_file
+from clefincode_chat.api.api_1_4_1.api import get_contact_full_name, check_if_user_has_permission_to_file
 from frappe import __version__ as frappe_version
 from frappe.utils import cint
 from packaging import version

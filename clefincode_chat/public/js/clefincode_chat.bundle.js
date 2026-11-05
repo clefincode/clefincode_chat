@@ -287,7 +287,7 @@ frappe.ErpnextChat = class {
             } else {
               if (room_type == 'Contributor') {
                 frappe.call({
-                  method: "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read",
+                  method: "clefincode_chat.api.api_1_4_1.api.mark_messsages_as_read",
                   args: {
                     user: frappe.session.user,
                     channel: null,
@@ -301,7 +301,7 @@ frappe.ErpnextChat = class {
                 frappe.ErpnextChat.settings.open_chat_space_rooms.push(parent_channel);
               } else {
                 frappe.call({
-                  method: "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read",
+                  method: "clefincode_chat.api.api_1_4_1.api.mark_messsages_as_read",
                   args: {
                     user: frappe.session.user,
                     channel: room
@@ -501,7 +501,7 @@ frappe.ErpnextChat = class {
     if (!this.res.is_admin && this.res.channel && this.res.user === "Guest") {
       frappe.call({
         method:
-          "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read_for_guest",
+          "clefincode_chat.api.api_1_4_1.api.mark_messsages_as_read_for_guest",
         args: {
           token: localStorage.getItem("guest_token"),
           channel: this.res.channel,
@@ -540,7 +540,7 @@ frappe.ErpnextChat = class {
     if (!this.res.is_admin && this.res.channel && this.res.user === "Guest") {
       frappe.call({
         method:
-          "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read_for_guest",
+          "clefincode_chat.api.api_1_4_1.api.mark_messsages_as_read_for_guest",
         args: {
           token: localStorage.getItem("guest_token"),
           channel: this.res.channel,
@@ -879,7 +879,7 @@ async function get_settings(token) {
 async function calculate_unread_messages(user) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.calculate_unread_messages",
+    method: "clefincode_chat.api.api_1_4_1.api.calculate_unread_messages",
     args: {
       user: user,
     },
@@ -892,7 +892,7 @@ async function calculate_unread_messages_forGuest(channel) {
   const res = await frappe.call({
     type: "GET",
     method:
-      "clefincode_chat.api.api_1_2_1.api.calculate_unread_messages_for_guest",
+      "clefincode_chat.api.api_1_4_1.api.calculate_unread_messages_for_guest",
     args: {
       channel: channel,
       token: localStorage.getItem("guest_token") || "",

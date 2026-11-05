@@ -3283,7 +3283,7 @@ async fetch_single_message(messageName) {
         // Set up button events
         $reopenBtn.on("click", () => {
           frappe.call({
-            method: "clefincode_chat.api.api_1_2_1.api.trigger_chat_channel_status",
+            method: "clefincode_chat.api.api_1_4_1.api.trigger_chat_channel_status",
             args: { room: room,
                     is_open: false
                   },
@@ -8639,7 +8639,7 @@ async fetchTemplateSuggestions(textValue) {
 
     this.is_first_message = 1;
     let res = await frappe.call({
-      method: "clefincode_chat.api.api_1_2_1.api.create_channel",
+      method: "clefincode_chat.api.api_1_4_1.api.create_channel",
       args: {
         channel_name: "",
         users: this.chat_members,
@@ -10620,7 +10620,7 @@ async function get_messages(
 async function get_contributors(room) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_contributors",
+    method: "clefincode_chat.api.api_1_4_1.api.get_contributors",
     args: {
       room: room,
     },
@@ -10631,7 +10631,7 @@ async function get_contributors(room) {
 async function get_sub_channel_members(room, user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_sub_channel_members",
+    method: "clefincode_chat.api.api_1_4_1.api.get_sub_channel_members",
     args: {
       room: room,
       user_email: user_email,
@@ -10643,7 +10643,7 @@ async function get_sub_channel_members(room, user_email) {
 async function get_last_active_sub_channel(room) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_last_active_sub_channel",
+    method: "clefincode_chat.api.api_1_4_1.api.get_last_active_sub_channel",
     args: {
       room: room,
     },
@@ -10658,7 +10658,7 @@ async function get_all_sub_channels_for_contributor(
   const res = await frappe.call({
     type: "GET",
     method:
-      "clefincode_chat.api.api_1_2_1.api.get_all_sub_channels_for_contributor",
+      "clefincode_chat.api.api_1_4_1.api.get_all_sub_channels_for_contributor",
     args: {
       parent_channel: parent_channel,
       user_email: user_email,
@@ -10680,7 +10680,7 @@ async function update_sub_channel_for_last_message(
   const res = frappe.call({
     type: "POST",
     method:
-      "clefincode_chat.api.api_1_2_1.api.update_sub_channel_for_last_message",
+      "clefincode_chat.api.api_1_4_1.api.update_sub_channel_for_last_message",
     args: {
       user: user,
       user_email: user_email,
@@ -10697,7 +10697,7 @@ async function update_sub_channel_for_last_message(
 
 async function get_last_active(contact_email, user_email) {
   const last_active = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.get_last_active",
+    method: "clefincode_chat.api.api_1_4_1.api.get_last_active",
     args: {
       contact_email: contact_email,
       user_email: user_email,
@@ -10712,7 +10712,7 @@ async function add_reference_doctype(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.add_reference_doctype",
+    method: "clefincode_chat.api.api_1_4_1.api.add_reference_doctype",
     args: {
       mention_doctypes: mention_doctypes,
       chat_topic: chat_topic,
@@ -10754,7 +10754,7 @@ export async function remove_chat_topic(
   last_active_sub_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.remove_chat_topic",
+    method: "clefincode_chat.api.api_1_4_1.api.remove_chat_topic",
     args: {
       chat_topic: chat_topic,
       chat_channel: chat_channel,
@@ -10806,7 +10806,7 @@ async function check_if_user_has_permission(
   chat_topic_channel
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.check_if_user_has_permission",
+    method: "clefincode_chat.api.api_1_4_1.api.check_if_user_has_permission",
     args: {
       user_email: user_email,
       chat_topic: chat_topic_space,
@@ -10818,7 +10818,7 @@ async function check_if_user_has_permission(
 
 async function check_if_user_send_request(user_email, chat_topic_space) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.check_if_user_send_request",
+    method: "clefincode_chat.api.api_1_4_1.api.check_if_user_send_request",
     args: {
       user_email: user_email,
       chat_topic: chat_topic_space,
@@ -10836,7 +10836,7 @@ async function send_topic_access_request(
   reference_docname
 ) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.send_topic_access_request",
+    method: "clefincode_chat.api.api_1_4_1.api.send_topic_access_request",
 
     args: {
       user_email: user_email,

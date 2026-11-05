@@ -113,7 +113,7 @@ function is_phone_number(value) {
 
 function mark_messsages_as_read(user, channel = null, parent_channel = null) {
   frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.mark_messsages_as_read",
+    method: "clefincode_chat.api.api_1_4_1.api.mark_messsages_as_read",
     args: {
       user: user,
       channel: channel,
@@ -193,7 +193,7 @@ function contains_arabic(text) {
 
 async function get_profile_full_name(user_email) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.get_profile_full_name",
+    method: "clefincode_chat.api.api_1_4_1.api.get_profile_full_name",
     args: {
       user_email: user_email,
     },
@@ -215,7 +215,7 @@ function get_user_emails(users_list) {
 
 async function check_if_room_admin(room, email) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.check_if_room_admin",
+    method: "clefincode_chat.api.api_1_4_1.api.check_if_room_admin",
     args: {
       room: room,
       email: email,
@@ -292,7 +292,7 @@ async function create_sub_channel(params) {
   } = params;
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.create_sub_channel",
+    method: "clefincode_chat.api.api_1_4_1.api.create_sub_channel",
     args: {
       new_contributors: new_contributors,
       parent_channel: parent_channel,
@@ -310,7 +310,7 @@ async function create_sub_channel(params) {
 
 async function get_time_now(user_email, formatted = null) {
   const res = await frappe.call({
-    method: "clefincode_chat.api.api_1_2_1.api.get_time_now",
+    method: "clefincode_chat.api.api_1_4_1.api.get_time_now",
     args: {
       user_email: user_email,
       formatted: formatted,
@@ -322,7 +322,7 @@ async function get_time_now(user_email, formatted = null) {
 async function get_chat_members(room) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.get_chat_members",
+    method: "clefincode_chat.api.api_1_4_1.api.get_chat_members",
     args: {
       room: room,
     },
@@ -333,7 +333,7 @@ async function get_chat_members(room) {
 async function check_if_contributor_active(channel, user_email) {
   const res = await frappe.call({
     type: "GET",
-    method: "clefincode_chat.api.api_1_2_1.api.check_if_contributor_active",
+    method: "clefincode_chat.api.api_1_4_1.api.check_if_contributor_active",
     args: {
       channel: channel,
       user_email: user_email,

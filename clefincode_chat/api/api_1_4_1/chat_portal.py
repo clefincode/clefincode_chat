@@ -3,7 +3,7 @@ import traceback
 import frappe
 import datetime
 from clefincode_chat.utils.utils import choose_user_to_respond
-from clefincode_chat.api.api_1_2_1.api import get_profile_id , convert_utc_to_user_timezone , get_user_timezone , send_notification, share_doctype, get_contact_full_name
+from clefincode_chat.api.api_1_4_1.api import get_profile_id , convert_utc_to_user_timezone , get_user_timezone , send_notification, share_doctype, get_contact_full_name
 from clefincode_chat.api.api_1_4_1.api import build_reply_preview, get_room_name
 from frappe.utils import now_datetime
 from bs4 import BeautifulSoup
@@ -48,7 +48,7 @@ def send(content, room, sender, sender_email, send_date, respondent_user,
          reply_to_message_name=None, chat_topic=None):
     # Portal chats usually do not supply a topic.
     if chat_topic:
-        from clefincode_chat.api.api_1_2_1.ai_agent import _validate_chat_scope
+        from clefincode_chat.api.api_1_4_1.ai_agent import _validate_chat_scope
         _validate_chat_scope(room, chat_topic)
     send_date = datetime.datetime.utcnow()
     if version.parse(frappe_version) >= version.parse("15.0.0"):
