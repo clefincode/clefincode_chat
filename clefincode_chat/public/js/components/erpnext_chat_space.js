@@ -2285,6 +2285,7 @@ async jumpToMessage(messageName, maxTries = 50, startOffset = null) {
 
     await this.make_messages_html(results, 1);
     this.$chat_space_container.prepend(this.message_html);
+    this.ensureRecordingTranscriptControls();
 
     this.normalizeTopicSeparators?.();
 
@@ -3850,6 +3851,80 @@ this.$wrapper.off("click.chatMenuActions", ".edit-action")
     const cached = me.messageCache.get(messageName) || {};
     const isEditedBefore = Number(cached.is_edited || 0) === 1;
     const $wrapper = me.$chat_space.find(`[data-message-name="${messageName}"]`);
+    const isVoiceMessage = Number(cached.is_voice_clip || 0) === 1 ||
+      $wrapper.find(".voice-clip-container").length > 0;
+
+    if (isVoiceMessage) {
+      // The normal Edit Message action overwrites the entire Content HTML.
+      // Voice clips must edit ONLY the transcript and preserve their player.
+      void (async () => {
+        try {
+          const r = await frappe.call({
+            method: "clefincode_chat.api.api_1_4_1.audio_features.get_recording_features",
+            args: { message_name: messageName }
+          });
+          const info = r.message || {};
+          if (isEditedBefore) {
+            frappe.msgprint({
+              title: __("Edit Transcript"),
+              message: __("This message has already been edited and cannot be edited again."),
+              indicator: "orange"
+            });
+            return;
+          }
+          const d = new frappe.ui.Dialog({
+            title: __("Edit Transcript"),
+            fields: [{
+              fieldname: "transcript",
+              label: __("Transcript"),
+              fieldtype: "Long Text",
+              reqd: 1,
+              default: info.transcript || ""
+            }],
+            primary_action_label: __("Save"),
+            primary_action: async (values) => {
+              const transcript = String(values.transcript || "").trim();
+              if (!transcript) {
+                frappe.msgprint(__("Transcript cannot be empty."));
+                return;
+              }
+              d.get_primary_btn().prop("disabled", true);
+              try {
+                await frappe.call({
+                  method: "clefincode_chat.api.api_1_4_1.audio_features.edit_voice_transcript",
+                  type: "POST",
+                  args: { message_name: messageName, new_transcript: transcript }
+                });
+                const latest = me.messageCache.get(messageName) || {};
+                latest.is_edited = 1;
+                me.messageCache.set(messageName, latest);
+                // Keep the existing waveform; only the inline transcript changes.
+                window.CCRecordingFeatures?.refreshMessage?.(messageName);
+                d.hide();
+                frappe.show_alert({ message: __("Transcript updated"), indicator: "green" });
+              } catch (error) {
+                console.error("[CC recording] Transcript edit failed", error);
+                frappe.msgprint({
+                  title: __("Error"),
+                  message: __("Could not save the transcript."),
+                  indicator: "red"
+                });
+              } finally {
+                d.get_primary_btn().prop("disabled", false);
+              }
+            },
+            secondary_action_label: __("Cancel"),
+            secondary_action: () => d.hide()
+          });
+          d.show();
+          d.fields_dict.transcript.$wrapper.attr("dir", "auto");
+        } catch (error) {
+          console.error("[CC recording] Cannot open transcript editor", error);
+          frappe.msgprint(__("Could not open transcript editor."));
+        }
+      })();
+      return;
+    }
 
     if (isEditedBefore) {
       const d = new frappe.ui.Dialog({
@@ -7444,6 +7519,37 @@ async getFirstRealTopicMessageName(topicName) {
         }
 
         $message_element.append($contentToAppend);
+
+        // Recording AI: add an explicit message-owned checkbox to voice bubbles.
+        // This survives HTML serialization, paging, real-time events and refreshes.
+        // The recording_features.js controller hydrates state and handles saving.
+        const voiceCache = this.messageCache?.get(message_name) || {};
+        const isVoiceRecording = !is_deleted && type !== "info-message" &&
+          (Number(voiceCache.is_voice_clip || 0) === 1 ||
+           $message_element.find(".voice-clip-container").length > 0);
+        if (isVoiceRecording && message_name) {
+          $recipient_element.attr("data-cc-voice-recording", "1");
+          const $host = $("<div>")
+            .addClass("cc-voice-transcript-host")
+            .attr("data-cc-voice-message", message_name)
+            .css({ display: "block", marginTop: "7px", maxWidth: "100%" });
+          const $switch = $("<label>")
+            .addClass("cc-voice-transcript-switch")
+            .attr("data-cc-voice-message", message_name)
+            .css({
+              display: "flex", alignItems: "center", gap: "7px",
+              marginTop: "7px", cursor: "pointer", fontSize: "12px",
+              color: "var(--text-muted, #666)"
+            });
+          const $checkbox = $("<input>")
+            .attr({ type: "checkbox", class: "cc-message-transcript-checkbox" })
+            .prop("disabled", true)
+            .css({ margin: 0, flex: "0 0 auto" });
+          $switch.append($checkbox, $("<span>").text(__("Show transcript")));
+          $host.append($switch);
+          $message_element.append($host);
+        }
+
         if ($contentToAppend.is(".long-message-body")) {
           const $readMoreBtn = $(
             '<button type="button" class="chat-read-more-btn">' +
@@ -9172,6 +9278,7 @@ async fetchTemplateSuggestions(textValue) {
   res.sender_email === this.profile.user_email || this.isNearBottom();
 
         this.$chat_space_container.append(message_content);
+        this.ensureRecordingTranscriptControls();
         this.normalizeTopicSeparators();
         if (topicNameForRealtime) {
           this.applyTopicToRenderedMessage(
@@ -9272,12 +9379,16 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
   `;
 
   const items = [];
+  const cachedForVoice = this.messageCache.get(messageName) || {};
+  const isVoiceMessage = Number(cachedForVoice.is_voice_clip || 0) === 1 ||
+    $trigger.closest(".sender-message, .recipient-message")
+      .find(".voice-clip-container").length > 0;
 
-  if (isTextOnly && isMyMessage) {
+  if (isMyMessage && (isTextOnly || isVoiceMessage)) {
     items.push(item({
       actionClass: "edit-action",
       iconName: "edit",
-      label: "Edit"
+      label: isVoiceMessage ? "Edit Transcript" : "Edit"
     }));
   }
 
@@ -9458,10 +9569,39 @@ openMessageActionMenu({ $trigger, messageName, isMyMessage, isTextOnly }) {
 }
 
 
+  ensureRecordingTranscriptControls() {
+    if (!this.$chat_space?.find(".cc-voice-transcript-host").length) return;
+
+    const refresh = () => {
+      const feature = window.CCRecordingFeatures;
+      if (typeof feature?.scheduleScan === "function") {
+        feature.scheduleScan();
+      } else if (typeof feature?.scanVisibleMessageTranscripts === "function") {
+        void feature.scanVisibleMessageTranscripts();
+      }
+    };
+
+    if (window.CCRecordingFeatures) {
+      refresh();
+      return;
+    }
+    if (!window.frappe?.require) return;
+    if (!window.__CCRecordingFeaturesLoadPromise) {
+      window.__CCRecordingFeaturesLoadPromise = Promise.resolve(window.frappe.require(
+        "/assets/clefincode_chat/js/recording_features.js"
+      )).catch(error => {
+        window.__CCRecordingFeaturesLoadPromise = null;
+        console.warn("[CC recording] Cannot load recording_features.js", error);
+      });
+    }
+    window.__CCRecordingFeaturesLoadPromise.then(refresh);
+  }
+
   render() {
     const me = this;
     this.$wrapper.css("display", "");
     this.$wrapper.html(this.$chat_space);
+    this.ensureRecordingTranscriptControls();
     this.$chat_space_container.animate(
       { scrollTop: this.$chat_space_container.prop("scrollHeight") },
       "fast"
@@ -10081,6 +10221,7 @@ async rebuildMessage(messageName) {
 
         await me.make_messages_html(olderMessages, 1);
         me.$chat_space_container.prepend(me.message_html);
+        me.ensureRecordingTranscriptControls();
         me.normalizeTopicSeparators();
         if (!me.chat_topic_space) {
           me.buildTopicMetaMap();

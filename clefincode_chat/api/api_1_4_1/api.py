@@ -1460,11 +1460,10 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                 "sub_channel" : sub_channel,
                 "sender_email": email,
                 "sender":user,
-                "is_media": 1 if file_type == 'image' or file_type == 'audio' or file_type == 'video' else 0,
-                "is_document": 1 if file_type == 'document' else 0,
+                                "is_document": 1 if file_type == 'document' else 0,
                 "file_type": "text" if file_type == "application" else file_type,
                 "is_link" : is_link if is_link else 0,
-                "is_med ia" : is_media if is_media else 0,            
+                "is_media" : 1 if (is_media or is_voice_clip or file_type in ("image", "video", "audio")) else 0,            
                 "is_document" : is_document if is_document else 0,
                 "is_voice_clip" : is_voice_clip if is_voice_clip else 0,
                 "is_mention": is_mention(content),
@@ -1497,10 +1496,14 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             new_message.file_id = frappe.db.get_value("File" , {"attached_to_name": new_message.name}, "name")               
             new_message.save(ignore_permissions = True)
 
-        if file_id:
-            set_attach_message(file_id=file_id, message_name=new_message.name)
-        elif attachment:
-            set_attach_message(attachment=attachment, message_name=new_message.name)
+        # A forwarded voice note must receive its OWN copied File document.
+        # Never relink the original File to the forwarded message.
+        forwarded_voice = bool(is_forwarded and forwarded_from and is_voice_clip)
+        if not forwarded_voice:
+            if file_id:
+                set_attach_message(file_id=file_id, message_name=new_message.name)
+            elif attachment:
+                set_attach_message(attachment=attachment, message_name=new_message.name)
         if reply_to_message_name:
                 try:
                   
@@ -1523,18 +1526,28 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                         # )
                 except Exception:
                     frappe.log_error(title="Reply Video Thumb Enqueue Error", message=frappe.get_traceback())
-        if is_forwarded and (not attachment) and forwarded_from and (is_media  or is_document or is_voice_clip ):
+        if is_forwarded and forwarded_from and (is_media or is_document or is_voice_clip) and (not attachment or forwarded_voice):
             try:
                 new_message = copy_forwarded_file_and_relink(new_message, forwarded_from)
-                # update local vars so results/channel last_message use updated content
+                # Reflect the new File and the copied transcript in the outgoing message.
                 content = new_message.content
                 file_id = new_message.file_id
                 file_type = new_message.file_type
                 is_media = new_message.is_media
                 is_document = new_message.is_document
             except Exception:
+                # A failed voice copy should not leave a broken message pointing
+                # to the original user's File. Preserve existing non-voice behavior.
+                if forwarded_voice:
+                    frappe.db.rollback()
+                    raise
                 frappe.log_error(title="Forwarded File Copy Error", message=frappe.get_traceback())
         
+        # Transcript text stays in Message.content, but hidden transcript HTML
+        # should not be exposed in chat-list previews or normal realtime bodies.
+        from .audio_features import strip_stored_transcript
+        display_content = strip_stored_transcript(content) if forwarded_voice else content
+
         share_everyone = 0
         if chat_topic:
             is_private = frappe.db.get_value("ClefinCode Chat Topic" , chat_topic , "is_private")
@@ -1550,14 +1563,14 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
             for member in channel_doc.members:
                 if member.is_removed == 0:
                     member.channel_last_message_number+=1
-        channel_doc.last_message = content
+        channel_doc.last_message = display_content
         channel_doc.modified_date = send_date   
         channel_doc.last_message_number += 1   
         
 
         if sub_channel:
             sub_channel_doc = frappe.get_doc("ClefinCode Chat Channel" , sub_channel)
-            sub_channel_doc.last_message = content
+            sub_channel_doc.last_message = display_content
             sub_channel_doc.modified_date = send_date   
             sub_channel_doc.last_message_number += 1 
             sub_channel_doc.save(ignore_permissions=True)
@@ -1588,9 +1601,25 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
                     member.unread_messages = 0 
         channel_doc.save(ignore_permissions=True)
 
-        # Queue bots before the explicit commit so each trigger is persisted
-        # before its worker loads it. Never run a provider request in send().
-        if not only_receive_by and channel_doc.type != "Guest":
+        # Forwarding a completed voice recording carries its original transcript
+        # and timing metadata; no need to enqueue Whisper for that NEW message.
+        from .audio_features import queue_voice_clip_transcription, transcript_from_content
+        reused_voice_transcript = bool(
+            forwarded_voice
+            and getattr(new_message, "audio_status", "") == "Completed"
+            and transcript_from_content(new_message.content)
+        )
+        if not reused_voice_transcript:
+            try:
+                queue_voice_clip_transcription(new_message)
+            except Exception:
+                frappe.log_error(title="Recording transcription enqueue failed", message=frappe.get_traceback())
+
+        # A new, already-transcribed forwarded voice message can trigger the
+        # destination channel's bot immediately; newly recorded voice clips
+        # continue to trigger bots from the transcription worker.
+        if ((not cint(new_message.is_voice_clip) or reused_voice_transcript)
+                and not only_receive_by and channel_doc.type != "Guest"):
             try:
                 _queue_ai_replies_for_message(channel_doc, new_message)
             except Exception:
@@ -1599,14 +1628,14 @@ def send(content, user, room , email, send_date = None , is_first_message = 0,is
         
         results = {
             "file_type": file_type ,
-            "content": content,
+            "content": display_content,
             "user": user,
             "sender_email": email, 
             "message_name" : new_message.name,
             "realtime_type" : "send_message",
             "is_first_message" : is_first_message if is_first_message else 0,
             "room_name" : room_name ,
-            "last_message" : content ,
+            "last_message" : display_content ,
             "room_type" : channel_doc.type,
             "contact_name" : get_contact_full_name(channel_doc.members[1].user) if channel_doc.type != "Guest" else "Guest" ,        
             "file_id" : file_id,
@@ -1972,7 +2001,12 @@ def get_messages(room, user_email, room_type, chat_topic=None,
         else "UTC"
     )
 
+    from .audio_features import strip_stored_transcript
     for message in results:
+        if message.get("is_voice_clip") and not message.get("is_deleted"):
+            # Content is the database search source; do not render hidden text
+            # through legacy web/mobile message UI. Inline JS renders it separately.
+            message["content"] = strip_stored_transcript(message.get("content"))
         message["utc_message_date"] = message["send_date"]
         message["send_date"] = convert_utc_to_user_timezone(
             message["send_date"], user_tz
@@ -2042,7 +2076,10 @@ def get_messages_latest(room , user_email , room_type, remove_date = None , last
     ORDER BY send_date DESC 
 
     """ , as_dict = True)
+    from .audio_features import strip_stored_transcript
     for message in results:
+        if message.is_voice_clip:
+            message.content = strip_stored_transcript(message.content)
         message.utc_message_date = message.send_date
         message.send_date = convert_utc_to_user_timezone(message.send_date, get_user_timezone(user_email)["results"][0]["time_zone"])
         message.time_zone = get_user_timezone(user_email)["results"][0]["time_zone"]         
@@ -2357,6 +2394,9 @@ def get_last_message_info(user_email, channel, remove_date=None):
 
     lang = get_app_language(user_email)
 
+    if message_info.get("is_voice_clip"):
+        from .audio_features import strip_stored_transcript
+        message_info["content"] = strip_stored_transcript(message_info.get("content"))
     message_info["raw_content"] = message_info.get("content", "")
 
     channel_last_message = None
@@ -4855,74 +4895,65 @@ def search_in_rooms(user , query):
     return {"results":room_list} 
 # ==========================================================================================
 @frappe.whitelist()
-def search_in_message_content(user , query):    
-    my_messages = frappe.db.sql(f"""
-    SELECT ChatChannel.name , ChatChannel.modified , ChatChannel.last_message , ChatChannel.last_message_number , ChatChannel.channel_name , ChatChannel.type , ChatChannelMessage.name AS message_name , ChatChannelMessage.content
-    FROM `tabClefinCode Chat Channel User` AS ChatChannelUser, `tabClefinCode Chat Channel` AS ChatChannel , `tabClefinCode Chat Message` AS ChatChannelMessage
-    WHERE ChatChannelUser.parent = ChatChannel.name 
-    AND ChatChannelMessage.chat_channel = ChatChannel.name
-    AND ChatChannelUser.user = '{user}'
-    AND ChatChannelMessage.content LIKE '%{query}%'
-    ORDER BY ChatChannelMessage.modified DESC
-    """ , as_dict = True)
-    for room in my_messages:
-        if not room.channel_name or room.channel_name == "":
-            channel_doc = frappe.get_doc("ClefinCode Chat Channel" , room.name)
-            if room.type == "Direct":
-                room.creator_email = channel_doc.get_members()[0]  
-                room.creator_name = get_contact_full_name(channel_doc.get_members()[0])              
-                room.recipient_email = channel_doc.get_members()[1]
-                room.recipient_name = get_contact_full_name(channel_doc.get_members()[1])
-                room.room_name =  "not_set"
-            elif room.type == "Group":                
-                room.members = [get_contact_first_name(member.user) for member in channel_doc.members]
-                room.room_name =  "not_set"
-        else:
-            room.room_name = room.channel_name
-        
-        room.user_unread_messages = frappe.db.sql(f"""
-            SELECT unread_messages
-            FROM `tabClefinCode Chat Channel User` 
-            WHERE parent='{room.name}' AND user ='{user}'""")[0][0]
+def search_in_message_content(user, query):
+    """Legacy global chat search, now including voice notes with mm:ss matches.
 
-        room.last_message = room.content
-        
-    return my_messages
+    Keep the original list-of-rooms result shape for existing mobile/web callers.
+    Search always uses the authenticated user, never a caller-selected identity.
+    """
+    if frappe.session.user == "Guest" or user != frappe.session.user:
+        frappe.throw("You can only search your own chats.", frappe.PermissionError)
+    from .audio_features import _search_rows
+
+    matched = _search_rows(query, limit=200, include_text=True)
+    result = []
+    for item in matched:
+        room = frappe.db.get_value(
+            "ClefinCode Chat Channel", item["chat_channel"],
+            ["name", "modified", "last_message_number", "channel_name", "type"],
+            as_dict=True,
+        )
+        if not room:
+            continue
+        unread = frappe.db.get_value(
+            "ClefinCode Chat Channel User",
+            {"parent": room.name, "user": user}, "unread_messages",
+        )
+        result.append({
+            "name": room.name,
+            "modified": room.modified,
+            "last_message": item["content_excerpt"],
+            "last_message_number": room.last_message_number,
+            "channel_name": room.channel_name,
+            "type": room.type,
+            "message_name": item["message_name"],
+            "content": item["content_excerpt"],
+            "room_name": room.channel_name or "not_set",
+            "user_unread_messages": unread or 0,
+            "match_type": item["match_type"],
+            "audio_timestamp": item.get("timestamp"),
+            "audio_timestamp_seconds": item.get("timestamp_seconds"),
+            "audio_matches": item.get("matches", []),
+            "chat_topic": item.get("chat_topic"),
+            "sub_channel": item.get("sub_channel"),
+        })
+    return result
+
+
 # ==========================================================================================
 @frappe.whitelist()
 def search_in_message_contents(channel, query, sub_channel=None, chat_topic=None):
+    """Search text AND locally transcribed recording text in the chat scope.
 
-    if not channel or not query:
-        return {"results": []}
-
-    filters = {
-        "chat_channel": channel,
-        "content": ["like", f"%{query}%"]
-    }
-
-    if sub_channel:
-        filters["sub_channel"] = sub_channel
-
-    if chat_topic:
-        filters["chat_topic"] = chat_topic
-
-    results = frappe.get_all(
-        "ClefinCode Chat Message",
-        filters=filters,
-        fields=["name", "send_date","content"],
-        order_by="send_date DESC"   # 
+    Preserves the original {results: [{results: [...], count: N}]} format.
+    Audio hits additionally contain timestamp, timestamp_seconds and matches.
+    """
+    from .audio_features import search_messages_and_recordings
+    return search_messages_and_recordings(
+        channel=channel, query=query,
+        sub_channel=sub_channel, chat_topic=chat_topic,
     )
-    clean_results = []
 
-    for msg in results:
-        plain_text = BeautifulSoup(msg.content or "", "html.parser").get_text()
-        if query.lower() in plain_text.lower():
-            clean_results.append({
-                "name": msg.name,
-                "send_date": msg.send_date
-            })
-    return {"results": [{"results": clean_results,"count": len(clean_results)}]}
-  
 # ==========================================================================================
 #############################################################################################
 ######################################## WhatsApp Functions #################################
@@ -6231,8 +6262,14 @@ def copy_forwarded_file_and_relink(new_message, forwarded_from_message_name):
     if not forwarded_from_message_name:
         return new_message
 
-    # 1) original message
+    # 1) original message. Never accept a transcript supplied by browser HTML.
     original_msg = frappe.get_doc("ClefinCode Chat Message", forwarded_from_message_name)
+    forwarding_voice = bool(cint(getattr(original_msg, "is_voice_clip", 0))
+                            and cint(getattr(new_message, "is_voice_clip", 0)))
+    if forwarding_voice:
+        from .audio_features import _can_access_message
+        if not _can_access_message(original_msg):
+            frappe.throw("You cannot forward this voice recording.", frappe.PermissionError)
 
     # 2) get original file
     original_file = None
@@ -6249,12 +6286,20 @@ def copy_forwarded_file_and_relink(new_message, forwarded_from_message_name):
             original_file = frappe.get_doc("File", original_file_name)
 
     if not original_file or not original_file.file_url:
+        if forwarding_voice:
+            frappe.throw("The original voice recording has no attached File.")
         return new_message
+    if forwarding_voice and (
+        original_file.attached_to_doctype != "ClefinCode Chat Message"
+        or original_file.attached_to_name != original_msg.name
+    ):
+        frappe.throw("The original voice recording File is not linked to its message.")
 
     # 3) read bytes from disk
     src_path = _get_site_file_path(original_file)
     if not os.path.exists(src_path):
-    
+        if forwarding_voice:
+            frappe.throw("The original voice recording is missing from disk.")
         return new_message
 
     with open(src_path, "rb") as f:
@@ -6273,13 +6318,57 @@ def copy_forwarded_file_and_relink(new_message, forwarded_from_message_name):
     old_url = original_file.file_url
     new_url = new_file.file_url
 
-    new_content = _replace_file_urls_in_html(new_message.content, old_url, new_url)
+    # Voice notes use the ORIGINAL saved player HTML. The browser's forwarded
+    # payload may omit the transcript or contain an outdated copy.
+    source_content = original_msg.content if forwarding_voice else new_message.content
+    new_content = _replace_file_urls_in_html(source_content, old_url, new_url)
+    if forwarding_voice:
+        # ChatSpace plays from `.voice-clip-container[data-audio]`, not href/src.
+        soup = BeautifulSoup(new_content, "html.parser")
+        old_names = {original_file.file_name, os.path.basename(old_url)}
+        copied_name = os.path.basename(new_url)
+        for player in soup.select(".voice-clip-container[data-audio]"):
+            if player.get("data-audio") in old_names:
+                player["data-audio"] = copied_name
+        new_content = str(soup)
 
     new_message.file_id = new_file.name
     new_message.content = new_content
     new_message.is_media = 1 if original_msg.is_media else new_message.is_media
     new_message.is_document = 1 if original_msg.is_document else new_message.is_document
     new_message.file_type = getattr(original_msg, "file_type", None) or new_message.file_type
+
+    if forwarding_voice:
+        from .audio_features import (
+            content_with_transcript, strip_stored_transcript, transcript_from_content,
+        )
+        # Always use the persisted original, not potentially stale or modified
+        # transcript HTML from the forwarding client's message cache.
+        transcript = transcript_from_content(original_msg.content)
+        if not transcript:
+            transcript = (getattr(original_msg, "audio_transcript", None) or "").strip()
+        new_message.content = strip_stored_transcript(new_message.content)
+
+        if original_msg.audio_status == "Completed" and transcript:
+            new_message.content = content_with_transcript(new_message.content, transcript)
+            new_message.audio_status = "Completed"
+            new_message.audio_transcript = ""  # Content is the single text source.
+            new_message.audio_error = ""
+            # Same copied audio bytes => original timestamps remain valid.
+            for field in (
+                "audio_language", "audio_duration_seconds", "audio_processed_at",
+                "audio_words_json", "audio_segments_json",
+                "audio_summary", "audio_summary_status", "audio_summary_error",
+                "audio_translations_json", "audio_translation_status_json",
+            ):
+                setattr(new_message, field, getattr(original_msg, field, None))
+            # Do not inherit show_transcript / hide_transcript. The destination
+            # channel and the forwarded message have independent visibility.
+        else:
+            # No completed transcript available: the normal worker may process
+            # the new recording, rather than displaying stale frontend text.
+            new_message.audio_status = "Not Processed"
+            new_message.audio_transcript = ""
 
     new_message.save(ignore_permissions=True)
     return new_message

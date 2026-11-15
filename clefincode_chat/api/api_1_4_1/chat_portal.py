@@ -34,7 +34,7 @@ def create_guest_profile_and_channel(content , sender , sender_email , creation_
              'platform': 'Chat'},
             {
             'doctype': 'ClefinCode Chat Channel User',
-            'profile_id': profile.name,  # assuming profile.name is guest profile ID
+            'profile_id': profile.name,  # assuming profile.name is guest profile ID*
             'user': '',
             'platform': 'Chat'}
                      ]
@@ -83,7 +83,7 @@ def send(content, room, sender, sender_email, send_date, respondent_user,
         "room_type" : "Guest",
         "contact_name" : sender ,
         "send_date": convert_utc_to_user_timezone(send_date, get_user_timezone(respondent_user)["results"][0]["time_zone"]),
-        "utc_message_date" : send_date, # return utc for mobile app
+        "utc_message_date" : send_date,  # return utc for mobile app*
         "target_user": respondent_user,
         "reply_to_message":reply_to_message_name,
     }
@@ -122,7 +122,7 @@ def send(content, room, sender, sender_email, send_date, respondent_user,
 @frappe.whitelist(allow_guest=True)
 def get_messages(room):
     results = frappe.db.sql(f"""
-    SELECT content , send_date , sender_email , sender , reply_to_message , is_deleted ,is_edited,reply_preview_type,
+    SELECT content , send_date , sender_email , sender , reply_to_message , is_deleted ,is_edited, is_voice_clip, reply_preview_type,
         name AS message_name,
         reply_preview_file,
         reply_preview_file_url,
@@ -133,7 +133,10 @@ def get_messages(room):
     FROM `tabClefinCode Chat Message`
     WHERE chat_channel = '{room}'
     ORDER BY send_date ASC""" , as_dict = True)
+    from .audio_features import strip_stored_transcript
     for message in results:
+        if message.is_voice_clip and not message.is_deleted:
+            message.content = strip_stored_transcript(message.content)
         message.send_date = convert_utc_to_user_timezone(message.send_date, get_user_timezone(get_respondent_user(room))["results"][0]["time_zone"])
         if message.is_deleted:
             message.content = None
@@ -390,3 +393,39 @@ def edit_guest_chat_message(message_name, new_content, token=None):
     except Exception:
         frappe.log_error(title="error in edit_guest_chat_message", message=traceback.format_exc())
         frappe.throw("Failed to edit message")
+# ================== Authenticated portal audio enhancements =================
+# Guest portal sessions intentionally cannot access recording transcripts or
+# expensive local recording AI processing through these endpoints. Website Users must sign in.
+@frappe.whitelist(methods=["POST"])
+def send_portal_voice_clip(room, file_id, chat_topic=None):
+    """Send a previously uploaded, private voice clip as a portal chat message.
+    The File must belong to the current user and must not already be attached.
+    This also enables the regular api.send() background local Whisper workflow.
+    """
+    from .audio_features import _assert_channel_access
+    from .api import send as chat_send
+    from pathlib import Path
+    user = _assert_channel_access(room, chat_topic=chat_topic)
+    file_doc = frappe.get_doc("File", file_id)
+    if file_doc.owner != user or file_doc.attached_to_name or file_doc.attached_to_doctype:
+        frappe.throw("You cannot send this file as a voice clip.", frappe.PermissionError)
+    if not file_doc.is_private:
+        frappe.throw("Voice recordings must be uploaded as private files.")
+    if Path(file_doc.file_name or "").suffix.lower() not in {
+        ".mp3", ".m4a", ".wav", ".ogg", ".webm", ".mp4", ".aac", ".mpeg"
+    }:
+        frappe.throw("Unsupported recording format.")
+    return chat_send(
+        content="", user=user, room=room, email=user,
+        attachment=file_doc.file_url, file_id=file_doc.name,
+        is_media=1, is_voice_clip=1, chat_topic=chat_topic,
+    )
+@frappe.whitelist()
+def search_portal_recordings(room, query, chat_topic=None):
+    """Authenticated portal search with word-level seek positions."""
+    from .audio_features import search_recordings
+    return search_recordings(query=query, channel=room, chat_topic=chat_topic)
+@frappe.whitelist()
+def get_portal_recording_features(message_name):
+    from .audio_features import get_recording_features
+    return get_recording_features(message_name)

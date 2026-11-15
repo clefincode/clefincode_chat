@@ -6,3 +6,5 @@ audioop-lts; python_version >= "3.13"
 twilio
 tiktoken
 openai
+
+faster-whisper>=1.2,<2

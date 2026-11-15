@@ -1,5 +1,6 @@
 # your_app/your_app/api/ai_helpers.py
 import json
+import html
 import time
 import requests
 import frappe
@@ -10,7 +11,7 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import copy
 import re
-URL_PATTERN = re.compile(r'((?:https?://|www\\.)[^\s<)]+)', re.IGNORECASE)
+URL_PATTERN = re.compile(r'((?:https?://|www\.)[^\s<)]+)', re.IGNORECASE)
 DOC_DOCTYPE = "ClefinCode AI Agent Profile"
 # -------------------------
 # Helpers to load profile
@@ -525,16 +526,35 @@ def _scope_filters(channel, chat_topic=None, since_time=None, sub_channel=None, 
         filters.append(["creation", ">", since_time])
     return filters
 def _scope_messages(channel, chat_topic=None, since_time=None, sub_channel=None, parent_only=False):
-    """Read all selected messages (no silent 2000-message truncation)."""
-    return frappe.get_all(
+    """Pass transcript text from Message.content into the AI bot's scoped history.
+
+    Never use the deprecated audio_transcript column. The source HTML is stored
+    with a hidden data-cc-voice-transcript marker so chat views can control visibility.
+    """
+    rows = frappe.get_all(
         "ClefinCode Chat Message",
         filters=_scope_filters(channel, chat_topic, since_time, sub_channel,
                                parent_only=parent_only),
         fields=["name", "sender", "content", "creation", "chat_topic",
-                "is_deleted", "message_type"],
+                "is_deleted", "message_type", "is_voice_clip", "audio_status"],
         order_by="creation asc, name asc",
         limit_page_length=0,
     )
+    for row in rows:
+        if int(row.get("is_voice_clip") or 0):
+            transcript = ""
+            if row.get("audio_status") == "Completed":
+                soup = BeautifulSoup(row.get("content") or "", "html.parser")
+                node = soup.find(attrs={"data-cc-voice-transcript": "1"})
+                transcript = node.get_text(separator=" ", strip=True) if node else ""
+            # Never pass the voice player's HTML/attachment path as spoken text.
+            row["content"] = (
+                "Voice message (transcribed): " + html.escape(transcript, quote=False)
+                if transcript else ""
+            )
+    return rows
+
+
 def _get_scoped_summary(channel, chat_topic=None, sub_channel=None, parent_only=False):
     """Select summary by (parent channel, contributor sub-channel, topic)."""
     meta = frappe.get_meta("ClefinCode Chat Summary")
