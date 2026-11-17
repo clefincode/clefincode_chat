@@ -34,7 +34,7 @@ def create_guest_profile_and_channel(content , sender , sender_email , creation_
              'platform': 'Chat'},
             {
             'doctype': 'ClefinCode Chat Channel User',
-            'profile_id': profile.name,  # assuming profile.name is guest profile ID*
+            'profile_id': profile.name,  # assuming profile.name is guest profile ID
             'user': '',
             'platform': 'Chat'}
                      ]
@@ -83,7 +83,7 @@ def send(content, room, sender, sender_email, send_date, respondent_user,
         "room_type" : "Guest",
         "contact_name" : sender ,
         "send_date": convert_utc_to_user_timezone(send_date, get_user_timezone(respondent_user)["results"][0]["time_zone"]),
-        "utc_message_date" : send_date,  # return utc for mobile app*
+        "utc_message_date" : send_date,  # return utc for mobile app
         "target_user": respondent_user,
         "reply_to_message":reply_to_message_name,
     }

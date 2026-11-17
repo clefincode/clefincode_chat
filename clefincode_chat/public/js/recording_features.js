@@ -95,7 +95,6 @@
     const INDEX_TTL_MS = 20000;
     let lastDiscovery = { withoutId: 0, resolvedByFile: 0, withoutFileKey: 0,
         duplicateFileKey: 0, noChatInstance: 0, indexFailures: 0 };
-
     const manualOpen = new Set();
     const polling = new Set();
     const POLL_MS = 3500;
@@ -104,7 +103,6 @@
     let rescanRequested = false;
     let scanTimer = null;
     let infoScanTimer = null;
-
     const MESSAGE_ROW_SELECTOR =
         ".chat-message, .message-row, .message-container, .message-item, " +
         ".message-wrapper, .message, .sender-message, .recipient-message";
@@ -115,7 +113,6 @@
         ".chat-message[data-name]", ".message-row[data-name]",
         ".message-item[data-name]", ".message-container[data-name]"
     ].join(",");
-
     function messageNameOf(el) {
         if (!el || el.closest(".message-action-menu")) return "";
         for (const key of ["data-message-name", "data-message-id", "data-msg-name", "data-msg-id",
@@ -128,7 +125,6 @@
         }
         return "";
     }
-
     function messageCandidates() {
         const candidates = new Map();
         for (const el of document.querySelectorAll(MESSAGE_ID_SELECTOR)) {
@@ -141,7 +137,6 @@
         }
         return candidates;
     }
-
     function messageRows(name) {
         const rows = [];
         const seen = new Set();
@@ -159,11 +154,9 @@
         }
         return rows;
     }
-
     function messageRow(name) {
         return messageRows(name)[0] || null;
     }
-
     function messageTarget(row) {
         // Put controls next to the voice widget, not inside reply-quote text.
         const voice = row.querySelector(
@@ -178,7 +171,6 @@
             '.message-bubble, .message-body, .message-content, .message-data, .message-text'
         ) || row;
     }
-
     function transcriptHost(name, row) {
         const target = messageTarget(row);
         let host = [...row.querySelectorAll(HOST_SELECTOR)].find(
@@ -201,7 +193,6 @@
         }
         return host;
     }
-
     function transcriptPanel(name, row) {
         const host = transcriptHost(name, row);
         let panel = [...host.querySelectorAll(INLINE_SELECTOR)].find(
@@ -222,7 +213,6 @@
         panel.replaceChildren(heading, body);
         return { heading, body };
     }
-
     function removePanels(name) {
         for (const row of messageRows(name)) {
             for (const panel of row.querySelectorAll(INLINE_SELECTOR)) {
@@ -231,7 +221,6 @@
             // Do NOT remove the permanent Show transcript checkbox.
         }
     }
-
     async function retryTranscript(name, button) {
         button.disabled = true;
         try {
@@ -246,7 +235,6 @@
             button.disabled = false;
         }
     }
-
     function renderText(name, status, transcript) {
         for (const row of messageRows(name)) {
             const { heading, body } = transcriptPanel(name, row);
@@ -271,7 +259,7 @@
                 body.textContent = say('Transcribing voice recording...');
             } else {
                 heading.textContent = say('Transcription status');
-                body.textContent = say('Not processed yet. Check Show transcript to start, or use Retry.');
+                body.textContent = say('No saved transcript yet. Use Start transcription to generate one.');
                 const retry = element('button', { text: say('Start transcription') });
                 retry.type = 'button';
                 retry.className = 'btn btn-xs btn-default';
@@ -284,7 +272,6 @@
             }
         }
     }
-
     function bindMessageToggle(name, control) {
         if (!control || control.dataset.ccVoiceBound === name) return;
         const input = control.querySelector("input[type=checkbox]");
@@ -294,38 +281,71 @@
         input.addEventListener("change", async () => {
             const enabled = input.checked;
             input.disabled = true;
+            let visibilitySaved = false;
             try {
+                // First persist the user's visibility choice. This is independent
+                // of whether Whisper can start or finish the transcription.
                 await call("set_recording_transcript_visibility", {
                     message_name: name, enabled: enabled ? 1 : 0
                 }, "POST");
+                visibilitySaved = true;
+
                 manualOpen.delete(name);
                 const old = stateCache.get(name) || {};
-                stateCache.set(name, { ...old, show_transcript: enabled,
-                    hide_transcript: !enabled, effective_show: enabled });
+                stateCache.set(name, {
+                    ...old, show_transcript: enabled,
+                    hide_transcript: !enabled, effective_show: enabled
+                });
                 renderMessage(name);
-                if (enabled && old.status === "Not Processed") {
-                    try {
-                        const queued = await call("request_recording_transcription", {
-                            message_name: name, force: 0
-                        }, "POST");
-                        const current = stateCache.get(name) || {};
-                        stateCache.set(name, { ...current, status: queued.status || "Queued" });
-                        renderMessage(name);
-                    } catch (queueError) {
-                        console.warn("[CC recording] could not queue transcription", queueError);
-                    }
-                }
                 invalidateMessageCache(name);
                 scheduleInlineScan(true);
+
+                // Unchecking only hides the transcript; it never launches a job.
+                if (!enabled) return;
+
+                // Read the authoritative saved transcript/status, because a
+                // hidden transcript may not have been loaded into stateCache.
+                const info = await call("get_recording_features", {
+                    message_name: name
+                });
+                const state = stateCache.get(name) || {};
+                stateCache.set(name, {
+                    ...state, status: info.status || "Not Processed",
+                    transcript: info.transcript || ""
+                });
+                renderMessage(name);
+
+                // If a transcript is already saved, show it without reprocessing.
+                // Also do not enqueue a duplicate when a worker is already running.
+                if (String(info.transcript || "").trim() ||
+                        info.status === "Queued" || info.status === "Processing") {
+                    return;
+                }
+
+                // Not Processed / Failed (including no saved transcript):
+                // checking Show transcript now starts a manual Whisper job,
+                // regardless of the global Auto Transcribe Audio setting.
+                const queued = await call("request_recording_transcription", {
+                    message_name: name, force: 0
+                }, "POST");
+                const latest = stateCache.get(name) || {};
+                stateCache.set(name, {
+                    ...latest, status: queued.status || "Queued", error: ""
+                });
+                renderMessage(name); // Starts polling if queued/processing.
             } catch (error) {
-                input.checked = !enabled;
+                if (!visibilitySaved) {
+                    // Only revert the checkbox when the visibility write failed.
+                    input.checked = !enabled;
+                }
+                // If the transcription request failed, visibility remains saved
+                // so the user can retry using the visible Start/Retry button.
                 showError(error);
             } finally {
-                input.disabled = false;
+                input.disabled = !(stateCache.get(name) || {}).can_manage;
             }
         });
     }
-
     function messageSwitch(name, row, state) {
         const target = transcriptHost(name, row);
         let control = [...row.querySelectorAll(CONTROL_SELECTOR)].find(
@@ -369,7 +389,6 @@
             viaChannel.remove();
         }
     }
-
     function renderMessage(name) {
         const state = stateCache.get(name);
         if (!state) return;
@@ -383,12 +402,10 @@
             removePanels(name);
         }
     }
-
     function invalidateMessageCache(name) {
         if (name) scannedNodes.delete(name);
         else scannedNodes.clear();
     }
-
     async function pollTranscript(name) {
         if (polling.has(name)) return;
         polling.add(name);
@@ -412,7 +429,6 @@
             polling.delete(name);
         }
     }
-
     async function openTranscript(name) {
         // The menu action still allows an authenticated viewer to open a
         // transcript, even if they cannot modify another person's checkbox.
@@ -424,14 +440,6 @@
             stateCache.set(name, { ...state, status: info.status, transcript: info.transcript || "",
                 effective_show: !!(state.show_transcript || state.channel_show_transcript) });
             renderMessage(name);
-            if (info.status === "Not Processed" || info.status === "Failed") {
-                info = await call("request_recording_transcription", {
-                    message_name: name, force: 0
-                }, "POST");
-                const current = stateCache.get(name);
-                stateCache.set(name, { ...current, status: info.status || "Queued" });
-                renderMessage(name);
-            }
             if (info.status === "Queued" || info.status === "Processing") {
                 void pollTranscript(name);
             }
@@ -441,7 +449,6 @@
         }
         return messageRow(name);
     }
-
     // Resolve voice rows that are not labelled with a message ID in ChatSpace.
     // Never pair clips by message order or timestamp: that can attach another
     // message's transcript to the wrong recording.
@@ -458,7 +465,6 @@
         '.recipient-message', '.voice-message',
         '.audio-message'
     ].join(',');
-
     function voiceRowsMissingIds() {
         const discovered = new Set();
         const rows = [];
@@ -484,7 +490,6 @@
         }
         return rows;
     }
-
     function filePath(value) {
         if (typeof value !== 'string' || !value.trim()) return '';
         try {
@@ -499,7 +504,6 @@
             return path;
         } catch (_) { return ''; }
     }
-
     function fileKeys(row) {
         const keys = new Set();
         const nodes = [row, ...row.querySelectorAll(
@@ -519,7 +523,6 @@
         }
         return keys;
     }
-
     function getRowRoom(row) {
         for (const cs of chatInstances()) {
             const root = instanceRoot(cs);
@@ -530,7 +533,6 @@
         return el?.getAttribute('data-chat-room') ||
             el?.getAttribute('data-chat-room-id') || el?.getAttribute('data-room') || '';
     }
-
     async function recordingIndex(channel) {
         const cached = channelIndexCache.get(channel);
         if (cached && Date.now() - cached.time < INDEX_TTL_MS) return cached.items;
@@ -544,7 +546,6 @@
         indexLoading.set(channel, request);
         return request;
     }
-
     async function discoverVoiceRows() {
         for (const [name, rows] of fallbackRows) {
             const liveRows = new Set([...rows].filter(row => row.isConnected));
@@ -603,7 +604,6 @@
         }
         lastDiscovery = diagnostics;
     }
-
     async function scanVisibleMessageTranscripts(force = false) {
         if (!window.frappe || !document.body) return;
         if (scanning) { rescanRequested = true; return; }
@@ -696,7 +696,6 @@
             }
         }
     }
-
     function scheduleInlineScan(force = false) {
         if (force) invalidateMessageCache();
         if (scanTimer !== null) return;
@@ -705,11 +704,9 @@
             void scanVisibleMessageTranscripts(force);
         }, 250);
     }
-
     function chatInstances() {
         return (window.CCChatSpaceInstances || []).filter(x => x && x.profile?.room);
     }
-
     function instanceRoot(cs) {
         for (const v of [cs.$wrapper, cs.$chat_window, cs.$container, cs.wrapper,
                          cs.chat_window?.$chat_window]) {
@@ -718,7 +715,6 @@
         }
         return null;
     }
-
     function infoPanels() {
         const panels = new Set();
         // Use real Contact Info headings rather than attaching to the Desk
@@ -749,7 +745,6 @@
         }
         return [...panels];
     }
-
     function roomForPanel(panel) {
         const instances = chatInstances();
         for (const cs of instances) {
@@ -771,7 +766,6 @@
         }
         return null; // Never silently toggle the wrong room with multiple windows.
     }
-
     function addChannelSwitch(panel, channel, info) {
         let control = panel.querySelector(CHANNEL_SELECTOR);
         if (control && control.dataset.channel !== channel) {
@@ -829,7 +823,6 @@
         control.style.cursor = info.can_manage ? "pointer" : "not-allowed";
         return control;
     }
-
     async function scanChatInfo() {
         if (!window.frappe) return;
         for (const panel of infoPanels()) {
@@ -848,7 +841,6 @@
             }
         }
     }
-
     function scheduleInfoScan() {
         if (infoScanTimer !== null) return;
         infoScanTimer = window.setTimeout(() => {
@@ -856,13 +848,11 @@
             void scanChatInfo();
         }, 300);
     }
-
     function refreshMessage(messageName) {
         if (!messageName) return;
         scannedNodes.delete(String(messageName));
         scheduleInlineScan(true);
     }
-
     function refreshChannel(channel, enabled) {
         // Update the checkbox shown in Contact Info immediately.
         for (const el of document.querySelectorAll(CHANNEL_SELECTOR)) {
@@ -884,14 +874,12 @@
         }
         scheduleInlineScan(true);
     }
-
     function refreshAll() {
         scheduleInlineScan(true);
         // A setting may have been changed from the Desk DocType form.
         for (const panel of infoPanels()) delete panel.dataset.ccTranscriptChannel;
         scheduleInfoScan();
     }
-
     function installInlineTranscripts() {
         if (!document.body) {
             document.addEventListener("DOMContentLoaded", installInlineTranscripts, { once: true });
@@ -936,7 +924,6 @@
         scheduleInfoScan();
         window.setInterval(refreshAll, AUTO_RECHECK_MS);
     }
-
     async function showTranscript(messageName) {
         return openTranscript(messageName);
     }

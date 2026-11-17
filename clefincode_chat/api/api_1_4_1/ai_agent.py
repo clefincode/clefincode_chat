@@ -1,9 +1,11 @@
-# your_app/your_app/api/ai_helpers.py
+
 import json
+
 import html
 import time
 import requests
 import frappe
+from frappe.utils import cint
 import tiktoken
 from frappe.model.document import Document
 from typing import Optional, List, Dict, Any
@@ -13,20 +15,46 @@ import copy
 import re
 URL_PATTERN = re.compile(r'((?:https?://|www\.)[^\s<)]+)', re.IGNORECASE)
 DOC_DOCTYPE = "ClefinCode AI Agent Profile"
+
+# Shared ClefinCode Chat Single DocType settings.
+# Other modules can import these helpers without creating a separate file.
+SETTINGS_DOCTYPE = "ClefinCode Chat Settings"
+
+
+def get_chat_setting(fieldname, default=None):
+    """Return a Single DocType value; preserve explicit 0/False values."""
+    value = frappe.db.get_single_value(SETTINGS_DOCTYPE, fieldname)
+    return default if value is None or value == "" else value
+
+
+def chat_setting_bool(fieldname, default=False):
+    return bool(cint(get_chat_setting(fieldname, int(default))))
+
+
+def chat_setting_int(fieldname, default, minimum=None, maximum=None):
+    try:
+        result = int(get_chat_setting(fieldname, default))
+    except (ValueError, TypeError):
+        result = int(default)
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
+
+
+def chat_setting_str(fieldname, default=""):
+    return str(get_chat_setting(fieldname, default)).strip()
+
 # -------------------------
 # Helpers to load profile
 # -------------------------
 def _get_profile(profile_key: Optional[str] = None, doc_doctype: Optional[str] = None):
     """
-
     Return profile doc by exact document name (profile_key) only,
-
     or the default profile (is_default), or the first available.
-
     Throws if none found.
-
     doc_doctype: name of the DocType that holds AI profiles (e.g. "ClefinCode AI Agent Profile")
-
     """
     doctype = (doc_doctype or DOC_DOCTYPE).strip()
     if not doctype:
@@ -50,11 +78,8 @@ def _get_profile(profile_key: Optional[str] = None, doc_doctype: Optional[str] =
 # -------------------------
 def _build_headers(profile: Document) -> Dict[str, str]:
     """
-
     Build HTTP headers for the request based on profile.auth_header_type and custom_headers.
-
     Uses API Key stored in profile.api_key (or profile.api_key_password if used).
-
     """
     headers = {"Content-Type": "application/json"}
     # some doctypes store API key in field named 'api_key' (per your DocType JSON)
@@ -97,11 +122,8 @@ def _build_headers(profile: Document) -> Dict[str, str]:
 # -------------------------
 def _parse_response_json(provider: str, resp_json: Any) -> str:
     """
-
     Try to extract a readable textual reply from provider responses (OpenAI, Claude, Groq...).
-
     Returns a text string (may be JSON-stringified fallback if can't parse).
-
     """
     try:
         if resp_json is None:
@@ -190,27 +212,16 @@ def call_ai_service(
     profile_doctype: Optional[str] = None,
 ) -> Any:
     """
-
     Generalized function to call AI providers based on a profile stored in a DocType.
-
     - profile_doctype: name of DocType that stores AI agent profiles (default DOC_DOCTYPE)
-
     - profile_key: exact document name in the DocType (if omitted, uses default profile or first one)
-
     - prompt: simple text prompt (single-turn)
-
     - messages: chat-style messages list [{"role":"user","content":"..."}, ...]
-
     - system_prompt: text for system instruction (will be injected as first message for chat endpoints)
-
     - model/temperature/max_tokens override profile defaults
-
     - extra_payload: dict to merge into final payload
-
     - return_json: if True returns the raw response JSON, otherwise returns best-effort text
-
     - use_responses_endpoint: prefer Responses API for OpenAI-style providers
-
     """
     # print(messages)
     profile = _get_profile(profile_key=profile_key, doc_doctype=profile_doctype)
@@ -461,18 +472,12 @@ def call_ai_service(
 # No custom field or migration is required.
 SUMMARY_TOPIC_FIELD = "chat_topic"
 def ai_debug_enabled():
-    """Opt in with bench --site SITE set-config clefincode_chat_ai_debug 1."""
-    try:
-        return bool(int(frappe.conf.get("clefincode_chat_ai_debug", 0)))
-    except (ValueError, TypeError):
-        return False
+    """Opt in with the AI Debug checkbox in ClefinCode Chat Settings."""
+    return chat_setting_bool("ai_debug", False)
 def log_ai_event(event, **details):
     """Writes JSON events to sites/SITE/logs/clefincode_chat_ai.log.
-
     IMPORTANT: This may contain personal chat content. Do not enable on production
-
     without authorization; never record authentication headers or API keys.
-
     """
     if not ai_debug_enabled():
         return
@@ -483,7 +488,7 @@ def log_ai_event(event, **details):
         frappe.logger("clefincode_chat_ai", allow_site=True).info(line)
         # Optional: show the same debug events in bench start / process stdout.
         # Enable only on an authorized test site because they include chat text.
-        if str(frappe.conf.get("clefincode_chat_ai_stdout", "0")) == "1":
+        if chat_setting_bool("ai_stdout", False):
             print("[CC AI] " + line, flush=True)
     except Exception:
         # Diagnostics must never prevent message delivery.
@@ -507,11 +512,8 @@ def _validate_sub_channel_scope(channel, sub_channel=None):
             frappe.throw("Contributor sub-channel does not belong to this chat channel.")
 def _scope_filters(channel, chat_topic=None, since_time=None, sub_channel=None, parent_only=False):
     """The contributor thread is an isolated history inside the parent channel.
-
     Without a topic, return all messages in the selected thread/channel,
-
     including messages tagged with topics (existing whole-scope policy).
-
     """
     filters = [["chat_channel", "=", channel]]
     if sub_channel:
@@ -527,7 +529,6 @@ def _scope_filters(channel, chat_topic=None, since_time=None, sub_channel=None, 
     return filters
 def _scope_messages(channel, chat_topic=None, since_time=None, sub_channel=None, parent_only=False):
     """Pass transcript text from Message.content into the AI bot's scoped history.
-
     Never use the deprecated audio_transcript column. The source HTML is stored
     with a hidden data-cc-voice-transcript marker so chat views can control visibility.
     """
@@ -553,8 +554,6 @@ def _scope_messages(channel, chat_topic=None, since_time=None, sub_channel=None,
                 if transcript else ""
             )
     return rows
-
-
 def _get_scoped_summary(channel, chat_topic=None, sub_channel=None, parent_only=False):
     """Select summary by (parent channel, contributor sub-channel, topic)."""
     meta = frappe.get_meta("ClefinCode Chat Summary")
@@ -590,13 +589,9 @@ def _get_scoped_summary(channel, chat_topic=None, sub_channel=None, parent_only=
 def summarize_channel_if_needed(channel, ai_agent_name, chat_topic=None,
                                 threshold=0.80, sub_channel=None, parent_only=False):
     """Summarize ONLY (chat_channel, sub_channel, chat_topic).
-
     For regular chat (sub_channel=None), keep existing whole-channel behavior.
-
     For contributor chat, include only messages from that contributor thread.
-
     A topic further narrows whichever history is selected.
-
     """
     _validate_chat_scope(channel, chat_topic)
     _validate_sub_channel_scope(channel, sub_channel)

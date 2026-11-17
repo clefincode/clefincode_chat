@@ -19,7 +19,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 import frappe
 from frappe.utils import cint, now_datetime
-from .ai_agent import strip_html
+from .ai_agent import strip_html, chat_setting_bool, chat_setting_int, chat_setting_str
 DOCTYPE = "ClefinCode Chat Message"
 # All audio processing is LOCAL; no file is uploaded to OpenAI or any other server.
 # Convert each clip to 16-kHz mono WAV to support Ogg/Opus, WebM and other
@@ -123,30 +123,60 @@ def _audio_duration(path):
         return seconds
     except (FileNotFoundError, subprocess.SubprocessError, ValueError) as exc:
         raise ValueError("ffprobe cannot read this recording; ensure FFmpeg is installed.") from exc
+def _whisper_bench_root():
+    """Find this Frappe site's Bench root, independent of worker working directory."""
+    return Path(frappe.get_site_path()).resolve().parent.parent
+
+
+def _resolve_whisper_path(value):
+    """Resolve the cache directory relative to the Bench root if needed."""
+    raw = str(value or "").strip()
+    if raw == "$PWD" or raw.startswith("$PWD/"):
+        raw = str(_whisper_bench_root()) + raw[len("$PWD"):]
+    elif raw == "${PWD}" or raw.startswith("${PWD}/"):
+        raw = str(_whisper_bench_root()) + raw[len("${PWD}"):]
+    path = Path(os.path.expanduser(os.path.expandvars(raw)))
+    if not path.is_absolute():
+        path = _whisper_bench_root() / path
+    return path.resolve()
+
+
 def _whisper_settings():
-    """Read server-owned config; no model name or path is supplied by an API user."""
-    model = str(frappe.conf.get("clefincode_chat_whisper_model") or "small").strip()
-    # The model may be a standard Faster Whisper name or a local directory.
-    local_path = (frappe.conf.get("clefincode_chat_whisper_model_path") or "").strip()
-    if local_path:
-        if not os.path.isabs(local_path) or not os.path.isdir(local_path):
-            raise ValueError("Whisper model_path must be an existing absolute directory.")
-        model = local_path
-    device = str(frappe.conf.get("clefincode_chat_whisper_device") or "cpu").lower()
+    """Read Whisper configuration from ClefinCode Chat Settings.
+
+    Only a model name (for example, 'small' or 'medium') and an optional
+    Hugging Face cache directory are configurable. A separate model-path
+    setting is no longer supported.
+    """
+    model = chat_setting_str("whisper_model", "small") or "small"
+
+    cache_setting = chat_setting_str("whisper_model_dir")
+    model_dir = None
+    if cache_setting:
+        cache_path = _resolve_whisper_path(cache_setting)
+        if not cache_path.is_dir():
+            raise ValueError(
+                f"Whisper Download/Cache Directory does not exist: {cache_path}. "
+                "Set it to the folder containing models--Systran--faster-whisper-medium."
+            )
+        model_dir = str(cache_path)
+
+    device = chat_setting_str("whisper_device", "cpu").lower()
     if device not in {"cpu", "cuda", "auto"}:
-        raise ValueError("Whisper device must be cpu, cuda or auto.")
-    compute = str(frappe.conf.get("clefincode_chat_whisper_compute_type") or "int8").lower()
+        raise ValueError("Whisper Device must be cpu, cuda or auto.")
+
+    compute = chat_setting_str("whisper_compute_type", "int8").lower()
     if compute not in {"int8", "int8_float16", "float16", "float32", "default"}:
-        raise ValueError("Unsupported Whisper compute_type.")
-    cpu_threads = max(1, min(32, cint(frappe.conf.get("clefincode_chat_whisper_cpu_threads") or 4)))
-    model_dir = str(frappe.conf.get("clefincode_chat_whisper_model_dir") or "").strip() or None
-    if model_dir and not os.path.isabs(model_dir):
-        raise ValueError("Whisper model_dir must be an absolute directory.")
-    # Default: prevent any worker from downloading weights during a live request.
-    offline = bool(cint(frappe.conf.get("clefincode_chat_whisper_offline", 1)))
-    beam_size = max(1, min(10, cint(frappe.conf.get("clefincode_chat_whisper_beam_size") or 3)))
-    use_vad = bool(cint(frappe.conf.get("clefincode_chat_whisper_vad_filter", 0)))
+        raise ValueError("Unsupported Whisper Compute Type.")
+
+    cpu_threads = chat_setting_int("whisper_cpu_threads", 4, 1, 32)
+    offline = chat_setting_bool("whisper_offline", True)
+    beam_size = chat_setting_int("whisper_beam_size", 3, 1, 10)
+    use_vad = chat_setting_bool("whisper_vad_filter", False)
+
     return model, device, compute, cpu_threads, model_dir, offline, beam_size, use_vad
+
+
 @lru_cache(maxsize=1)
 def _load_whisper_model(model_name, device, compute_type, cpu_threads, download_root, offline):
     """Keep one model per RQ worker; never load it in a browser/web request."""
@@ -198,7 +228,11 @@ def _make_wav_chunk(source, path, offset, duration):
 def _transcribe_audio(path):
     """Return text and true per-word/segment positions from LOCAL Whisper."""
     duration = _audio_duration(path)
-    limit = cint(frappe.conf.get("clefincode_chat_audio_max_seconds") or MAX_RECORDING_SECONDS)
+    limit = chat_setting_int("audio_max_seconds", MAX_RECORDING_SECONDS)
+    # A 0 in an Int field means the optional limit is not configured.
+    # Respect the 7200-second hard safety cap instead of silently using 60s.
+    if limit <= 0:
+        limit = MAX_RECORDING_SECONDS
     limit = min(MAX_RECORDING_SECONDS, max(60, limit))
     if duration > limit:
         raise ValueError(f"Recording exceeds the configured {limit // 60}-minute limit.")
@@ -246,17 +280,14 @@ def _transcribe_audio(path):
         "text": transcript, "words": words, "segments": segments,
         "language": language, "duration": round(duration, 3),
     }
-
 # A hidden, escaped fragment preserves the original voice-message markup/player.
 # The chat renderer never displays this fragment directly: visibility is handled
 # by recording_features.js and a permission-checked API. Searches query Content only.
 TRANSCRIPT_ATTR = "data-cc-voice-transcript"
 TRANSCRIPT_PATTERN = re.compile(
-    r"<(?P<tag>div|span)\b[^>]*\bdata-cc-voice-transcript\s*=\s*[\"']1[\"'][^>]*>.*?</(?P=tag)\s*>",
+    r"""<(?P<tag>div|span)\b[^>]*\bdata-cc-voice-transcript\s*=\s*['"]1['"][^>]*>.*?</(?P=tag)\s*>""",
     flags=re.IGNORECASE | re.DOTALL,
 )
-
-
 def transcript_from_content(content):
     """Read ONLY the special hidden transcript fragment from Message.content."""
     if not content or TRANSCRIPT_ATTR not in str(content):
@@ -265,13 +296,9 @@ def transcript_from_content(content):
     for node in soup.find_all(attrs={TRANSCRIPT_ATTR: "1"}):
         return node.get_text(separator=" ", strip=True)
     return ""
-
-
 def strip_stored_transcript(content):
     """Strip previously stored transcript markup while preserving the audio HTML."""
     return TRANSCRIPT_PATTERN.sub("", str(content or "")).strip()
-
-
 def content_with_transcript(original_content, transcript):
     """Idempotent replacement; escape model-produced text to prevent script injection."""
     original = strip_stored_transcript(original_content)
@@ -285,15 +312,19 @@ def content_with_transcript(original_content, transcript):
         f'{escaped_text}</div>'
     )
     return (original + "\n" + hidden).strip()
-
 # ---------------------- background transcription ---------------------------
 def _update_message(name, **values):
     frappe.db.set_value(DOCTYPE, name, values, update_modified=False)
 def queue_voice_clip_transcription(msg):
     """Called by api.send() once the voice File has been attached to the message."""
-    if not cint(frappe.conf.get("clefincode_chat_audio_auto_process", 1)):
+    if not chat_setting_bool("audio_auto_transcribe", False):
         return
-    if not cint(getattr(msg, "is_voice_clip", 0)) or not getattr(msg, "file_id", None):
+    if (cint(getattr(msg, "is_deleted", 0)) or
+            not cint(getattr(msg, "is_voice_clip", 0)) or
+            not getattr(msg, "file_id", None)):
+        return
+    # Forwarded/already-processed clips must not be transcribed a second time.
+    if transcript_from_content(getattr(msg, "content", "")):
         return
     try:
         frappe.enqueue(
@@ -314,7 +345,7 @@ def process_voice_clip_transcription(message_name, force=False):
         msg = frappe.get_doc(DOCTYPE, message_name)
         if cint(msg.is_deleted) or not cint(msg.is_voice_clip) or not msg.file_id:
             return
-        if msg.audio_status == "Completed" and transcript_from_content(msg.content) and not cint(force):
+        if transcript_from_content(msg.content) and not cint(force):
             return
         _update_message(msg.name, audio_status="Processing", audio_error="")
         frappe.db.commit()
@@ -367,7 +398,7 @@ def process_voice_clip_transcription(message_name, force=False):
 def request_recording_transcription(message_name, force=0):
     msg = _get_allowed_recording(message_name)
     force = bool(cint(force))
-    if msg.audio_status == "Completed" and transcript_from_content(msg.content) and not force:
+    if transcript_from_content(msg.content) and not force:
         return {"status": "Completed", "message_name": msg.name}
     if msg.audio_status in ("Queued", "Processing") and not force:
         return {"status": msg.audio_status, "message_name": msg.name}
@@ -405,7 +436,7 @@ def get_recording_features(message_name):
         "message_name": msg.name,
         "chat_channel": msg.chat_channel,
         "transcription_engine": "faster-whisper (local)",
-        "status": msg.audio_status or "Not Processed",
+        "status": "Completed" if transcript_from_content(msg.content) else (msg.audio_status or "Not Processed"),
         "error": msg.audio_error or "",
         "language": msg.audio_language or "",
         "duration_seconds": msg.audio_duration_seconds or 0,
@@ -508,7 +539,7 @@ def _search_rows(query, channel=None, sub_channel=None, chat_topic=None, limit=S
     elif sub_channel or chat_topic:
         frappe.throw("Choose a chat channel when filtering a thread or topic.")
     limit = min(200, max(1, cint(limit) or SEARCH_LIMIT))
-    params = {"needle": f"%{query.replace('%', r'\\%').replace('_', r'\\_')}%", "user": user,
+    params = {"needle": f"%{query.replace('%', r'\\%' ).replace('_', r'\\_' )}%", "user": user,
               "limit": max(limit * 5, 100)}
     where = ["m.is_deleted = 0", "m.is_voice_clip = 1" if not include_text else "1=1",
              "(m.only_receive_by IS NULL OR m.only_receive_by = '' OR m.only_receive_by = %(user)s)"]
@@ -608,11 +639,9 @@ def _search_rows(query, channel=None, sub_channel=None, chat_topic=None, limit=S
         if len(results) >= limit:
             break
     return results[:limit]
-
 @frappe.whitelist()
 def get_visible_recording_transcripts(message_names):
     """Batch-load automatically visible transcripts for chat rendering.
-
     Channel Show Transcript OR Message Show Transcript enables each message.
     A member must still be allowed to read the specific voice message.
     No unchecked transcript is returned by this endpoint.
@@ -652,15 +681,13 @@ def get_visible_recording_transcripts(message_names):
         effective_show = (bool(cint(row.show_transcript)) or channel_enabled) and not bool(cint(row.hide_transcript))
         if not effective_show:
             continue
+        saved_transcript = transcript_from_content(row.content)
         results.append({
             "message_name": row.name,
-            "status": row.audio_status or "Not Processed",
-            "transcript": transcript_from_content(row.content)
-                          if row.audio_status == "Completed" else "",
+            "status": "Completed" if saved_transcript else (row.audio_status or "Not Processed"),
+            "transcript": saved_transcript,
         })
     return {"results": results}
-
-
 # -------------------- persisted in-chat transcript switches --------------------
 # The two Check fields already exist in the supplied Channel and Message DocTypes.
 # These endpoints are intentionally POST-only for writes, and do not bypass the
@@ -672,8 +699,6 @@ def _can_access_transcript_channel(channel, user):
         return True
     parent = frappe.db.get_value("ClefinCode Chat Channel", channel, "parent_channel")
     return bool(parent and _parent_member(parent, user))
-
-
 def _can_manage_transcript_channel(channel, user):
     if not _can_access_transcript_channel(channel, user):
         return False
@@ -687,16 +712,12 @@ def _can_manage_transcript_channel(channel, user):
         {"parent": channel, "user": user, "is_removed": 0},
         "is_admin",
     ))
-
-
 def _can_manage_recording_switch(msg, user):
     return bool(
         user == (getattr(msg, "sender_email", None) or "")
         or _can_manage_transcript_channel(msg.chat_channel, user)
         or (msg.sub_channel and _can_manage_transcript_channel(msg.sub_channel, user))
     )
-
-
 @frappe.whitelist(methods=["GET"])
 def get_channel_transcript_control(channel):
     """Return the stored channel preference, including edit permission."""
@@ -709,8 +730,6 @@ def get_channel_transcript_control(channel):
             "ClefinCode Chat Channel", channel, "show_transcript") or 0)),
         "can_manage": _can_manage_transcript_channel(channel, user),
     }
-
-
 @frappe.whitelist(methods=["POST"])
 def set_channel_transcript_visibility(channel, enabled):
     """Persist the channel-wide checkbox for its creator/admin."""
@@ -731,7 +750,6 @@ def set_channel_transcript_visibility(channel, enabled):
             WHERE is_voice_clip = 1 AND is_deleted = 0
               AND (chat_channel = %s OR sub_channel = %s)
         """, (channel, channel))
-
     channel_doc = frappe.get_doc("ClefinCode Chat Channel", channel)
     recipients = {user}
     candidates = [channel]
@@ -752,18 +770,13 @@ def set_channel_transcript_visibility(channel, enabled):
             after_commit=True,
         )
     return {"channel": channel, "show_transcript": bool(value)}
-
-
 def _checked_switch_value(value):
     if str(value).lower() not in {"0", "1", "false", "true"}:
         frappe.throw("The checkbox value must be 0 or 1.")
     return int(str(value).lower() in {"1", "true"})
-
-
 @frappe.whitelist(methods=["POST"])
 def edit_voice_transcript(message_name, new_transcript):
     """Edit a voice transcript in Content without changing its audio player.
-
     Uses the same sender-only and edit-time rules as the normal message edit.
     The edited text is escaped by content_with_transcript; old word timings are
     invalid after a manual rewrite and therefore intentionally cleared.
@@ -783,7 +796,6 @@ def edit_voice_transcript(message_name, new_transcript):
         frappe.throw("Transcript cannot be empty.")
     if len(new_transcript) > 30000:
         frappe.throw("Transcript is too long (30,000 characters maximum).")
-
     from frappe.utils import now_datetime as _now
     settings = frappe.get_single("ClefinCode Chat Settings")
     max_edit_time = cint(settings.max_edit_time or 0)
@@ -791,11 +803,9 @@ def edit_voice_transcript(message_name, new_transcript):
         elapsed = (_now() - msg.creation).total_seconds()
         if elapsed > max_edit_time * 60:
             frappe.throw("Editing time has expired for this message.")
-
     previous_text = transcript_from_content(msg.content)
     if previous_text == new_transcript:
         return {"message_name": msg.name, "transcript": previous_text, "status": msg.audio_status}
-
     # Preserve original audio HTML, File link and other fields.
     original_content = msg.content or ""
     msg.content = content_with_transcript(original_content, new_transcript)
@@ -817,7 +827,6 @@ def edit_voice_transcript(message_name, new_transcript):
         "change_type": "Edit",
     }).insert(ignore_permissions=True)
     msg.save(ignore_permissions=True)
-
     # Notify other open chat windows WITHOUT an `edit_message` event: the
     # standard handler replaces message bubbles and would destroy voice players.
     channel = frappe.get_doc("ClefinCode Chat Channel", msg.chat_channel)
@@ -836,8 +845,6 @@ def edit_voice_transcript(message_name, new_transcript):
             after_commit=True,
         )
     return {"message_name": msg.name, "transcript": new_transcript, "status": "Completed"}
-
-
 @frappe.whitelist(methods=["POST"])
 def set_recording_transcript_visibility(message_name, enabled):
     """Persist one recording's checkbox without rewriting audio/content."""
@@ -856,12 +863,9 @@ def set_recording_transcript_visibility(message_name, enabled):
     return {"message_name": msg.name, "show_transcript": bool(value),
             "hide_transcript": not bool(value), "effective_show": bool(value),
             "chat_channel": msg.chat_channel}
-
-
 @frappe.whitelist(methods=["GET"])
 def get_channel_voice_recording_index(channel, limit=400):
     """Authenticated File-to-message index for custom voice players.
-
     Some ChatSpace variants do not render data-message-name in the DOM.
     The browser can match a rendered audio File URL to one accessible message.
     No transcript content, unrelated messages, or unlinked Files are returned.
@@ -902,12 +906,9 @@ def get_channel_voice_recording_index(channel, limit=400):
                         "file_id": msg.file_id,
                         "file_url": file_url})
     return {"results": results}
-
-
 @frappe.whitelist(methods=["GET"])
 def get_recording_transcript_controls(message_names):
     """Accessible voice rows, including those with show_transcript OFF.
-
     The original bulk API returned ONLY checked recordings, so the browser
     could not draw a checkbox for unchecked voice messages. This endpoint
     includes their flags but returns transcript text only when effective_show
@@ -950,7 +951,8 @@ def get_recording_transcript_controls(message_names):
         own_show = bool(cint(msg.show_transcript))
         hidden_override = bool(cint(msg.hide_transcript))
         effective_show = (channel_show or own_show) and not hidden_override
-        status = msg.audio_status or "Not Processed"
+        saved_transcript = transcript_from_content(msg.content)
+        status = "Completed" if saved_transcript else (msg.audio_status or "Not Processed")
         result.append({
             "message_name": msg.name,
             "chat_channel": msg.chat_channel,
@@ -962,15 +964,11 @@ def get_recording_transcript_controls(message_names):
             "can_manage": bool(user == (msg.sender_email or "") or any(
                 channel_manage[channel] for channel in channel_names)),
             "status": status,
-            "transcript": transcript_from_content(msg.content)
-                          if effective_show and status == "Completed" else "",
+            "transcript": saved_transcript if effective_show else "",
         })
     return {"results": result}
-
-
 def migrate_legacy_audio_transcripts(limit=500, dry_run=True):
     """One-time bench-console migration; NOT an HTTP endpoint.
-
     Put old transcripts into Message.content (escaped/hidden), and clear the
     deprecated column. Run with dry_run=True before an actual migration.
     Call in batches until converted/cleared counts are zero.
@@ -1003,8 +1001,6 @@ def migrate_legacy_audio_transcripts(limit=500, dry_run=True):
         frappe.db.commit()
     return {"converted": converted, "legacy_cleared": cleared,
             "dry_run": dry_run, "batch_count": len(candidates)}
-
-
 @frappe.whitelist()
 def search_recordings(query, channel=None, sub_channel=None, chat_topic=None, limit=100):
     """Search recordings in one channel or all authorized channels."""
