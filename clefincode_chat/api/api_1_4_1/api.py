@@ -7147,6 +7147,13 @@ def process_ai_reply_job(member, sender, channel, msg, is_contributor=False, rai
             return
 
         ai_agent = frappe.get_doc("ClefinCode AI Agent Profile", profile.ai_agent_profile)
+        if (ai_agent.get("agent_purpose") or "AI Response") != "AI Response":
+            log_ai_event("ai_skip", chat_message=msg.name,
+                         reason="bot_selected_transcription_profile",
+                         bot_profile=profile.name, ai_agent=ai_agent.name)
+            frappe.log_error(title="AI Bot Wrong Agent Purpose",
+                             message=f"Bot '{profile.name}' needs an AI Response profile.")
+            return
         chat_topic = getattr(msg, "chat_topic", None) or None
         _validate_chat_scope(channel, chat_topic)
 

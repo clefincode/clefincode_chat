@@ -68,7 +68,20 @@ class ClefinCodeChatChannel(Document):
         return ", ".join(name for name in names if name)
 
     def validate(self):
+        self._validate_transcription_agent()
         self._build_channel_info()
+
+    def _validate_transcription_agent(self):
+        if not self.get("transcription_agent"):
+            return
+        # Channel documents are saved during message delivery; check the
+        # purpose with one inexpensive database lookup instead of loading
+        # the complete agent document every time.
+        purpose = frappe.db.get_value(
+            "ClefinCode AI Agent Profile", self.transcription_agent, "agent_purpose"
+        )
+        if purpose != "Audio Transcription":
+            frappe.throw("Select an Audio Transcription profile for this channel.")
 
     def _build_channel_info(self):
         """Keep deleted identity IDs out of denormalized channel search text."""

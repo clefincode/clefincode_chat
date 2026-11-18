@@ -12,7 +12,7 @@
         return response?.message || {};
     }
     function showError(error) {
-        console.error("[CC Whisper transcription/search]", error);
+        console.error("[CC audio transcription/search]", error);
         let message = say("Recording action failed. Check the browser Console or Frappe Error Log.");
         if (error && typeof error.message === "string" && error.message.length < 170) {
             message += " " + error.message;
@@ -80,11 +80,12 @@
     // v4.2: direct per-voice checkbox plus channel checkbox inside Contact Info.
     // These checkboxes persist on the two existing DocType fields. Do not
     // inject transcript text into HTML: always use textContent.
-    const VERSION = "4.7.0";
+    const VERSION = "4.8.0";
     const INLINE_SELECTOR = ".cc-inline-voice-transcript";
     const CONTROL_SELECTOR = ".cc-voice-transcript-switch";
     const HOST_SELECTOR = ".cc-voice-transcript-host";
     const CHANNEL_SELECTOR = ".cc-channel-transcript-switch";
+    const AGENT_PICKER_SELECTOR = ".cc-channel-audio-agent";
     const stateCache = new Map();
     const scannedNodes = new Map();
     // DOM rows that have a recognizable voice player but lack a message ID.
@@ -823,18 +824,104 @@
         control.style.cursor = info.can_manage ? "pointer" : "not-allowed";
         return control;
     }
+    function addChannelAgentPicker(panel, channel, info) {
+        let host = panel.querySelector(AGENT_PICKER_SELECTOR);
+        if (host && host.dataset.channel !== channel) {
+            host.remove();
+            host = null;
+        }
+        if (!host) {
+            host = element("div", { className: "cc-channel-audio-agent" });
+            host.dataset.channel = channel;
+            host.style.cssText = "padding:12px 14px;border-bottom:1px solid var(--border-color,#e5e7eb);" +
+                "background:var(--control-bg,#f7f8fa);font-size:13px;";
+            const transcriptSwitch = panel.querySelector(CHANNEL_SELECTOR);
+            if (transcriptSwitch) transcriptSwitch.insertAdjacentElement("afterend", host);
+            else panel.appendChild(host);
+        }
+        // Build using textContent / DOM nodes: agent names are user-defined.
+        host.replaceChildren();
+        const title = element("div", { text: say("Audio Transcription Agent") });
+        title.style.cssText = "font-weight:600;margin-bottom:7px;";
+        host.appendChild(title);
+
+        const selected = String(info.transcription_agent || "");
+        const effective = String(info.effective_transcription_agent || "");
+        const parent = String(info.parent_channel || "");
+        if (info.can_manage) {
+            const select = element("select", { className: "form-control input-sm cc-audio-agent-select" });
+            select.style.cssText = "width:100%;max-width:100%;height:32px;";
+            const blank = element("option", {
+                text: parent ? say("Use parent channel agent") : say("No audio agent selected")
+            });
+            blank.value = "";
+            select.appendChild(blank);
+            for (const agent of info.available_transcription_agents || []) {
+                const option = element("option", {
+                    text: `${agent.name} (${agent.provider || ""} / ${agent.model || ""})`
+                });
+                option.value = agent.name;
+                select.appendChild(option);
+            }
+            if (selected && ![...select.options].some(option => option.value === selected)) {
+                const missing = element("option", { text: selected });
+                missing.value = selected;
+                select.appendChild(missing);
+            }
+            select.value = selected;
+            select.setAttribute("aria-label", say("Audio Transcription Agent"));
+            select.addEventListener("change", async () => {
+                const value = select.value;
+                select.disabled = true;
+                try {
+                    await call("set_channel_transcription_agent", {
+                        channel, agent_name: value
+                    }, "POST");
+                    window.frappe.show_alert({
+                        message: say("Audio transcription agent saved"), indicator: "green"
+                    });
+                    delete panel.dataset.ccTranscriptChannel;
+                    scheduleInfoScan();
+                } catch (error) {
+                    select.value = selected;
+                    showError(error);
+                } finally {
+                    select.disabled = false;
+                }
+            });
+            host.appendChild(select);
+        } else {
+            const value = element("div", {
+                text: effective || say("Not configured")
+            });
+            value.style.cssText = "font-weight:500;overflow-wrap:anywhere;";
+            host.appendChild(value);
+        }
+        const caption = element("div", {
+            text: parent && !selected && effective
+                ? say("Inherited from the parent channel")
+                : (info.can_manage
+                    ? say("Only audio transcription profiles are listed.")
+                    : say("Only channel administrators can change this agent."))
+        });
+        caption.style.cssText = "font-size:11px;color:var(--text-muted,#777);margin-top:6px;";
+        host.appendChild(caption);
+        return host;
+    }
     async function scanChatInfo() {
         if (!window.frappe) return;
         for (const panel of infoPanels()) {
             const channel = roomForPanel(panel);
             if (!channel) continue;
             const previous = panel.dataset.ccTranscriptChannel;
-            if (previous === channel && panel.querySelector(CHANNEL_SELECTOR)) continue;
+            if (previous === channel && panel.querySelector(CHANNEL_SELECTOR) &&
+                panel.querySelector(AGENT_PICKER_SELECTOR)) continue;
             panel.dataset.ccTranscriptChannel = channel;
             try {
                 const info = await call("get_channel_transcript_control", { channel });
                 if (!panel.isConnected || roomForPanel(panel) !== channel) continue;
                 addChannelSwitch(panel, channel, info);
+                addChannelAgentPicker(panel, channel, info);
             } catch (error) {
                 delete panel.dataset.ccTranscriptChannel;
                 console.warn("[CC recording] channel info switch unavailable", error);
@@ -919,6 +1006,14 @@
             window.frappe.realtime.on("cc_recording_channel_visibility_changed", payload => {
                 if (payload?.channel) refreshChannel(payload.channel, payload.enabled);
             });
+            window.frappe.realtime.on("cc_recording_channel_agent_changed", payload => {
+                for (const panel of infoPanels()) {
+                    if (roomForPanel(panel) === payload?.channel) {
+                        delete panel.dataset.ccTranscriptChannel;
+                    }
+                }
+                scheduleInfoScan();
+            });
         }
         scheduleInlineScan();
         scheduleInfoScan();
@@ -935,7 +1030,7 @@
                 "POST"
             );
             window.frappe.show_alert({
-                message: `${say("Local Whisper transcription")}: ${result.status || "Queued"}`,
+                message: `${say("Audio transcription")}: ${result.status || "Queued"}`,
                 indicator: result.status === "Completed" ? "green" : "blue"
             });
             return result;

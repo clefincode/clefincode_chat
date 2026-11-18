@@ -1,9 +1,11 @@
+
 # Copyright (c) 2023, ClefinCode and contributors
 # For license information, please see license.txt
 
 import frappe
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
+from frappe.utils import cint
 
 
 class ClefinCodeChatProfile(Document):
@@ -18,6 +20,13 @@ class ClefinCodeChatProfile(Document):
             self.name = self.contact
 
     def validate(self):
+        if cint(self.get("is_ai_bot")) and self.get("ai_agent_profile"):
+            from clefincode_chat.clefincode_chat.doctype.clefincode_ai_agent_profile.clefincode_ai_agent_profile import (
+                AI_RESPONSE, agent_purpose,
+            )
+            agent = frappe.get_doc("ClefinCode AI Agent Profile", self.ai_agent_profile)
+            if agent_purpose(agent) != AI_RESPONSE:
+                frappe.throw("An AI chat bot must use an AI Response profile, not an Audio Transcription profile.")
         # Deleted profiles are permanent tombstones, not reusable identities.
         if self.get("is_deleted") and self.contact:
             frappe.throw("A deleted Chat Profile cannot be linked to a Contact.")

@@ -32,17 +32,6 @@
     "welcome_message",
     "topic_grouping_section",
     "grouping_period",
-    "recording_ai_section",
-    "audio_auto_transcribe",
-    "audio_max_seconds",
-    "whisper_model",
-    "whisper_model_dir",
-    "whisper_device",
-    "whisper_compute_type",
-    "whisper_cpu_threads",
-    "whisper_offline",
-    "whisper_beam_size",
-    "whisper_vad_filter",
     "recording_ai_diagnostics_section",
     "ai_debug",
     "ai_stdout",
@@ -206,77 +195,6 @@
     {
       "fieldname": "column_break_jxln",
       "fieldtype": "Column Break"
-    },
-    {
-      "fieldname": "recording_ai_section",
-      "fieldtype": "Section Break",
-      "label": "Local Recording AI / Whisper"
-    },
-    {
-      "fieldname": "audio_auto_transcribe",
-      "fieldtype": "Check",
-      "default": "0",
-      "label": "Auto Transcribe Audio"
-  
-    },
-    {
-      "fieldname": "audio_max_seconds",
-      "fieldtype": "Int",
-      "default": "7200",
-      "label": "Maximum Recording Seconds"
-
-    },
-    {
-      "fieldname": "whisper_model",
-      "fieldtype": "Data",
-      "default": "small",
-      "label": "Whisper Model"
-
-    },
-    {
-      "fieldname": "whisper_model_dir",
-      "fieldtype": "Data",
-      "label": "Whisper Download Directory",
-      "description": "Optional existing absolute path containing locally cached Whisper models, e.g. /home/ubuntu/frappe-bench/models/whisper."
-    },
-    {
-      "fieldname": "whisper_device",
-      "fieldtype": "Select",
-      "options": "cpu\ncuda\nauto",
-      "default": "cpu",
-      "label": "Whisper Device"
-    },
-    {
-      "fieldname": "whisper_compute_type",
-      "fieldtype": "Select",
-      "options": "int8\nint8_float16\nfloat16\nfloat32\ndefault",
-      "default": "int8",
-      "label": "Whisper Compute Type"
-    },
-    {
-      "fieldname": "whisper_cpu_threads",
-      "fieldtype": "Int",
-      "default": "4",
-      "label": "Whisper CPU Threads"
-    },
-    {
-      "fieldname": "whisper_offline",
-      "fieldtype": "Check",
-      "default": "1",
-      "label": "Whisper Offline Only",
-      "description": "Do not download model weights while processing. Install/copy model files beforehand."
-    },
-    {
-      "fieldname": "whisper_beam_size",
-      "fieldtype": "Int",
-      "default": "3",
-      "label": "Whisper Beam Size"
-    },
-    {
-      "fieldname": "whisper_vad_filter",
-      "fieldtype": "Check",
-      "default": "0",
-      "label": "Whisper Voice Activity Detection"
     },
     {
       "fieldname": "recording_ai_diagnostics_section",

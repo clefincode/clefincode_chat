@@ -6,23 +6,43 @@
  "engine": "InnoDB",
  "field_order": [
   "section_break_9hqe",
-  "provider",
-  "api_key",
-  "url",
-  "model",
-  "temperature",
-  "endpoint_responses",
-  "endpoint_chat",
-  "column_break_zuyo",
-  "max_tokens",
-  "auth_header_type",
-  "timeout_seconds",
-  "retry_count",
+  "agent_purpose",
   "is_default",
+  "column_break_zuyo",
+  "provider",
+  "model_configuration_section",
+  "model_cache_dir",
+  "model",
+  "connection_section",
+  "api_key",
+  "connection_column",
+  "url",
+  "response_config_section",
+  "temperature",
+  "max_tokens",
+  "column_break_response",
   "summary_batch_size",
-  "service_key",
   "section_break_9h1m",
   "summary_prompt",
+  "transcription_config_section",
+  "audio_auto_transcribe",
+  "column_break_transcription",
+  "audio_max_seconds",
+  "local_runtime_section",
+  "processing_device",
+  "compute_type",
+  "cpu_threads",
+  "local_runtime_column",
+  "offline_only",
+  "decoding_beam_size",
+  "voice_activity_detection",
+  "shared_request_section",
+  "endpoint_responses",
+  "endpoint_chat",
+  "auth_header_type",
+  "request_settings_column",
+  "timeout_seconds",
+  "retry_count",
   "section_break_wmbb",
   "custom_headers",
   "section_break_hqjv",
@@ -31,128 +51,289 @@
  "fields": [
   {
    "fieldname": "section_break_9hqe",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Agent Details"
   },
   {
-   "fieldname": "provider",
+   "fieldname": "agent_purpose",
    "fieldtype": "Select",
-   "label": "Provider",
-   "options": "OpenAI\nClaude\nGroq"
-  },
-  {
-   "fieldname": "api_key",
-   "fieldtype": "Data",
-   "label": "API Key",
-   "length": 200
-  },
-  {
-   "fieldname": "model",
-   "fieldtype": "Data",
-   "label": "Model"
-  },
-  {
-   "default": "0.7",
-   "fieldname": "temperature",
-   "fieldtype": "Float",
-   "label": "Temperature"
-  },
-  {
-   "default": "10",
-   "description": "\u0643\u0645 \u0631\u0633\u0627\u0644\u0629 \u0645\u0639\u0644\u0642\u0629 \u0646\u0646\u062a\u0638\u0631 \u0642\u0628\u0644 \u0625\u0646\u0634\u0627\u0621 \u0645\u0644\u062e\u0635 \u062c\u062f\u064a\u062f",
-   "fieldname": "summary_batch_size",
-   "fieldtype": "Int",
-   "label": "Summary Batch Size"
-  },
-  {
-   "description": "\u062a\u0639\u0644\u064a\u0645\u0627\u062a \u0645\u062e\u0635\u0635\u0629 \u0644\u0639\u0645\u0644\u064a\u0629 \u0627\u0644\u062a\u0644\u062e\u064a\u0635",
-   "fieldname": "summary_prompt",
-   "fieldtype": "Text Editor",
-   "label": "Summary Prompt / Instructions"
-  },
-  {
-   "fieldname": "url",
-   "fieldtype": "Data",
-   "label": "URL"
-  },
-  {
-   "description": "\u0627\u0633\u0645 \u062a\u0639\u0631\u064a\u0641\u064a \u0644\u0644\u062e\u062f\u0645\u0629 (\u0645\u062b\u0627\u0644: openai-prod, claude-test)",
-   "fieldname": "service_key",
-   "fieldtype": "Data",
-   "label": "Service Key (Name)"
-  },
-  {
-   "default": "/v1/responses",
-   "description": "\u0627\u0644\u0645\u0633\u0627\u0631 \u0627\u0644\u0627\u0641\u062a\u0631\u0627\u0636\u064a \u0644\u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 (\u064a\u0648\u0636\u0639 \u0628\u0639\u062f base_url)",
-   "fieldname": "endpoint_responses",
-   "fieldtype": "Data",
-   "label": "Responses Endpoint (path)"
-  },
-  {
-   "default": "/v1/chat/completions",
-   "description": "\u0645\u0633\u0627\u0631 \u0627\u0644\u0640 chat completions \u0625\u0630\u0627 \u0644\u0632\u0645",
-   "fieldname": "endpoint_chat",
-   "fieldtype": "Data",
-   "label": "Chat Endpoint (path)"
-  },
-  {
-   "description": "\u0627\u0644\u062d\u062f \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0639\u062f\u062f \u0627\u0644\u062a\u0648\u0643\u0646\u0627\u062a \u0627\u0644\u0645\u062e\u0631\u062c\u0629 (\u0627\u062e\u062a\u064a\u0627\u0631\u064a)",
-   "fieldname": "max_tokens",
-   "fieldtype": "Int",
-   "label": "Max Tokens"
-  },
-  {
-   "default": "Bearer Authorization",
-   "description": "\u0646\u0648\u0639 Header \u0627\u0644\u0630\u064a \u064a\u0633\u062a\u062e\u062f\u0645 \u0644\u062a\u062e\u0648\u064a\u0644 \u0627\u0644\u0637\u0644\u0628",
-   "fieldname": "auth_header_type",
-   "fieldtype": "Select",
-   "label": "Auth Header Type",
-   "options": "Bearer Authorization\nx-api-key\nCustom"
-  },
-  {
-   "description": "JSON array of {\"key\":\"...\",\"value\":\"...\"} \u0644\u0625\u0636\u0627\u0641\u0627\u062a Header \u0645\u062e\u0635\u0635\u0629",
-   "fieldname": "custom_headers",
-   "fieldtype": "Long Text",
-   "label": "Custom Headers (JSON)"
-  },
-  {
-   "default": "60",
-   "fieldname": "timeout_seconds",
-   "fieldtype": "Int",
-   "label": "Timeout (seconds)"
-  },
-  {
-   "default": "2",
-   "fieldname": "retry_count",
-   "fieldtype": "Int",
-   "label": "Retry Count"
+   "label": "Agent Purpose",
+   "options": "AI Response\nAudio Transcription",
+   "default": "AI Response",
+   "reqd": 1,
+   "description": "AI Response creates chat replies; Audio Transcription converts voice recordings to text."
   },
   {
    "default": "0",
-   "description": "\u0625\u0630\u0627 \u0645\u064f\u062d\u062f\u062f \u0633\u064a\u062a\u0645 \u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0647\u0630\u0627 \u0627\u0644\u0645\u0644\u0641 \u0639\u0646\u062f\u0645\u0627 \u0644\u0627 \u064a\u064f\u0639\u0637\u0649 \u0645\u0644\u0641 \u0622\u062e\u0631",
+   "description": "Default profile for this purpose; response and transcription can have separate defaults.",
    "fieldname": "is_default",
    "fieldtype": "Check",
    "label": "Is Default Profile"
-  },
-  {
-   "fieldname": "notes",
-   "fieldtype": "Text",
-   "label": "Notes"
   },
   {
    "fieldname": "column_break_zuyo",
    "fieldtype": "Column Break"
   },
   {
+   "fieldname": "provider",
+   "fieldtype": "Select",
+   "label": "Provider",
+   "options": "OpenAI\nClaude\nGroq\nCustom\nLocal",
+   "default": "OpenAI",
+   "description": "Select the AI service. Local runs an installed model; Custom uses a compatible API."
+  },
+  {
+   "fieldname": "model_configuration_section",
+   "fieldtype": "Section Break",
+   "label": "Model Configuration"
+  },
+  {
+   "fieldname": "model_cache_dir",
+   "label": "Model Directory",
+   "fieldtype": "Data",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Directory containing installed local audio models. Select a directory first; the installed model list is then loaded automatically. Relative paths are based on the Bench directory."
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Autocomplete",
+   "label": "Model",
+   "description": "For Local audio, first specify Model Directory, then choose a detected installed model. For hosted agents, enter the provider model ID.",
+   "mandatory_depends_on": "eval:doc.agent_purpose == \"Audio Transcription\""
+  },
+  {
+   "fieldname": "connection_section",
+   "fieldtype": "Section Break",
+   "label": "Provider Connection",
+   "depends_on": "eval:doc.provider != \"Local\"",
+   "description": "Connection credentials and service URL. Local models do not need an API key."
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Data",
+   "label": "API Key",
+   "length": 200,
+   "depends_on": "eval:doc.provider != \"Local\"",
+   "description": "API key for the selected hosted service. Not required for Local models.",
+   "mandatory_depends_on": "eval:doc.provider != \"Local\" && doc.agent_purpose == \"Audio Transcription\""
+  },
+  {
+   "fieldname": "connection_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "url",
+   "fieldtype": "Data",
+   "label": "Base URL",
+   "depends_on": "eval:doc.provider != \"Local\"",
+   "description": "Optional for OpenAI and Groq. Required for Custom transcription services (HTTPS)."
+  },
+  {
+   "fieldname": "response_config_section",
+   "fieldtype": "Section Break",
+   "label": "AI Response Settings",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
+   "default": "0.7",
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "label": "Temperature",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
+   "description": "الحد الأقصى لعدد التوكنات المخرجة (اختياري)",
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max Tokens",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
+   "fieldname": "column_break_response",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "10",
+   "description": "كم رسالة معلقة ننتظر قبل إنشاء ملخص جديد",
+   "fieldname": "summary_batch_size",
+   "fieldtype": "Int",
+   "label": "Summary Batch Size",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
    "fieldname": "section_break_9h1m",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Summary Instructions",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
+   "description": "تعليمات مخصصة لعملية التلخيص",
+   "fieldname": "summary_prompt",
+   "fieldtype": "Text Editor",
+   "label": "Summary Prompt / Instructions",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
+   "fieldname": "transcription_config_section",
+   "fieldtype": "Section Break",
+   "label": "Audio Transcription Settings",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\"",
+   "description": "Settings for speech-to-text agents, independent of the selected provider."
+  },
+  {
+   "fieldname": "audio_auto_transcribe",
+   "fieldtype": "Check",
+   "default": "0",
+   "label": "Automatically Transcribe Voice Messages",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\"",
+   "description": "Automatically process new voice recordings in channels using this agent."
+  },
+  {
+   "fieldname": "column_break_transcription",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "audio_max_seconds",
+   "fieldtype": "Int",
+   "default": "7200",
+   "label": "Maximum Recording Duration (seconds)",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\"",
+   "description": "Maximum duration per recording (up to 7200 seconds)."
+  },
+  {
+   "fieldname": "local_runtime_section",
+   "label": "Local Model Runtime",
+   "fieldtype": "Section Break",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Applies only to installed local models. Other providers use the shared API configuration."
+  },
+  {
+   "fieldname": "processing_device",
+   "label": "Processing Device",
+   "fieldtype": "Select",
+   "options": "auto\ncpu\ncuda",
+   "default": "cpu",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Device used by the installed local model adapter."
+  },
+  {
+   "fieldname": "compute_type",
+   "label": "Compute Type",
+   "fieldtype": "Select",
+   "options": "default\nint8\nint8_float16\nfloat16\nfloat32",
+   "default": "int8",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Numeric precision or quantization for local inference."
+  },
+  {
+   "fieldname": "cpu_threads",
+   "label": "CPU Threads",
+   "fieldtype": "Int",
+   "default": "4",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Maximum CPU threads for local model inference (1 to 32)."
+  },
+  {
+   "fieldname": "local_runtime_column",
+   "label": "",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "offline_only",
+   "label": "Offline Only",
+   "fieldtype": "Check",
+   "default": "1",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Use only models already available on the server; do not download weights during processing."
+  },
+  {
+   "fieldname": "decoding_beam_size",
+   "label": "Decoding Beam Size",
+   "fieldtype": "Int",
+   "default": "5",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Search width used by local speech-to-text decoding (1 to 10)."
+  },
+  {
+   "fieldname": "voice_activity_detection",
+   "label": "Voice Activity Detection",
+   "fieldtype": "Check",
+   "default": "0",
+   "depends_on": "eval:doc.agent_purpose == \"Audio Transcription\" && doc.provider == \"Local\"",
+   "description": "Filter non-speech periods when supported by the local adapter."
+  },
+  {
+   "fieldname": "shared_request_section",
+   "fieldtype": "Section Break",
+   "label": "API Request Settings",
+   "depends_on": "eval:doc.provider != \"Local\""
+  },
+  {
+   "default": "/v1/responses",
+   "description": "API path relative to URL. Used for AI responses or API transcription depending on purpose.",
+   "fieldname": "endpoint_responses",
+   "fieldtype": "Data",
+   "label": "Responses Endpoint (path)",
+   "depends_on": "eval:doc.provider != \"Local\""
+  },
+  {
+   "default": "/v1/chat/completions",
+   "description": "مسار الـ chat completions إذا لزم",
+   "fieldname": "endpoint_chat",
+   "fieldtype": "Data",
+   "label": "Chat Endpoint (path)",
+   "depends_on": "eval:doc.agent_purpose == \"AI Response\""
+  },
+  {
+   "default": "Bearer Authorization",
+   "description": "نوع Header الذي يستخدم لتخويل الطلب",
+   "fieldname": "auth_header_type",
+   "fieldtype": "Select",
+   "label": "Auth Header Type",
+   "options": "Bearer Authorization\nx-api-key\nCustom",
+   "depends_on": "eval:doc.provider != \"Local\""
+  },
+  {
+   "fieldname": "request_settings_column",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "60",
+   "fieldname": "timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Timeout (seconds)",
+   "depends_on": "eval:doc.provider != \"Local\""
+  },
+  {
+   "default": "2",
+   "fieldname": "retry_count",
+   "fieldtype": "Int",
+   "label": "Retry Count",
+   "depends_on": "eval:doc.provider != \"Local\""
   },
   {
    "fieldname": "section_break_wmbb",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Custom Headers",
+   "depends_on": "eval:doc.provider != \"Local\""
+  },
+  {
+   "description": "JSON array of {\"key\":\"...\",\"value\":\"...\"} لإضافات Header مخصصة",
+   "fieldname": "custom_headers",
+   "fieldtype": "Long Text",
+   "label": "Custom Headers (JSON)",
+   "depends_on": "eval:doc.provider != \"Local\""
   },
   {
    "fieldname": "section_break_hqjv",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Additional Information"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notes",
+   "description": "Optional operational notes. Avoid storing passwords or tokens here."
   }
  ],
  "index_web_pages_for_search": 1,

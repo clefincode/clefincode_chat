@@ -1,6 +1,11 @@
 // Copyright (c) 2024, Ahmad Kamaleddin and contributors
 // The native Show Transcripts checkbox is stored on ClefinCode Chat Channel.
 frappe.ui.form.on("ClefinCode Chat Channel", {
+    setup(frm) {
+        frm.set_query("transcription_agent", () => ({
+            filters: { agent_purpose: "Audio Transcription" },
+        }));
+    },
     after_save(frm) {
         // Reflect changes from the Desk form in any already-open chat window.
         window.CCRecordingFeatures?.refreshAll?.();

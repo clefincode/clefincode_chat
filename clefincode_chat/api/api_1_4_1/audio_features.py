@@ -1,13 +1,14 @@
-"""Offline Faster Whisper voice-note transcription and timestamped search.
-Install in clefincode_chat/api/api_1_4_1/audio_features.py.
-All user-facing endpoints require authenticated channel/thread membership; workers are
-not whitelisted. In particular, do not expose these endpoints with allow_guest=True.
+"""Voice-note transcription and timestamped search.
+Uses the same generic provider, model, URL, credential and request settings as
+AI reply profiles, but only through channel-selected Audio Transcription agents.
+All user-facing endpoints enforce membership; background workers are private.
 """
 from __future__ import annotations
 import json
 import html
 import math
 import os
+import time
 import re
 import subprocess
 import tempfile
@@ -18,10 +19,18 @@ from uuid import uuid4
 from pathlib import Path
 from bs4 import BeautifulSoup
 import frappe
+import requests
 from frappe.utils import cint, now_datetime
-from .ai_agent import strip_html, chat_setting_bool, chat_setting_int, chat_setting_str
+from .ai_agent import strip_html, _build_headers
+from clefincode_chat.clefincode_chat.doctype.clefincode_ai_agent_profile.local_audio_models import (
+    resolve_model_directory as _resolve_model_cache_path,
+)
+from clefincode_chat.clefincode_chat.doctype.clefincode_ai_agent_profile.clefincode_ai_agent_profile import (
+    AUDIO_TRANSCRIPTION, LOCAL_PROVIDER, TRANSCRIPTION_API_PROVIDERS, agent_purpose,
+)
 DOCTYPE = "ClefinCode Chat Message"
-# All audio processing is LOCAL; no file is uploaded to OpenAI or any other server.
+# Provider=Local processes audio on this server. Any remote provider uploads
+# audio to its configured API endpoint, selected by an administrator.
 # Convert each clip to 16-kHz mono WAV to support Ogg/Opus, WebM and other
 # formats even when the installed PyAV codec bundle differs.
 CHUNK_SECONDS = 600
@@ -123,57 +132,96 @@ def _audio_duration(path):
         return seconds
     except (FileNotFoundError, subprocess.SubprocessError, ValueError) as exc:
         raise ValueError("ffprobe cannot read this recording; ensure FFmpeg is installed.") from exc
-def _whisper_bench_root():
-    """Find this Frappe site's Bench root, independent of worker working directory."""
-    return Path(frappe.get_site_path()).resolve().parent.parent
+def _get_transcription_profile(msg, *, required=True):
+    """Resolve a voice note's configured transcription agent.
 
-
-def _resolve_whisper_path(value):
-    """Resolve the cache directory relative to the Bench root if needed."""
-    raw = str(value or "").strip()
-    if raw == "$PWD" or raw.startswith("$PWD/"):
-        raw = str(_whisper_bench_root()) + raw[len("$PWD"):]
-    elif raw == "${PWD}" or raw.startswith("${PWD}/"):
-        raw = str(_whisper_bench_root()) + raw[len("${PWD}"):]
-    path = Path(os.path.expanduser(os.path.expandvars(raw)))
-    if not path.is_absolute():
-        path = _whisper_bench_root() / path
-    return path.resolve()
-
-
-def _whisper_settings():
-    """Read Whisper configuration from ClefinCode Chat Settings.
-
-    Only a model name (for example, 'small' or 'medium') and an optional
-    Hugging Face cache directory are configurable. A separate model-path
-    setting is no longer supported.
+    A contributor sub-channel can override its parent; otherwise it inherits
+    the parent-channel setting. Other channels must select an agent explicitly.
     """
-    model = chat_setting_str("whisper_model", "small") or "small"
-
-    cache_setting = chat_setting_str("whisper_model_dir")
-    model_dir = None
-    if cache_setting:
-        cache_path = _resolve_whisper_path(cache_setting)
-        if not cache_path.is_dir():
+    channel_names = [name for name in (
+        getattr(msg, "sub_channel", None), getattr(msg, "chat_channel", None)
+    ) if name]
+    for channel_name in dict.fromkeys(channel_names):
+        agent_name = frappe.db.get_value(
+            "ClefinCode Chat Channel", channel_name, "transcription_agent"
+        )
+        if not agent_name:
+            continue
+        profile = frappe.get_doc("ClefinCode AI Agent Profile", agent_name)
+        if agent_purpose(profile) != AUDIO_TRANSCRIPTION:
             raise ValueError(
-                f"Whisper Download/Cache Directory does not exist: {cache_path}. "
-                "Set it to the folder containing models--Systran--faster-whisper-medium."
+                f"Channel '{channel_name}' must use an Audio Transcription agent."
             )
+        return profile
+    if required:
+        raise ValueError(
+            "No Audio Transcription Agent is selected on this channel. "
+            "Ask a chat administrator to configure one."
+        )
+    return None
+
+
+def _legacy_local_runtime_options():
+    """Read legacy settings solely for upgrades and older sites.
+
+    The selected Agent Profile is authoritative when a generic runtime field
+    has a value. Previous Chat Settings values are compatibility fallbacks.
+    """
+    keys = (
+        "whisper_model_dir", "whisper_device", "whisper_compute_type",
+        "whisper_cpu_threads", "whisper_offline", "whisper_beam_size",
+        "whisper_vad_filter",
+    )
+    rows = frappe.db.sql(
+        "SELECT field, value FROM `tabSingles` WHERE doctype = %s "
+        "AND field IN (" + ",".join(["%s"] * len(keys)) + ")",
+        ("ClefinCode Chat Settings", *keys), as_dict=True,
+    )
+    return {row.field: row.value for row in rows}
+
+
+def _local_model_settings(profile):
+    """Resolve the selected agent's generic on-server model configuration.
+
+    The active built-in Local adapter uses Faster-Whisper internally, but no
+    provider-specific schema or UI fields are required. A future adapter can
+    read these same generic values, or use the Custom API provider.
+    """
+    model = str(profile.get("model") or "").strip()
+    if not model:
+        raise ValueError("Set Model in the selected Audio Transcription agent.")
+    legacy = _legacy_local_runtime_options()
+
+    def option(field, old_field, default):
+        # Treat explicit 0/False as legitimate values, especially checkboxes.
+        value = profile.get(field)
+        if value is not None and value != "":
+            return value
+        value = frappe.conf.get(f"clefincode_chat_{field}")
+        if value is None or value == "":
+            value = frappe.conf.get(f"clefincode_chat_{old_field}")
+        if value is None or value == "":
+            value = legacy.get(old_field)
+        return default if value is None or value == "" else value
+
+    model_dir = None
+    cache_setting = str(option("model_cache_dir", "whisper_model_dir", "")).strip()
+    if cache_setting:
+        cache_path = _resolve_model_cache_path(cache_setting)
+        if not cache_path.is_dir():
+            raise ValueError(f"Local audio model cache directory does not exist: {cache_path}.")
         model_dir = str(cache_path)
 
-    device = chat_setting_str("whisper_device", "cpu").lower()
+    device = str(option("processing_device", "whisper_device", "cpu")).lower()
     if device not in {"cpu", "cuda", "auto"}:
-        raise ValueError("Whisper Device must be cpu, cuda or auto.")
-
-    compute = chat_setting_str("whisper_compute_type", "int8").lower()
+        raise ValueError("Processing Device must be cpu, cuda or auto.")
+    compute = str(option("compute_type", "whisper_compute_type", "int8")).lower()
     if compute not in {"int8", "int8_float16", "float16", "float32", "default"}:
-        raise ValueError("Unsupported Whisper Compute Type.")
-
-    cpu_threads = chat_setting_int("whisper_cpu_threads", 4, 1, 32)
-    offline = chat_setting_bool("whisper_offline", True)
-    beam_size = chat_setting_int("whisper_beam_size", 3, 1, 10)
-    use_vad = chat_setting_bool("whisper_vad_filter", False)
-
+        raise ValueError("Unsupported Compute Type for the installed local adapter.")
+    cpu_threads = max(1, min(32, cint(option("cpu_threads", "whisper_cpu_threads", 4))))
+    offline = bool(cint(option("offline_only", "whisper_offline", 1)))
+    beam_size = max(1, min(10, cint(option("decoding_beam_size", "whisper_beam_size", 5))))
+    use_vad = bool(cint(option("voice_activity_detection", "whisper_vad_filter", 0)))
     return model, device, compute, cpu_threads, model_dir, offline, beam_size, use_vad
 
 
@@ -196,19 +244,36 @@ def _load_whisper_model(model_name, device, compute_type, cpu_threads, download_
     except Exception as exc:
         if offline:
             raise RuntimeError(
-                "Cannot load offline Whisper model. Download it once using the "
-                "Bench Python environment, verify model_dir and restart workers. "
+                "Cannot load offline local transcription model. Download it once using the "
+                "Bench Python environment, verify the model cache and restart workers. "
                 f"Original error: {str(exc)[:180]}"
             ) from exc
         raise
-def check_whisper_installation():
-    """For bench execute/console only; not a whitelisted HTTP endpoint."""
-    cfg = _whisper_settings()
+def check_local_transcription_agent(profile_name=None):
+    """Check whether a Local-provider Audio Transcription agent can load its model."""
+    if profile_name:
+        profile = frappe.get_doc("ClefinCode AI Agent Profile", profile_name)
+    else:
+        rows = frappe.get_all(
+            "ClefinCode AI Agent Profile",
+            filters={"agent_purpose": AUDIO_TRANSCRIPTION, "provider": LOCAL_PROVIDER},
+            fields=["name"], order_by="is_default desc, modified desc", limit_page_length=1,
+        )
+        if not rows:
+            raise ValueError("Create a Local Audio Transcription agent first.")
+        profile = frappe.get_doc("ClefinCode AI Agent Profile", rows[0].name)
+    if agent_purpose(profile) != AUDIO_TRANSCRIPTION or profile.get("provider") != LOCAL_PROVIDER:
+        raise ValueError("The selected profile is not a Local Audio Transcription agent.")
+    cfg = _local_model_settings(profile)
     _load_whisper_model(*cfg[:6])
-    return {
-        "status": "ready", "model": cfg[0], "device": cfg[1],
-        "compute_type": cfg[2], "model_dir": cfg[4], "offline": cfg[5],
-    }
+    return {"status": "ready", "agent": profile.name, "provider": LOCAL_PROVIDER, "model": cfg[0]}
+
+
+def check_whisper_installation(profile_name=None):
+    """Compatibility alias for the old maintenance command."""
+    return check_local_transcription_agent(profile_name)
+
+
 def _make_wav_chunk(source, path, offset, duration):
     """Normalize audio locally with FFmpeg; no third-party audio service."""
     try:
@@ -225,20 +290,34 @@ def _make_wav_chunk(source, path, offset, duration):
     # 10 minutes at 16kHz 16-bit mono is approximately 19.2 MB.
     if os.path.getsize(path) > 32 * 1024 * 1024:
         raise ValueError("Converted audio chunk is unexpectedly large.")
-def _transcribe_audio(path):
-    """Return text and true per-word/segment positions from LOCAL Whisper."""
+def _recording_limit(profile):
+    configured = cint(profile.get("audio_max_seconds") or MAX_RECORDING_SECONDS)
+    return min(MAX_RECORDING_SECONDS, max(60, configured))
+
+
+def _transcribe_audio(path, profile):
+    """Transcribe a recording with the channel-selected agent and shared result shape."""
+    if agent_purpose(profile) != AUDIO_TRANSCRIPTION:
+        raise ValueError("Only Audio Transcription profiles can process recordings.")
     duration = _audio_duration(path)
-    limit = chat_setting_int("audio_max_seconds", MAX_RECORDING_SECONDS)
-    # A 0 in an Int field means the optional limit is not configured.
-    # Respect the 7200-second hard safety cap instead of silently using 60s.
-    if limit <= 0:
-        limit = MAX_RECORDING_SECONDS
-    limit = min(MAX_RECORDING_SECONDS, max(60, limit))
+    limit = _recording_limit(profile)
     if duration > limit:
         raise ValueError(f"Recording exceeds the configured {limit // 60}-minute limit.")
-    cfg = _whisper_settings()
+    provider = str(profile.get("provider") or "").strip()
+    if provider == LOCAL_PROVIDER:
+        return _transcribe_local_whisper(path, profile, duration)
+    if provider in TRANSCRIPTION_API_PROVIDERS:
+        return _transcribe_api(path, profile, duration)
+    raise ValueError("Unsupported provider for Audio Transcription.")
+
+
+def _transcribe_local_whisper(path, profile, duration):
+    """Local inference: preserve word-accurate timestamps as before."""
+    cfg = _local_model_settings(profile)
     model = _load_whisper_model(*cfg[:6])
     _, _, _, _, _, _, beam_size, use_vad = cfg
+    # Let the selected local model auto-detect the language.
+    language = None
     texts, words, segments, languages = [], [], [], []
     with tempfile.TemporaryDirectory(prefix="cc_local_whisper_") as tmp:
         for index in range(math.ceil(duration / CHUNK_SECONDS)):
@@ -246,11 +325,9 @@ def _transcribe_audio(path):
             part_length = min(CHUNK_SECONDS, duration - offset)
             wav_path = str(Path(tmp) / f"part_{index:04d}.wav")
             _make_wav_chunk(path, wav_path, offset, part_length)
-            # Faster Whisper produces a generator: iterating is what executes
-            # inference. This is intentionally inside the background worker.
             decoded_segments, info = model.transcribe(
                 wav_path, task="transcribe", beam_size=beam_size,
-                word_timestamps=True, vad_filter=use_vad,
+                word_timestamps=True, vad_filter=use_vad, language=language,
             )
             if getattr(info, "language", None):
                 languages.append(info.language)
@@ -265,21 +342,134 @@ def _transcribe_audio(path):
                     })
                 for word in getattr(segment, "words", None) or []:
                     token = (getattr(word, "word", "") or "").strip()
-                    if not token:
-                        continue
-                    words.append({
-                        "word": token,
-                        "start": round(offset + max(0.0, float(word.start)), 3),
-                        "end": round(offset + max(0.0, float(word.end)), 3),
-                    })
+                    if token:
+                        words.append({
+                            "word": token,
+                            "start": round(offset + max(0.0, float(word.start)), 3),
+                            "end": round(offset + max(0.0, float(word.end)), 3),
+                        })
     transcript = "\n".join(texts)
     if not transcript:
-        raise ValueError("Whisper did not detect any speech in this recording.")
-    language = Counter(languages).most_common(1)[0][0] if languages else ""
+        raise ValueError("The local transcription model did not detect speech in this recording.")
+    detected_language = Counter(languages).most_common(1)[0][0] if languages else (language or "")
     return {
         "text": transcript, "words": words, "segments": segments,
-        "language": language, "duration": round(duration, 3),
+        "language": detected_language, "duration": round(duration, 3),
     }
+
+
+def _transcribe_api(path, profile, duration):
+    """Transcribe audio using the standard API fields of an agent profile.
+
+    OpenAI, Groq and Custom are supported through OpenAI-compatible multipart
+    transcription endpoints. Other providers are not silently treated as compatible.
+    """
+    from urllib.parse import urlsplit
+
+    provider = str(profile.get("provider") or "").strip()
+    default_urls = {"OpenAI": "https://api.openai.com", "Groq": "https://api.groq.com"}
+    default_paths = {
+        "OpenAI": "/v1/audio/transcriptions",
+        "Groq": "/openai/v1/audio/transcriptions",
+        "Custom": "/v1/audio/transcriptions",
+    }
+    if provider not in default_paths:
+        raise ValueError("The configured provider does not support this transcription API.")
+    base_url = str(profile.get("url") or default_urls.get(provider, "")).strip().rstrip("/")
+    endpoint = str(profile.get("endpoint_responses") or "").strip()
+    # Prior profiles contain the chat response default, not an audio route.
+    if not endpoint or endpoint in ("/v1/responses", "/v1/chat/completions"):
+        endpoint = default_paths[provider]
+    if not endpoint.startswith("/") or endpoint.startswith("//") or "?" in endpoint or "#" in endpoint:
+        raise ValueError("API Endpoint must be an absolute path without a query string.")
+    target = base_url + endpoint
+    parsed = urlsplit(target)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("Audio transcription requires a valid HTTPS base URL and API endpoint.")
+
+    model = str(profile.get("model") or "").strip()
+    if not model:
+        raise ValueError("Set Model in the selected Audio Transcription agent.")
+    headers = {k: v for k, v in _build_headers(profile).items() if k.lower() != "content-type"}
+    timeout = max(15, min(900, cint(profile.get("timeout_seconds") or 120)))
+    retries = max(0, min(4, cint(profile.get("retry_count") or 0)))
+    whisper = model == "whisper-1"
+    texts, words, segments, languages = [], [], [], []
+
+    with tempfile.TemporaryDirectory(prefix="cc_openai_audio_") as tmp:
+        for index in range(math.ceil(duration / CHUNK_SECONDS)):
+            offset = index * CHUNK_SECONDS
+            part_length = min(CHUNK_SECONDS, duration - offset)
+            wav_path = str(Path(tmp) / f"part_{index:04d}.wav")
+            _make_wav_chunk(path, wav_path, offset, part_length)
+            fields = [("model", model), ("response_format", "verbose_json" if whisper else "json")]
+            if whisper:
+                fields.extend([
+                    ("timestamp_granularities[]", "word"),
+                    ("timestamp_granularities[]", "segment"),
+                ])
+
+            result = None
+            for attempt in range(retries + 1):
+                try:
+                    with open(wav_path, "rb") as audio_file:
+                        response = requests.post(
+                            target, headers=headers, data=fields,
+                            files={"file": (Path(wav_path).name, audio_file, "audio/wav")},
+                            timeout=timeout, allow_redirects=False,
+                        )
+                    if response.status_code == 200:
+                        result = response.json()
+                        break
+                    if response.status_code not in (429, 500, 502, 503, 504):
+                        raise RuntimeError(
+                            f"Audio transcription request failed (HTTP {response.status_code})."
+                        )
+                    if attempt == retries:
+                        raise RuntimeError(
+                            f"Audio transcription request failed after retries (HTTP {response.status_code})."
+                        )
+                except (requests.exceptions.RequestException, ValueError) as exc:
+                    if attempt == retries:
+                        raise RuntimeError("Audio transcription request failed or returned invalid JSON.") from exc
+                time.sleep(attempt + 1)
+            if not isinstance(result, dict):
+                raise ValueError("Audio transcription API returned an unexpected response.")
+            text = str(result.get("text") or "").strip()
+            if text:
+                texts.append(text)
+            if result.get("language"):
+                languages.append(str(result["language"]))
+            segment_count = 0
+            for segment in result.get("segments") or []:
+                if not isinstance(segment, dict):
+                    continue
+                content = str(segment.get("text") or "").strip()
+                if content:
+                    start = min(part_length, max(0.0, float(segment.get("start") or 0)))
+                    end = min(part_length, max(start, float(segment.get("end") or part_length)))
+                    segments.append({"text": content, "start": round(offset + start, 3),
+                                     "end": round(offset + end, 3)})
+                    segment_count += 1
+            if text and not segment_count:
+                segments.append({"text": text, "start": round(offset, 3),
+                                 "end": round(offset + part_length, 3)})
+            for word in result.get("words") or []:
+                if isinstance(word, dict) and str(word.get("word") or "").strip():
+                    start = min(part_length, max(0.0, float(word.get("start") or 0)))
+                    end = min(part_length, max(start, float(word.get("end") or start)))
+                    words.append({"word": word["word"], "start": round(offset + start, 3),
+                                  "end": round(offset + end, 3)})
+
+    transcript = "\n".join(texts)
+    if not transcript:
+        raise ValueError("The transcription model did not detect speech in the recording.")
+    detected_language = Counter(languages).most_common(1)[0][0] if languages else ""
+    return {
+        "text": transcript, "words": words, "segments": segments,
+        "language": detected_language, "duration": round(duration, 3),
+    }
+
 # A hidden, escaped fragment preserves the original voice-message markup/player.
 # The chat renderer never displays this fragment directly: visibility is handled
 # by recording_features.js and a permission-checked API. Searches query Content only.
@@ -317,7 +507,12 @@ def _update_message(name, **values):
     frappe.db.set_value(DOCTYPE, name, values, update_modified=False)
 def queue_voice_clip_transcription(msg):
     """Called by api.send() once the voice File has been attached to the message."""
-    if not chat_setting_bool("audio_auto_transcribe", False):
+    try:
+        profile = _get_transcription_profile(msg, required=False)
+        if not profile or not cint(profile.get("audio_auto_transcribe") or 0):
+            return
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Recording AI channel configuration failed")
         return
     if (cint(getattr(msg, "is_deleted", 0)) or
             not cint(getattr(msg, "is_voice_clip", 0)) or
@@ -336,7 +531,7 @@ def queue_voice_clip_transcription(msg):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Recording AI queue failed")
 def process_voice_clip_transcription(message_name, force=False):
-    """Local, private RQ worker: never whitelist this function."""
+    """Private RQ worker: never whitelist this function."""
     cache = frappe.cache() if callable(frappe.cache) else frappe.cache
     lock = cache.lock(f"cc_audio:{frappe.local.site}:{message_name}", timeout=TRANSCRIPTION_TIMEOUT + 300)
     with lock:
@@ -350,9 +545,10 @@ def process_voice_clip_transcription(message_name, force=False):
         _update_message(msg.name, audio_status="Processing", audio_error="")
         frappe.db.commit()
         try:
+            profile = _get_transcription_profile(msg)
             source, _ = _recording_path(msg)
-            transcription = _transcribe_audio(source)
-            # If deleted/replaced while waiting for Whisper, never store its text.
+            transcription = _transcribe_audio(source, profile)
+            # If deleted/replaced while processing, never store its text.
             current = frappe.db.get_value(DOCTYPE, msg.name, ["is_deleted", "file_id", "content"], as_dict=True)
             if not current or current.is_deleted or current.file_id != msg.file_id:
                 return
@@ -408,6 +604,9 @@ def request_recording_transcription(message_name, force=0):
             frappe.throw("Only the sender or a chat administrator may reprocess this recording.", frappe.PermissionError)
         if msg.audio_status in ("Queued", "Processing"):
             return {"status": msg.audio_status, "message_name": msg.name}
+    # Verify the profile before queuing; do not leave users with a stuck job
+    # when no channel transcription agent has been assigned.
+    _get_transcription_profile(msg)
     _update_message(msg.name, audio_status="Queued", audio_error="")
     frappe.enqueue(
         "clefincode_chat.api.api_1_4_1.audio_features.process_voice_clip_transcription",
@@ -422,6 +621,17 @@ def _safe_json(value, fallback):
         return result if isinstance(result, type(fallback)) else fallback
     except (ValueError, TypeError):
         return fallback
+def _public_transcription_engine(msg):
+    """Display the selected provider/model without exposing credentials or URLs."""
+    try:
+        profile = _get_transcription_profile(msg, required=False)
+        if profile:
+            return f"{profile.get('provider') or 'Unknown'} / {profile.get('model') or 'Unknown'}"
+    except Exception:
+        pass
+    return "Not configured"
+
+
 @frappe.whitelist()
 def get_recording_features(message_name):
     msg = _get_allowed_recording(message_name)
@@ -435,7 +645,7 @@ def get_recording_features(message_name):
     return {
         "message_name": msg.name,
         "chat_channel": msg.chat_channel,
-        "transcription_engine": "faster-whisper (local)",
+        "transcription_engine": _public_transcription_engine(msg),
         "status": "Completed" if transcript_from_content(msg.content) else (msg.audio_status or "Not Processed"),
         "error": msg.audio_error or "",
         "language": msg.audio_language or "",
@@ -462,7 +672,7 @@ def _timecode(seconds):
     sec = max(0, int(float(seconds)))
     return f"{sec // 60:02d}:{sec % 60:02d}" if sec < 3600 else f"{sec // 3600:02d}:{(sec // 60) % 60:02d}:{sec % 60:02d}"
 def _word_matches(words, query):
-    """Return exact word/phrase occurrences with local Whisper start seconds."""
+    """Return exact word/phrase occurrences with model-provided timestamps."""
     if not words or not query:
         return []
     chunks, offsets, cursor = [], [], 0
@@ -477,7 +687,7 @@ def _word_matches(words, query):
         cursor += len(word)
         offsets.append((start, cursor, float(token.get("start") or 0), word))
     joined = " ".join(chunks)
-    # Whitespace in user input may differ from Whisper's tokenization.
+    # Whitespace in user input may differ from the model's tokenization.
     pattern = r"(?<!\w)" + r"\s+".join(re.escape(x) for x in query.split()) + r"(?!\w)"
     matches = []
     for hit in re.finditer(pattern, joined, flags=re.IGNORECASE | re.UNICODE):
@@ -720,16 +930,110 @@ def _can_manage_recording_switch(msg, user):
     )
 @frappe.whitelist(methods=["GET"])
 def get_channel_transcript_control(channel):
-    """Return the stored channel preference, including edit permission."""
+    """Channel Info settings, including an authorized audio-agent chooser.
+
+    Return only public profile metadata, never API keys or request headers.
+    Contributor channels inherit the parent's choice unless overridden.
+    """
     user = _current_user()
     if not _can_access_transcript_channel(channel, user):
         frappe.throw("You cannot access this chat channel.", frappe.PermissionError)
+
+    can_manage = _can_manage_transcript_channel(channel, user)
+    channel_data = frappe.db.get_value(
+        "ClefinCode Chat Channel", channel,
+        ["show_transcript", "transcription_agent", "parent_channel"], as_dict=True,
+    )
+    selected = channel_data.transcription_agent or ""
+    parent_channel = channel_data.parent_channel or ""
+    inherited = ""
+    if parent_channel and not selected:
+        inherited = frappe.db.get_value(
+            "ClefinCode Chat Channel", parent_channel, "transcription_agent"
+        ) or ""
+
+    choices = []
+    if can_manage:
+        choices = frappe.get_all(
+            "ClefinCode AI Agent Profile",
+            filters={"agent_purpose": AUDIO_TRANSCRIPTION},
+            fields=["name", "provider", "model"],
+            order_by="name asc", limit_page_length=0,
+        )
+
     return {
         "channel": channel,
-        "show_transcript": bool(cint(frappe.db.get_value(
-            "ClefinCode Chat Channel", channel, "show_transcript") or 0)),
-        "can_manage": _can_manage_transcript_channel(channel, user),
+        "show_transcript": bool(cint(channel_data.show_transcript or 0)),
+        "can_manage": can_manage,
+        "transcription_agent": selected,
+        "effective_transcription_agent": selected or inherited,
+        "parent_channel": parent_channel,
+        "inherited_transcription_agent": inherited,
+        "available_transcription_agents": choices,
     }
+
+
+@frappe.whitelist(methods=["POST"])
+def set_channel_transcription_agent(channel, agent_name=None):
+    """Change a channel's speech-to-text agent from its chat info panel.
+
+    Only a channel creator, an active channel admin, or a privileged chat
+    administrator may make this change. Clearing the selection leaves the
+    parent-channel inheritance behavior in place for contributor channels.
+    """
+    user = _current_user()
+    if not _can_manage_transcript_channel(channel, user):
+        frappe.throw(
+            "Only a channel creator or administrator can change the audio agent.",
+            frappe.PermissionError,
+        )
+
+    agent_name = str(agent_name or "").strip()
+    if agent_name:
+        purpose = frappe.db.get_value(
+            "ClefinCode AI Agent Profile", agent_name, "agent_purpose"
+        )
+        if purpose != AUDIO_TRANSCRIPTION:
+            frappe.throw("Select an existing Audio Transcription agent.")
+
+    frappe.db.set_value(
+        "ClefinCode Chat Channel", channel, "transcription_agent",
+        agent_name or None, update_modified=False,
+    )
+
+    channel_data = frappe.db.get_value(
+        "ClefinCode Chat Channel", channel, "parent_channel"
+    )
+    parent_channel = channel_data or ""
+    inherited = ""
+    if parent_channel and not agent_name:
+        inherited = frappe.db.get_value(
+            "ClefinCode Chat Channel", parent_channel, "transcription_agent"
+        ) or ""
+
+    # Notify only people already authorized to access this channel.
+    recipients = {user}
+    candidate_channels = [channel] + ([parent_channel] if parent_channel else [])
+    for candidate in candidate_channels:
+        members = frappe.get_all(
+            "ClefinCode Chat Channel User",
+            filters={"parent": candidate, "is_removed": 0},
+            fields=["user"],
+        )
+        recipients.update(row.user for row in members if row.user)
+    for recipient in recipients:
+        frappe.publish_realtime(
+            event="cc_recording_channel_agent_changed",
+            message={"channel": channel},
+            user=recipient, after_commit=True,
+        )
+    return {
+        "channel": channel,
+        "transcription_agent": agent_name,
+        "effective_transcription_agent": agent_name or inherited,
+    }
+
+
 @frappe.whitelist(methods=["POST"])
 def set_channel_transcript_visibility(channel, enabled):
     """Persist the channel-wide checkbox for its creator/admin."""

@@ -50,29 +50,39 @@ def chat_setting_str(fieldname, default=""):
 # Helpers to load profile
 # -------------------------
 def _get_profile(profile_key: Optional[str] = None, doc_doctype: Optional[str] = None):
-    """
-    Return profile doc by exact document name (profile_key) only,
-    or the default profile (is_default), or the first available.
-    Throws if none found.
-    doc_doctype: name of the DocType that holds AI profiles (e.g. "ClefinCode AI Agent Profile")
+    """Select an AI Response profile, never an Audio Transcription profile.
+
+    Existing rows without agent_purpose are treated as AI Response for backward
+    compatibility. Custom DocTypes retain the original generic lookup behavior.
     """
     doctype = (doc_doctype or DOC_DOCTYPE).strip()
     if not doctype:
         frappe.throw("DocType name for AI profiles is empty.")
+
+    def allowed(profile):
+        return doctype != DOC_DOCTYPE or (profile.get("agent_purpose") or "AI Response") == "AI Response"
+
     if profile_key:
-        # ONLY lookup by exact document name
-        if frappe.db.exists(doctype, profile_key):
-            return frappe.get_doc(doctype, profile_key)
-        frappe.throw(f"AI profile with name '{profile_key}' not found in DocType '{doctype}'.")
-    # default profile (is_default)
-    rows = frappe.get_all(doctype, filters={"is_default": 1}, limit=1)
-    if rows:
-        return frappe.get_doc(doctype, rows[0].name)
-    # fallback to first available
-    rows = frappe.get_all(doctype, limit=1)
-    if rows:
-        return frappe.get_doc(doctype, rows[0].name)
-    frappe.throw(f"No AI profiles found in DocType '{doctype}'. Create one first.")
+        if not frappe.db.exists(doctype, profile_key):
+            frappe.throw(f"AI profile '{profile_key}' not found in DocType '{doctype}'.")
+        profile = frappe.get_doc(doctype, profile_key)
+        if not allowed(profile):
+            frappe.throw(f"Profile '{profile.name}' is for audio transcription, not AI chat responses.")
+        return profile
+
+    # Preserve the old default-then-first selection order, restricted by purpose.
+    rows = frappe.get_all(doctype, filters={"is_default": 1}, fields=["name"], limit_page_length=0)
+    for row in rows:
+        profile = frappe.get_doc(doctype, row.name)
+        if allowed(profile):
+            return profile
+    rows = frappe.get_all(doctype, fields=["name"], limit_page_length=0)
+    for row in rows:
+        profile = frappe.get_doc(doctype, row.name)
+        if allowed(profile):
+            return profile
+    frappe.throw(f"No AI Response profiles found in DocType '{doctype}'. Create one first.")
+
 # -------------------------
 # Build headers
 # -------------------------
@@ -458,7 +468,7 @@ def call_ai_service(
                     if status == 429 and error_code == "insufficient_quota":
                         frappe.throw("Your AI quota has been exceeded. Please check your subscription or billing details.")
                     else:
-                        frappe.throw(f"Provider {getattr(profile, 'service_key', profile.name)} returned {status}: {error_message or resp.text}")
+                        frappe.throw(f"Provider {profile.name} returned {status}: {error_message or resp.text}")
                     # client error -> surface immediately
                 # otherwise wait and retry
                 time.sleep(1 * attempt)
@@ -466,7 +476,7 @@ def call_ai_service(
             last_err = str(e)
             time.sleep(1 * attempt)
     # out of retries
-    frappe.throw(f"Failed to call provider '{getattr(profile, 'service_key', profile.name)}'. Last error: {last_err}")
+    frappe.throw(f"Failed to call provider '{profile.name}'. Last error: {last_err}")
 # ---- AI conversation scoping (topic-scoped and channel-wide) ----
 # Reuse the existing Link field on ClefinCode Chat Summary (see its DocType JSON).
 # No custom field or migration is required.
