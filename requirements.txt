@@ -8,3 +8,5 @@ tiktoken
 openai
 
 faster-whisper>=1.2,<2
+cryptography~=46.0.3
+pyOpenSSL==25.3.0

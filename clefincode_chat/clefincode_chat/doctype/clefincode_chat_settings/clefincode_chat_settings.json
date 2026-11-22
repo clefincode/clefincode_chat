@@ -32,6 +32,9 @@
     "welcome_message",
     "topic_grouping_section",
     "grouping_period",
+    "voice_transcription_settings_section",
+    "enable_transcript",
+    "audio_auto_transcribe",
     "recording_ai_diagnostics_section",
     "ai_debug",
     "ai_stdout",
@@ -215,6 +218,27 @@
       "label": "Print AI Debug to Console",
       "depends_on": "eval: doc.ai_debug == 1",
       "description": "Sensitive: include AI debug events in Bench process standard output."
+    },
+    {
+      "fieldname": "voice_transcription_settings_section",
+      "fieldtype": "Section Break",
+      "label": "Voice Transcription",
+      "description": "Site-wide controls for voice transcripts in ClefinCode Chat."
+    },
+    {
+      "fieldname": "enable_transcript",
+      "fieldtype": "Check",
+      "label": "Enable Transcript",
+      "default": "0",
+      "description": "Enable voice transcripts across this site. When disabled, channel transcription options and transcript controls are hidden."
+    },
+    {
+      "fieldname": "audio_auto_transcribe",
+      "fieldtype": "Check",
+      "label": "Automatically Transcribe Voice Messages",
+      "default": "0",
+      "depends_on": "eval:doc.enable_transcript == 1",
+      "description": "When enabled, newly uploaded voice messages are queued for transcription if the channel has an Audio Transcription Agent."
     }
   ],
   "index_web_pages_for_search": 1,

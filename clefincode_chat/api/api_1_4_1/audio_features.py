@@ -29,6 +29,23 @@ from clefincode_chat.clefincode_chat.doctype.clefincode_ai_agent_profile.clefinc
     AUDIO_TRANSCRIPTION, LOCAL_PROVIDER, TRANSCRIPTION_API_PROVIDERS, agent_purpose,
 )
 DOCTYPE = "ClefinCode Chat Message"
+
+
+def _transcription_enabled():
+    """Site-wide feature gate (uncached so changes take effect immediately)."""
+    return bool(cint(frappe.db.get_single_value("ClefinCode Chat Settings", "enable_transcript") or 0))
+
+
+def _automatic_transcription_enabled():
+    return _transcription_enabled() and bool(cint(
+        frappe.db.get_single_value("ClefinCode Chat Settings", "audio_auto_transcribe") or 0
+    ))
+
+
+def _require_transcription_enabled():
+    if not _transcription_enabled():
+        frappe.throw("Voice transcription is disabled in ClefinCode Chat Settings.", frappe.PermissionError)
+
 # Provider=Local processes audio on this server. Any remote provider uploads
 # audio to its configured API endpoint, selected by an administrator.
 # Convert each clip to 16-kHz mono WAV to support Ogg/Opus, WebM and other
@@ -295,7 +312,7 @@ def _recording_limit(profile):
     return min(MAX_RECORDING_SECONDS, max(60, configured))
 
 
-def _transcribe_audio(path, profile):
+def _transcribe_audio(path, profile, language_override=None):
     """Transcribe a recording with the channel-selected agent and shared result shape."""
     if agent_purpose(profile) != AUDIO_TRANSCRIPTION:
         raise ValueError("Only Audio Transcription profiles can process recordings.")
@@ -305,19 +322,55 @@ def _transcribe_audio(path, profile):
         raise ValueError(f"Recording exceeds the configured {limit // 60}-minute limit.")
     provider = str(profile.get("provider") or "").strip()
     if provider == LOCAL_PROVIDER:
-        return _transcribe_local_whisper(path, profile, duration)
+        return _transcribe_local_whisper(path, profile, duration, language_override=language_override)
     if provider in TRANSCRIPTION_API_PROVIDERS:
+        if language_override:
+            raise ValueError("Per-recording language selection currently requires a Local transcription agent.")
         return _transcribe_api(path, profile, duration)
     raise ValueError("Unsupported provider for Audio Transcription.")
 
 
-def _transcribe_local_whisper(path, profile, duration):
-    """Local inference: preserve word-accurate timestamps as before."""
+# Explicit per-recording language selection is available when automatic
+# detection is uncertain. Whisper language detection is probabilistic and
+# cannot guarantee the spoken language for a short recording.
+ALLOWED_RECORDING_LANGUAGES = {"en", "ar"}
+
+
+def _spoken_language_preference(profile):
+    """Return explicit profile/site language, or None for auto-detection."""
+    value = str(
+        profile.get("transcription_language")
+        or frappe.conf.get("clefincode_chat_transcription_language")
+        or "auto"
+    ).strip().lower()
+    return None if value in {"", "auto"} else value
+
+
+def _recording_language_override(language):
+    """Validate user-selected transcription language; never translate."""
+    value = str(language or "auto").strip().lower()
+    if value in {"", "auto"}:
+        return None
+    if value not in ALLOWED_RECORDING_LANGUAGES:
+        raise ValueError("Recording language must be auto, en or ar.")
+    return value
+
+
+def _transcribe_local_whisper(path, profile, duration, language_override=None):
+    """Fast original-language transcription with optional user override.
+
+    Auto mode performs one Whisper inference pass and saves the language
+    detected from speech. For incorrectly detected short speech, the sender
+    can retry this specific message as English or Arabic using the UI.
+    This is more reliable than judging the language from decoder log scores.
+    """
     cfg = _local_model_settings(profile)
     model = _load_whisper_model(*cfg[:6])
     _, _, _, _, _, _, beam_size, use_vad = cfg
-    # Let the selected local model auto-detect the language.
-    language = None
+    language = language_override or _spoken_language_preference(profile)
+    if language and language not in model.supported_languages:
+        raise ValueError(f"Unsupported audio transcription language: {language}.")
+
     texts, words, segments, languages = [], [], [], []
     with tempfile.TemporaryDirectory(prefix="cc_local_whisper_") as tmp:
         for index in range(math.ceil(duration / CHUNK_SECONDS)):
@@ -326,11 +379,15 @@ def _transcribe_local_whisper(path, profile, duration):
             wav_path = str(Path(tmp) / f"part_{index:04d}.wav")
             _make_wav_chunk(path, wav_path, offset, part_length)
             decoded_segments, info = model.transcribe(
-                wav_path, task="transcribe", beam_size=beam_size,
-                word_timestamps=True, vad_filter=use_vad, language=language,
+                wav_path,
+                task="transcribe",          # Never translate to another language.
+                language=language,           # None means automatic detection.
+                beam_size=beam_size,
+                vad_filter=use_vad,
+                word_timestamps=True,
+                condition_on_previous_text=False,
             )
-            if getattr(info, "language", None):
-                languages.append(info.language)
+            languages.append(language or str(getattr(info, "language", "") or ""))
             for segment in decoded_segments:
                 text = (getattr(segment, "text", "") or "").strip()
                 if text:
@@ -351,10 +408,11 @@ def _transcribe_local_whisper(path, profile, duration):
     transcript = "\n".join(texts)
     if not transcript:
         raise ValueError("The local transcription model did not detect speech in this recording.")
-    detected_language = Counter(languages).most_common(1)[0][0] if languages else (language or "")
+    detected_language = Counter(filter(None, languages)).most_common(1)
     return {
         "text": transcript, "words": words, "segments": segments,
-        "language": detected_language, "duration": round(duration, 3),
+        "language": detected_language[0][0] if detected_language else "",
+        "duration": round(duration, 3),
     }
 
 
@@ -507,9 +565,11 @@ def _update_message(name, **values):
     frappe.db.set_value(DOCTYPE, name, values, update_modified=False)
 def queue_voice_clip_transcription(msg):
     """Called by api.send() once the voice File has been attached to the message."""
+    if not _automatic_transcription_enabled():
+        return
     try:
         profile = _get_transcription_profile(msg, required=False)
-        if not profile or not cint(profile.get("audio_auto_transcribe") or 0):
+        if not profile:
             return
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Recording AI channel configuration failed")
@@ -530,12 +590,16 @@ def queue_voice_clip_transcription(msg):
         _update_message(msg.name, audio_status="Queued")
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Recording AI queue failed")
-def process_voice_clip_transcription(message_name, force=False):
+def process_voice_clip_transcription(message_name, force=False, language_override=None):
     """Private RQ worker: never whitelist this function."""
     cache = frappe.cache() if callable(frappe.cache) else frappe.cache
     lock = cache.lock(f"cc_audio:{frappe.local.site}:{message_name}", timeout=TRANSCRIPTION_TIMEOUT + 300)
     with lock:
         if not frappe.db.exists(DOCTYPE, message_name):
+            return
+        if not _transcription_enabled():
+            _update_message(message_name, audio_status="Not Processed")
+            frappe.db.commit()
             return
         msg = frappe.get_doc(DOCTYPE, message_name)
         if cint(msg.is_deleted) or not cint(msg.is_voice_clip) or not msg.file_id:
@@ -547,10 +611,16 @@ def process_voice_clip_transcription(message_name, force=False):
         try:
             profile = _get_transcription_profile(msg)
             source, _ = _recording_path(msg)
-            transcription = _transcribe_audio(source, profile)
+            transcription = _transcribe_audio(
+                source, profile, language_override=_recording_language_override(language_override)
+            )
             # If deleted/replaced while processing, never store its text.
             current = frappe.db.get_value(DOCTYPE, msg.name, ["is_deleted", "file_id", "content"], as_dict=True)
             if not current or current.is_deleted or current.file_id != msg.file_id:
+                return
+            if not _transcription_enabled():
+                _update_message(msg.name, audio_status="Not Processed")
+                frappe.db.commit()
                 return
             _update_message(
                 msg.name,
@@ -591,9 +661,13 @@ def process_voice_clip_transcription(message_name, force=False):
             raise
 # -------------------------- client endpoints -------------------------------
 @frappe.whitelist(methods=["POST"])
-def request_recording_transcription(message_name, force=0):
+def request_recording_transcription(message_name, force=0, language="auto"):
+    _require_transcription_enabled()
     msg = _get_allowed_recording(message_name)
     force = bool(cint(force))
+    language_override = _recording_language_override(language)
+    if language_override and not force:
+        frappe.throw("Select Re-transcribe to change the recording language.")
     if transcript_from_content(msg.content) and not force:
         return {"status": "Completed", "message_name": msg.name}
     if msg.audio_status in ("Queued", "Processing") and not force:
@@ -612,7 +686,7 @@ def request_recording_transcription(message_name, force=0):
         "clefincode_chat.api.api_1_4_1.audio_features.process_voice_clip_transcription",
         queue="long", timeout=TRANSCRIPTION_TIMEOUT, enqueue_after_commit=True,
         job_id=f"cc_audio::{msg.name}::{uuid4().hex[:8]}", deduplicate=True,
-        message_name=msg.name, force=force,
+        message_name=msg.name, force=force, language_override=language_override,
     )
     return {"status": "Queued", "message_name": msg.name}
 def _safe_json(value, fallback):
@@ -635,6 +709,10 @@ def _public_transcription_engine(msg):
 @frappe.whitelist()
 def get_recording_features(message_name):
     msg = _get_allowed_recording(message_name)
+    if not _transcription_enabled():
+        return {"message_name": msg.name, "status": "Disabled", "transcript": "",
+                "show_transcript": False, "channel_show_transcript": False,
+                "transcription_enabled": False}
     file_url = ""
     try:
         _, file_doc = _recording_path(msg)
@@ -646,9 +724,14 @@ def get_recording_features(message_name):
         "message_name": msg.name,
         "chat_channel": msg.chat_channel,
         "transcription_engine": _public_transcription_engine(msg),
-        "status": "Completed" if transcript_from_content(msg.content) else (msg.audio_status or "Not Processed"),
+        "status": (msg.audio_status if msg.audio_status in ("Queued", "Processing", "Failed")
+                   else ("Completed" if transcript_from_content(msg.content) else (msg.audio_status or "Not Processed"))),
         "error": msg.audio_error or "",
         "language": msg.audio_language or "",
+        "can_retranscribe": bool(
+            _current_user() == (msg.sender_email or "") or
+            bool(set(frappe.get_roles(_current_user())) & {"Chat Administrator", "System Manager"})
+        ),
         "duration_seconds": msg.audio_duration_seconds or 0,
         "transcript": transcript_from_content(msg.content),
         "show_transcript": bool(cint(getattr(msg, "show_transcript", 0))),
@@ -801,7 +884,7 @@ def _search_rows(query, channel=None, sub_channel=None, chat_topic=None, limit=S
         if not _can_access_message(msg, user=user):
             continue
         audio_hits = []
-        if cint(msg.is_voice_clip) and transcript_from_content(msg.content):
+        if _transcription_enabled() and cint(msg.is_voice_clip) and transcript_from_content(msg.content):
             audio_hits = _audio_matches(msg, query)
         if audio_hits:
             file_url = ""
@@ -857,6 +940,8 @@ def get_visible_recording_transcripts(message_names):
     No unchecked transcript is returned by this endpoint.
     """
     user = _current_user()
+    if not _transcription_enabled():
+        return {"results": []}
     if isinstance(message_names, str):
         try:
             message_names = json.loads(message_names)
@@ -938,6 +1023,9 @@ def get_channel_transcript_control(channel):
     user = _current_user()
     if not _can_access_transcript_channel(channel, user):
         frappe.throw("You cannot access this chat channel.", frappe.PermissionError)
+    if not _transcription_enabled():
+        return {"channel": channel, "transcription_enabled": False,
+                "show_transcript": False, "available_transcription_agents": []}
 
     can_manage = _can_manage_transcript_channel(channel, user)
     channel_data = frappe.db.get_value(
@@ -963,6 +1051,7 @@ def get_channel_transcript_control(channel):
 
     return {
         "channel": channel,
+        "transcription_enabled": True,
         "show_transcript": bool(cint(channel_data.show_transcript or 0)),
         "can_manage": can_manage,
         "transcription_agent": selected,
@@ -981,6 +1070,7 @@ def set_channel_transcription_agent(channel, agent_name=None):
     administrator may make this change. Clearing the selection leaves the
     parent-channel inheritance behavior in place for contributor channels.
     """
+    _require_transcription_enabled()
     user = _current_user()
     if not _can_manage_transcript_channel(channel, user):
         frappe.throw(
@@ -1037,6 +1127,7 @@ def set_channel_transcription_agent(channel, agent_name=None):
 @frappe.whitelist(methods=["POST"])
 def set_channel_transcript_visibility(channel, enabled):
     """Persist the channel-wide checkbox for its creator/admin."""
+    _require_transcription_enabled()
     user = _current_user()
     if not _can_manage_transcript_channel(channel, user):
         frappe.throw("Only the channel creator or an administrator can change this setting.",
@@ -1086,6 +1177,7 @@ def edit_voice_transcript(message_name, new_transcript):
     invalid after a manual rewrite and therefore intentionally cleared.
     """
     user = _current_user()
+    _require_transcription_enabled()
     msg = _get_allowed_recording(message_name)
     if msg.sender_email != user:
         frappe.throw("Only the sender can edit this voice transcript.", frappe.PermissionError)
@@ -1153,6 +1245,7 @@ def edit_voice_transcript(message_name, new_transcript):
 def set_recording_transcript_visibility(message_name, enabled):
     """Persist one recording's checkbox without rewriting audio/content."""
     user = _current_user()
+    _require_transcription_enabled()
     msg = _get_allowed_recording(message_name)
     if not _can_manage_recording_switch(msg, user):
         frappe.throw("Only the sender or a channel administrator can change this setting.",
@@ -1219,6 +1312,8 @@ def get_recording_transcript_controls(message_names):
     is enabled. A user may still manually request an allowed transcript.
     """
     user = _current_user()
+    if not _transcription_enabled():
+        return {"results": [], "transcription_enabled": False}
     if isinstance(message_names, str):
         try:
             message_names = json.loads(message_names)
@@ -1241,6 +1336,7 @@ def get_recording_transcript_controls(message_names):
     )
     channel_flags = {}
     channel_manage = {}
+    can_force_retry = bool(set(frappe.get_roles(user)) & {"Chat Administrator", "System Manager"})
     result = []
     for msg in rows:
         if not msg.file_id or not _can_access_message(msg, user=user):
@@ -1256,7 +1352,8 @@ def get_recording_transcript_controls(message_names):
         hidden_override = bool(cint(msg.hide_transcript))
         effective_show = (channel_show or own_show) and not hidden_override
         saved_transcript = transcript_from_content(msg.content)
-        status = "Completed" if saved_transcript else (msg.audio_status or "Not Processed")
+        status = (msg.audio_status if msg.audio_status in ("Queued", "Processing", "Failed")
+                  else ("Completed" if saved_transcript else (msg.audio_status or "Not Processed")))
         result.append({
             "message_name": msg.name,
             "chat_channel": msg.chat_channel,
@@ -1267,6 +1364,7 @@ def get_recording_transcript_controls(message_names):
             "effective_show": effective_show,
             "can_manage": bool(user == (msg.sender_email or "") or any(
                 channel_manage[channel] for channel in channel_names)),
+            "can_retranscribe": bool(user == (msg.sender_email or "") or can_force_retry),
             "status": status,
             "transcript": saved_transcript if effective_show else "",
         })
@@ -1308,6 +1406,8 @@ def migrate_legacy_audio_transcripts(limit=500, dry_run=True):
 @frappe.whitelist()
 def search_recordings(query, channel=None, sub_channel=None, chat_topic=None, limit=100):
     """Search recordings in one channel or all authorized channels."""
+    if not _transcription_enabled():
+        return {"results": []}
     return {"results": _search_rows(query, channel, sub_channel, chat_topic, limit)}
 @frappe.whitelist()
 def search_messages_and_recordings(channel, query, sub_channel=None, chat_topic=None, limit=100):
@@ -1319,6 +1419,7 @@ def search_messages_and_recordings(channel, query, sub_channel=None, chat_topic=
 @frappe.whitelist(methods=["POST"])
 def backfill_voice_recordings(limit=50):
     """Admin-only explicit batch of previously sent voice clips (not automatic)."""
+    _require_transcription_enabled()
     _current_user()
     frappe.only_for("System Manager")
     limit = min(100, max(1, cint(limit) or 50))

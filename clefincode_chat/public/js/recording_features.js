@@ -80,7 +80,119 @@
     // v4.2: direct per-voice checkbox plus channel checkbox inside Contact Info.
     // These checkboxes persist on the two existing DocType fields. Do not
     // inject transcript text into HTML: always use textContent.
-    const VERSION = "4.8.0";
+    const VERSION = "4.10.0";
+    // Scoped styles: the chat window can be as narrow as a single voice bubble.
+    // Keep the panel and all controls within the message, with no stylesheet rebuild.
+    function installTranscriptStyles() {
+        const styleId = "cc-voice-transcript-polished-styles-v1";
+        if (document.getElementById(styleId)) return;
+        const style = element("style");
+        style.id = styleId;
+        style.textContent = `
+            .cc-voice-transcript-host,
+            .cc-voice-transcript-host * { box-sizing: border-box; }
+            .cc-voice-transcript-host {
+                display: block; width: 100%; max-width: 100%; min-width: 0;
+                margin-top: 8px; overflow-wrap: anywhere;
+            }
+            .cc-voice-transcript-host .cc-voice-transcript-switch {
+                display: flex; flex-wrap: wrap; align-items: center;
+                gap: 6px 8px; max-width: 100%; min-width: 0;
+                padding: 0 2px; line-height: 1.45;
+                font-size: 12px; user-select: none;
+            }
+            .cc-voice-transcript-host .cc-voice-transcript-switch input {
+                flex: 0 0 auto; margin: 0;
+            }
+            .cc-voice-transcript-host .cc-transcript-channel-label {
+                max-width: 100%; font-size: 10px;
+                color: var(--text-muted, #697586);
+                overflow-wrap: anywhere;
+            }
+            .cc-voice-transcript-host .cc-inline-voice-transcript {
+                display: block; width: 100%; max-width: 100%; min-width: 0;
+                margin-top: 9px; padding: 12px;
+                border: 1px solid var(--border-color, #e4e7ec);
+                border-radius: 12px;
+                background: var(--card-bg, var(--control-bg, #fff));
+                color: var(--text-color, #273444);
+                box-shadow: 0 1px 3px rgba(16, 24, 40, .05);
+                overflow-wrap: anywhere; overflow: hidden;
+            }
+            .cc-inline-voice-transcript .cc-transcript-heading-row {
+                display: flex; flex-wrap: wrap; align-items: center;
+                justify-content: space-between; gap: 5px 8px;
+                min-width: 0; margin: 0 0 8px;
+            }
+            .cc-inline-voice-transcript .cc-transcript-heading {
+                display: block; margin: 0; font-size: 12px;
+                line-height: 1.35; font-weight: 650;
+                color: var(--text-color, #273444);
+            }
+            .cc-inline-voice-transcript .cc-transcript-language-tag {
+                display: inline-flex; align-items: center;
+                max-width: 100%; min-width: 0;
+                padding: 2px 7px; border-radius: 99px;
+                font-size: 10px; font-weight: 550; line-height: 1.4;
+                background: var(--subtle-fg, #eef2f6);
+                color: var(--text-muted, #667085);
+                white-space: nowrap;
+            }
+            .cc-inline-voice-transcript .cc-transcript-text {
+                width: 100%; min-width: 0; max-width: 100%;
+                font-size: 13px; line-height: 1.55;
+            }
+            .cc-inline-voice-transcript .cc-transcript-copy {
+                margin: 0; white-space: pre-wrap;
+                overflow-wrap: anywhere; word-break: normal;
+                unicode-bidi: plaintext;
+            }
+            .cc-inline-voice-transcript .cc-recording-language-retry {
+                width: 100%; min-width: 0; max-width: 100%;
+                display: grid; grid-template-columns: minmax(0, 1fr);
+                gap: 8px; margin-top: 12px; padding-top: 10px;
+                border-top: 1px solid var(--border-color, #e4e7ec);
+            }
+            .cc-inline-voice-transcript .cc-transcript-language-field {
+                width: 100%; min-width: 0; max-width: 100%;
+                display: grid; gap: 5px; margin: 0;
+            }
+            .cc-inline-voice-transcript .cc-transcript-language-label {
+                display: block; font-size: 11px; font-weight: 600;
+                color: var(--text-muted, #667085);
+            }
+            .cc-inline-voice-transcript .cc-transcript-language-select {
+                display: block; width: 100% !important; min-width: 0 !important;
+                max-width: 100% !important; height: 32px !important;
+                padding: 4px 28px 4px 9px !important;
+                border: 1px solid var(--border-color, #d0d5dd);
+                border-radius: 8px; background-color: var(--control-bg, #fff);
+                color: var(--text-color, #273444);
+                font-size: 12px; line-height: 1.3;
+                text-overflow: ellipsis;
+            }
+            .cc-inline-voice-transcript .cc-transcript-retry-button {
+                display: inline-flex; align-items: center; justify-content: center;
+                width: 100%; min-width: 0; max-width: 100%;
+                min-height: 32px; margin: 0 !important; padding: 6px 10px;
+                font-size: 12px; font-weight: 600; line-height: 1.4;
+                white-space: normal; overflow-wrap: anywhere;
+                border-radius: 8px; cursor: pointer;
+            }
+            .cc-inline-voice-transcript .cc-transcript-retry-button:disabled {
+                opacity: .6; cursor: wait;
+            }
+            .cc-inline-voice-transcript .cc-transcript-status-detail {
+                font-size: 12px; line-height: 1.55;
+                overflow-wrap: anywhere;
+            }
+            @media (max-width: 380px) {
+                .cc-voice-transcript-host .cc-inline-voice-transcript { padding: 10px; }
+            }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
     const INLINE_SELECTOR = ".cc-inline-voice-transcript";
     const CONTROL_SELECTOR = ".cc-voice-transcript-switch";
     const HOST_SELECTOR = ".cc-voice-transcript-host";
@@ -97,6 +209,8 @@
     let lastDiscovery = { withoutId: 0, resolvedByFile: 0, withoutFileKey: 0,
         duplicateFileKey: 0, noChatInstance: 0, indexFailures: 0 };
     const manualOpen = new Set();
+    // Preserve a user's selected retry language across background refreshes.
+    const retryLanguageChoices = new Map();
     const polling = new Set();
     const POLL_MS = 3500;
     const AUTO_RECHECK_MS = 45000;
@@ -180,7 +294,7 @@
         if (!host) {
             host = element('div', { className: 'cc-voice-transcript-host' });
             host.dataset.ccVoiceMessage = name;
-            host.style.cssText = 'display:block;margin-top:7px;max-width:100%;';
+            host.style.cssText = 'display:block;width:100%;max-width:100%;min-width:0;margin-top:8px;box-sizing:border-box;';
             target.appendChild(host);
         } else if (host.parentElement !== target && !target.contains(host)) {
             target.appendChild(host);
@@ -204,14 +318,24 @@
             panel.dataset.ccVoiceMessage = name;
             host.appendChild(panel);
         }
-        panel.style.cssText =
-            'margin-top:7px;padding:9px 11px;border:1px solid var(--border-color,#ddd);' +
-            'border-radius:8px;background:var(--control-bg,#f7f8fa);' +
-            'white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;';
-        const heading = element('strong', { text: say('Transcript') });
-        heading.style.cssText = 'display:block;margin-bottom:4px;';
+        const header = element('div', { className: 'cc-transcript-heading-row' });
+        const heading = element('strong', {
+            className: 'cc-transcript-heading', text: say('Transcript')
+        });
+        header.appendChild(heading);
+        const state = stateCache.get(name) || {};
+        if (state.status === 'Completed' && state.language) {
+            const codes = { en: 'English', ar: 'Arabic' };
+            const languageCode = String(state.language).toLowerCase();
+            const text = codes[languageCode] || languageCode.toUpperCase();
+            const tag = element('span', {
+                className: 'cc-transcript-language-tag', text: say(text)
+            });
+            tag.title = say('Detected language');
+            header.appendChild(tag);
+        }
         const body = element('div', { className: 'cc-transcript-text' });
-        panel.replaceChildren(heading, body);
+        panel.replaceChildren(header, body);
         return { heading, body };
     }
     function removePanels(name) {
@@ -222,11 +346,11 @@
             // Do NOT remove the permanent Show transcript checkbox.
         }
     }
-    async function retryTranscript(name, button) {
+    async function retryTranscript(name, button, force = 0, language = "auto") {
         button.disabled = true;
         try {
             const response = await call('request_recording_transcription', {
-                message_name: name, force: 0
+                message_name: name, force, language
             }, 'POST');
             const current = stateCache.get(name) || {};
             stateCache.set(name, { ...current, status: response.status || 'Queued', error: '' });
@@ -236,35 +360,95 @@
             button.disabled = false;
         }
     }
+    function addLanguageRetry(name, body, status) {
+        const state = stateCache.get(name) || {};
+        // Backend enforces the same rule: sender, Chat Administrator or System Manager.
+        if (!state.can_retranscribe || status === 'Queued' || status === 'Processing') return;
+        const wrapper = element('div', { className: 'cc-recording-language-retry' });
+        const field = element('label', { className: 'cc-transcript-language-field' });
+        const labelText = element('span', {
+            className: 'cc-transcript-language-label', text: say('Transcribe as')
+        });
+        const select = element('select', { className: 'cc-transcript-language-select form-control' });
+        select.setAttribute('aria-label', say('Recording language'));
+        select.title = say('Choose a language if automatic recognition was incorrect');
+        for (const [value, title] of [
+            ['auto', 'Auto-detect'], ['en', 'English'], ['ar', 'Arabic']
+        ]) {
+            const option = element('option', { text: say(title) });
+            option.value = value;
+            select.appendChild(option);
+        }
+        select.value = retryLanguageChoices.get(name) || 'auto';
+        select.addEventListener('change', () => retryLanguageChoices.set(name, select.value));
+        // Voice bubbles may themselves have click handlers; keep interaction local.
+        select.addEventListener('click', event => event.stopPropagation());
+        field.append(labelText, select);
+        const button = element('button', {
+            className: 'btn btn-sm btn-default cc-transcript-retry-button',
+            text: status === 'Failed' ? say('Retry transcription') : say('Re-transcribe')
+        });
+        button.type = 'button';
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            void retryTranscript(name, button, 1, select.value);
+        });
+        wrapper.append(field, button);
+        body.appendChild(wrapper);
+    }
     function renderText(name, status, transcript) {
         for (const row of messageRows(name)) {
             const { heading, body } = transcriptPanel(name, row);
             if (status === 'Completed') {
-                body.textContent = transcript || say('Transcript unavailable.');
+                const copy = element('div', {
+                    className: 'cc-transcript-copy',
+                    text: transcript || say('Transcript unavailable.')
+                });
+                copy.setAttribute('dir', 'auto');
+                body.appendChild(copy);
+                addLanguageRetry(name, body, status);
             } else if (status === 'Failed') {
                 heading.textContent = say('Transcription status');
                 const detail = element('div', {
+                    className: 'cc-transcript-status-detail',
                     text: say('Transcription failed. Check Audio Error on the message form or server logs.')
                 });
-                const retry = element('button', { text: say('Retry transcription') });
-                retry.type = 'button';
-                retry.className = 'btn btn-xs btn-default';
-                retry.style.cssText = 'margin-top:8px;cursor:pointer;';
-                retry.addEventListener('click', event => {
-                    event.stopPropagation();
-                    void retryTranscript(name, retry);
-                });
-                body.append(detail, retry);
+                body.appendChild(detail);
+                const state = stateCache.get(name) || {};
+                if (state.can_retranscribe) {
+                    addLanguageRetry(name, body, status);
+                } else {
+                    const retry = element('button', {
+                        className: 'btn btn-sm btn-default cc-transcript-retry-button',
+                        text: say('Retry transcription')
+                    });
+                    retry.type = 'button';
+                    retry.style.marginTop = '9px';
+                    retry.addEventListener('click', event => {
+                        event.stopPropagation();
+                        void retryTranscript(name, retry);
+                    });
+                    body.appendChild(retry);
+                }
             } else if (status === 'Processing' || status === 'Queued') {
                 heading.textContent = say('Transcription status');
-                body.textContent = say('Transcribing voice recording...');
+                body.appendChild(element('div', {
+                    className: 'cc-transcript-status-detail',
+                    text: say('Transcribing voice recording...')
+                }));
             } else {
                 heading.textContent = say('Transcription status');
-                body.textContent = say('No saved transcript yet. Use Start transcription to generate one.');
-                const retry = element('button', { text: say('Start transcription') });
+                body.appendChild(element('div', {
+                    className: 'cc-transcript-status-detail',
+                    text: say('No saved transcript yet. Use Start transcription to generate one.')
+                }));
+                const retry = element('button', {
+                    className: 'btn btn-sm btn-default cc-transcript-retry-button',
+                    text: say('Start transcription')
+                });
                 retry.type = 'button';
-                retry.className = 'btn btn-xs btn-default';
-                retry.style.cssText = 'display:block;margin-top:8px;cursor:pointer;';
+                retry.style.marginTop = '9px';
                 retry.addEventListener('click', event => {
                     event.stopPropagation();
                     void retryTranscript(name, retry);
@@ -312,7 +496,9 @@
                 const state = stateCache.get(name) || {};
                 stateCache.set(name, {
                     ...state, status: info.status || "Not Processed",
-                    transcript: info.transcript || ""
+                    transcript: info.transcript || "",
+                    language: info.language || "",
+                    can_retranscribe: !!info.can_retranscribe
                 });
                 renderMessage(name);
 
@@ -418,7 +604,8 @@
                 const info = await call("get_recording_features", { message_name: name });
                 const latest = stateCache.get(name);
                 if (!latest || !(latest.effective_show || manualOpen.has(name))) return;
-                stateCache.set(name, { ...latest, status: info.status, transcript: info.transcript || "" });
+                stateCache.set(name, { ...latest, status: info.status, transcript: info.transcript || "",
+                    language: info.language || "", can_retranscribe: !!info.can_retranscribe });
                 renderMessage(name);
                 if (info.status === "Completed" || info.status === "Failed") return;
                 if (info.status !== "Processing" && info.status !== "Queued") return;
@@ -439,6 +626,7 @@
             const state = stateCache.get(name) || { show_transcript: info.show_transcript,
                 channel_show_transcript: info.channel_show_transcript, can_manage: false };
             stateCache.set(name, { ...state, status: info.status, transcript: info.transcript || "",
+                language: info.language || "", can_retranscribe: !!info.can_retranscribe,
                 effective_show: !!(state.show_transcript || state.channel_show_transcript) });
             renderMessage(name);
             if (info.status === "Queued" || info.status === "Processing") {
@@ -648,6 +836,19 @@
                 const response = await call("get_recording_transcript_controls", {
                     message_names: JSON.stringify(chunk)
                 });
+                if (response.transcription_enabled === false) {
+                    // Global setting is OFF: remove all transcript-only UI,
+                    // including controls previously rendered for these messages.
+                    for (const name of chunk) {
+                        stateCache.delete(name);
+                        manualOpen.delete(name);
+                        removePanels(name);
+                        for (const row of messageRows(name)) {
+                            row.querySelectorAll(CONTROL_SELECTOR).forEach(el => el.remove());
+                        }
+                    }
+                    continue;
+                }
                 const found = new Set();
                 for (const state of response.results || []) {
                     if (!state?.message_name) continue;
@@ -920,6 +1121,12 @@
             try {
                 const info = await call("get_channel_transcript_control", { channel });
                 if (!panel.isConnected || roomForPanel(panel) !== channel) continue;
+                if (!info.transcription_enabled) {
+                    // Global ClefinCode Chat Settings disable both channel controls.
+                    panel.querySelectorAll(`${CHANNEL_SELECTOR},${AGENT_PICKER_SELECTOR}`)
+                        .forEach(node => node.remove());
+                    continue;
+                }
                 addChannelSwitch(panel, channel, info);
                 addChannelAgentPicker(panel, channel, info);
             } catch (error) {
@@ -1143,5 +1350,7 @@
             mappedWithoutDomId: [...fallbackRows.values()].reduce((n, rows) => n + rows.size, 0),
             discovery: lastDiscovery })
     };
+    installTranscriptStyles();
     installInlineTranscripts();
 })(window, document);
+ 
