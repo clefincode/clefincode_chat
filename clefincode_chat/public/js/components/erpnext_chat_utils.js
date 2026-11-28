@@ -134,7 +134,7 @@ async function set_user_settings(settings) {
 function get_avatar_html(room_name, room_type = "") {
   if (room_type == "Group") {
     let color = frappe.get_palette("G");
-    style = `background-color: var(${color[0]}); color: var(${color[1]}); display:flex`;
+    let style = `background-color: var(${color[0]}); color: var(${color[1]}); display:flex`;
 
     return `<span class="avatar avatar-medium">
     <div class="fa fa-users avatar-frame standard-image"

@@ -3622,8 +3622,10 @@ def sync_with_chat_profile(doc , method):
         contact_details_list.append(contact_details)
             
 
-    chat_profile_doc = frappe.db.get("ClefinCode Chat Profile", doc.name)
-    if method == "after_insert" or  not chat_profile_doc:
+    chat_profile_name = frappe.db.get_value(
+        "ClefinCode Chat Profile", {"contact": doc.name}, "name"
+    )
+    if not chat_profile_name:
         frappe.get_doc({
             "doctype" : "ClefinCode Chat Profile" ,
             "contact" : doc.name,
@@ -3631,7 +3633,7 @@ def sync_with_chat_profile(doc , method):
             "contact_details" : contact_details_list
         }).insert(ignore_permissions=True)
     else:
-        chat_profile = frappe.get_doc("ClefinCode Chat Profile" , doc.name)
+        chat_profile = frappe.get_doc("ClefinCode Chat Profile", chat_profile_name)
         chat_profile.update({
         "full_name" : full_name,
         "contact_details" : contact_details_list
